@@ -1,0 +1,17 @@
+- id: schema-gen-validate
+  name: Validate generated schemas
+  description: Check that schema-gen generated files are up-to-date
+  entry: schema-gen validate
+  language: system
+  pass_filenames: false
+  files: '\.py$'
+  stages: [commit]
+
+- id: schema-gen-generate
+  name: Generate schemas
+  description: Auto-generate schema files from definitions
+  entry: schema-gen generate
+  language: system  
+  pass_filenames: false
+  files: '(schemas/.*\.py|\.schema-gen\.config\.py)$'
+  stages: [pre-commit]

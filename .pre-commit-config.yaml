@@ -1,0 +1,49 @@
+repos:
+  # Schema Gen hooks
+  - repo: local
+    hooks:
+      # Validate schemas are up-to-date before commit
+      - id: schema-gen-validate
+        name: Validate generated schemas
+        entry: schema-gen validate
+        language: system
+        pass_filenames: false
+        files: '\.py$'
+        stages: [commit]
+      
+      # Auto-generate schemas when schema definitions change
+      - id: schema-gen-generate
+        name: Generate schemas
+        entry: schema-gen generate
+        language: system
+        pass_filenames: false
+        files: '(schemas/.*\.py|\.schema-gen\.config\.py)$'
+
+  # Standard Python linting and formatting
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        args: [--line-length=88]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        additional_dependencies: [pydantic>=2.0.0]

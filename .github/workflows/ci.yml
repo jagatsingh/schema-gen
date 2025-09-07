@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+    
+    - name: Run linting
+      run: |
+        uv run ruff check src/ tests/
+        uv run black --check src/ tests/
+        uv run mypy src/
+    
+    - name: Run tests
+      run: uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml
+    
+    - name: Test CLI functionality
+      run: |
+        # Test basic CLI commands
+        uv run schema-gen --help
+        
+        # Test project initialization
+        mkdir test_project && cd test_project
+        uv run schema-gen init
+        
+        # Test generation
+        uv run schema-gen generate
+        
+        # Test validation
+        uv run schema-gen validate
+        
+        # Verify generated files exist
+        ls -la generated/pydantic/
+        test -f generated/pydantic/user_models.py
+        test -f generated/pydantic/__init__.py
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true
+
+  schema-validation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+    
+    - name: Set up Python
+      run: uv python install 3.12
+    
+    - name: Install dependencies
+      run: uv sync
+    
+    - name: Validate schema generation
+      run: |
+        # Create test schemas
+        mkdir -p test_schemas
+        cat > test_schemas/test.py << 'EOF'
+        from schema_gen import Schema, Field
+        from typing import Optional
+        
+        @Schema
+        class TestModel:
+            id: int = Field(primary_key=True)
+            name: str = Field(max_length=100)
+            value: Optional[int] = Field(default=None)
+            
+            class Variants:
+                create = ['name', 'value']
+                response = ['id', 'name', 'value']
+        EOF
+        
+        # Create config
+        cat > .schema-gen.config.py << 'EOF'
+        from schema_gen import Config
+        
+        config = Config(
+            input_dir="test_schemas",
+            output_dir="test_generated",
+            targets=["pydantic"]
+        )
+        EOF
+        
+        # Generate schemas
+        uv run schema-gen generate
+        
+        # Validate schemas are up-to-date
+        uv run schema-gen validate
+        
+        # Verify generated content is valid Python
+        uv run python -c "
+        import sys
+        sys.path.append('test_generated')
+        from pydantic.testmodel_models import TestModel, TestModelCreate, TestModelResponse
+        print('✅ Generated models imported successfully')
+        "

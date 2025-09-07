@@ -1,0 +1,67 @@
+[project]
+name = "schema-gen"
+version = "0.1.0"
+description = "Universal schema converter - define once, generate everywhere"
+readme = "README.md"
+authors = [
+    { name = "Jagat Singh", email = "jagatsingh@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0.0",
+    "pydantic>=2.0.0",
+    "watchdog>=3.0.0",
+    "jinja2>=3.0.0",
+    "typing-extensions>=4.0.0",
+    "email-validator>=2.3.0",
+]
+keywords = ["schema", "pydantic", "sqlalchemy", "fastapi", "code-generation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Code Generators",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+    "twine>=4.0.0",
+]
+sqlalchemy = ["sqlalchemy>=2.0.0"]
+pathway = ["pathway>=0.7.0"]
+all = ["schema-gen[sqlalchemy,pathway]"]
+
+[project.scripts]
+schema-gen = "schema_gen.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jagatsingh/schema-gen"
+Repository = "https://github.com/jagatsingh/schema-gen"
+Documentation = "https://github.com/jagatsingh/schema-gen#readme"
+Issues = "https://github.com/jagatsingh/schema-gen/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.18",
+    "mkdocstrings[python]>=0.30.0",
+    "pymdown-extensions>=10.16.1",
+    "pytest>=8.4.2",
+    "pytest-cov>=6.3.0",
+]
