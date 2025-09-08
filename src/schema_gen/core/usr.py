@@ -1,5 +1,6 @@
 """Universal Schema Representation (USR) - Internal schema format"""
 
+import types
 import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -204,10 +205,11 @@ class TypeMapper:
 
         origin = typing.get_origin(python_type)
 
-        if origin is Union:
+        # Handle both typing.Union and types.UnionType (Python 3.12+ syntax)
+        if origin is Union or origin is getattr(types, "UnionType", None):
             args = typing.get_args(python_type)
             if len(args) == 2 and type(None) in args:
-                # This is Optional[T]
+                # This is Optional[T] or T | None
                 optional = True
                 non_none_type = next(arg for arg in args if arg is not type(None))
                 actual_type = non_none_type  # Use the non-None type for field_type

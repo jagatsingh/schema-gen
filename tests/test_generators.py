@@ -120,8 +120,8 @@ class TestAllGenerators:
         assert "class TestUser(pw.Table):" in file_content
         assert "class TestUserCreateRequest(pw.Table):" in file_content
         assert "import pathway as pw" in file_content
-        assert "id: pw.ColumnExpression[int]" in file_content
-        assert "name: pw.ColumnExpression[str]" in file_content
+        assert "id: pw.ColumnExpression  # int" in file_content
+        assert "name: pw.ColumnExpression  # str" in file_content
 
         # Verify it compiles as valid Python
         compile(file_content, "<test>", "exec")

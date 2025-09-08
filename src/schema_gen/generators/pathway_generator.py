@@ -108,8 +108,8 @@ class PathwayGenerator:
         # Get Pathway column type
         pathway_type = self._get_pathway_type(field, imports)
 
-        # Build column definition
-        col_def = f"    {field.name}: pw.ColumnExpression[{pathway_type}]"
+        # Build column definition (using non-generic syntax for compatibility)
+        col_def = f"    {field.name}: pw.ColumnExpression  # {pathway_type}"
 
         # Add description as comment
         if field.description:
