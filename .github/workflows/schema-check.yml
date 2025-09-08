@@ -14,19 +14,19 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 2  # Need to compare with previous commit
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
         enable-cache: true
-    
+
     - name: Set up Python
       run: uv python install 3.12
-    
+
     - name: Install dependencies
       run: uv sync
-    
+
     - name: Check if schemas directory exists
       id: check_schemas
       run: |
@@ -35,16 +35,16 @@ jobs:
         else
           echo "schemas_exist=false" >> $GITHUB_OUTPUT
         fi
-    
+
     - name: Generate fresh schemas
       if: steps.check_schemas.outputs.schemas_exist == 'true'
       run: |
         # Remove existing generated files
         rm -rf generated/
-        
+
         # Generate fresh schemas
         uv run schema-gen generate
-        
+
         # Check if there are any differences
         if git diff --quiet generated/; then
           echo "✅ Generated schemas are up-to-date"
@@ -54,35 +54,35 @@ jobs:
           git diff generated/
           exit 1
         fi
-    
+
     - name: Validate schema syntax
       if: steps.check_schemas.outputs.schemas_exist == 'true'
       run: |
         # Validate that all schema files are syntactically correct
         find schemas/ -name "*.py" -exec uv run python -m py_compile {} \;
-        
+
         # Try to import and validate each schema
         uv run python -c "
         import sys
         import os
         from pathlib import Path
-        
+
         # Add schemas to path
         sys.path.insert(0, 'schemas')
-        
+
         # Import schema_gen to trigger schema registration
         from schema_gen.core.schema import SchemaRegistry
-        
+
         # Try to import all schema files
         schema_files = list(Path('schemas').glob('**/*.py'))
         if not schema_files:
             print('No schema files found')
             sys.exit(0)
-        
+
         for schema_file in schema_files:
             if schema_file.name == '__init__.py':
                 continue
-            
+
             module_name = schema_file.stem
             try:
                 __import__(module_name)
@@ -90,14 +90,14 @@ jobs:
             except Exception as e:
                 print(f'❌ Failed to import {schema_file}: {e}')
                 sys.exit(1)
-        
+
         # Check that schemas were registered
         if SchemaRegistry._schemas:
             print(f'✅ Found {len(SchemaRegistry._schemas)} registered schemas')
         else:
             print('⚠️ No schemas were registered')
         "
-    
+
     - name: Test generated models
       if: steps.check_schemas.outputs.schemas_exist == 'true'
       run: |
@@ -105,20 +105,20 @@ jobs:
         uv run python -c "
         import sys
         from pathlib import Path
-        
+
         # Add generated directory to path
         generated_path = Path('generated')
         if not generated_path.exists():
             print('No generated directory found')
             sys.exit(0)
-        
+
         for target_dir in generated_path.iterdir():
             if not target_dir.is_dir():
                 continue
-            
+
             print(f'Testing {target_dir.name} models...')
             sys.path.insert(0, str(target_dir))
-            
+
             # Try to import all model files
             for model_file in target_dir.glob('*_models.py'):
                 module_name = model_file.stem

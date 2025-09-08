@@ -10,7 +10,7 @@ repos:
         pass_filenames: false
         files: '\.py$'
         stages: [commit]
-      
+
       # Auto-generate schemas when schema definitions change
       - id: schema-gen-generate
         name: Generate schemas

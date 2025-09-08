@@ -7,7 +7,7 @@ Schema Gen eliminates schema duplication in Python projects by providing a singl
 ## Quick Navigation
 
 - **[Getting Started](getting-started.md)** - Installation and your first schema
-- **[Schema Format](schema-format.md)** - Complete field types and constraints reference  
+- **[Schema Format](schema-format.md)** - Complete field types and constraints reference
 - **[CLI Reference](cli-reference.md)** - All command-line tools
 - **[Configuration](configuration.md)** - Project configuration options
 - **[Examples](examples.md)** - Real-world usage examples
@@ -18,7 +18,7 @@ Schema Gen eliminates schema duplication in Python projects by providing a singl
 ### The Problem
 In modern Python applications, especially FastAPI projects, you often need to maintain:
 - **Pydantic models** for API request/response validation
-- **SQLAlchemy models** for database operations  
+- **SQLAlchemy models** for database operations
 - **Data processing schemas** for analytics pipelines
 - **Multiple variants** of the same model for different use cases
 

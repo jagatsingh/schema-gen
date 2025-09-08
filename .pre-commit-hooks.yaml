@@ -11,7 +11,7 @@
   name: Generate schemas
   description: Auto-generate schema files from definitions
   entry: schema-gen generate
-  language: system  
+  language: system
   pass_filenames: false
   files: '(schemas/.*\.py|\.schema-gen\.config\.py)$'
   stages: [pre-commit]

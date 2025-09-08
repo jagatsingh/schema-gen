@@ -23,10 +23,11 @@ schema-gen init [OPTIONS]
 - `--input-dir TEXT` - Input directory for schemas (default: `schemas/`)
 - `--output-dir TEXT` - Output directory for generated files (default: `generated/`)
 - `--targets TEXT` - Comma-separated list of targets (default: `pydantic`)
+  Available targets: `pydantic`, `sqlalchemy`, `dataclasses`, `typeddict`, `pathway`, `zod`, `jsonschema`, `graphql`, `protobuf`, `avro`, `jackson`, `kotlin`
 
 **Example:**
 ```bash
-schema-gen init --input-dir src/schemas --output-dir src/generated --targets pydantic
+schema-gen init --input-dir src/schemas --output-dir src/generated --targets pydantic,jackson,kotlin
 ```
 
 **What it creates:**
@@ -45,7 +46,7 @@ schema-gen generate [OPTIONS]
 
 **Options:**
 - `-i, --input TEXT` - Input directory containing schemas
-- `-o, --output TEXT` - Output directory for generated files  
+- `-o, --output TEXT` - Output directory for generated files
 - `-t, --target TEXT` - Target generators to run (can be used multiple times)
 - `-c, --config TEXT` - Path to config file (default: `.schema-gen.config.py`)
 
@@ -89,7 +90,7 @@ schema-gen watch --config .schema-gen.dev.config.py
 
 **Features:**
 - Watches schema files for changes
-- Watches config file for changes  
+- Watches config file for changes
 - Debounced regeneration (1 second delay)
 - Graceful shutdown with Ctrl+C
 - Real-time feedback on changes
@@ -216,7 +217,7 @@ git diff --exit-code generated/ || {
 # Development config
 schema-gen generate --config .schema-gen.dev.config.py
 
-# Production config  
+# Production config
 schema-gen generate --config .schema-gen.prod.config.py
 
 # Testing with different targets

@@ -145,7 +145,7 @@ We use several tools to maintain code quality:
 1. **Type Hints**
    - All functions should have type hints
    - Use `from __future__ import annotations` for forward references
-   
+
    ```python
    def generate_model(schema: USRSchema, variant: str | None = None) -> str:
        """Generate model code from schema."""
@@ -154,17 +154,17 @@ We use several tools to maintain code quality:
 2. **Docstrings**
    - Use Google-style docstrings
    - Document all public functions and classes
-   
+
    ```python
    def parse_schema(self, schema_class: Type) -> USRSchema:
        """Parse a Python schema class into USR format.
-       
+
        Args:
            schema_class: Class decorated with @Schema
-           
+
        Returns:
            USR representation of the schema
-           
+
        Raises:
            ValidationError: If schema is invalid
        """
@@ -250,7 +250,7 @@ To add support for a new target format (e.g., SQLAlchemy, Pathway):
    ```python
    # src/schema_gen/generators/my_generator.py
    from .base import BaseGenerator
-   
+
    class MyGenerator(BaseGenerator):
        def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
            # Implementation here

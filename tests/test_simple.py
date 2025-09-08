@@ -15,11 +15,11 @@ def test_simple_field_creation():
 def test_simple_schema_creation():
     """Test basic schema creation"""
     SchemaRegistry._schemas.clear()
-    
+
     @Schema
     class TestSchema:
         name: str = Field()
-    
+
     assert TestSchema._schema_name == "TestSchema"
     assert "name" in TestSchema._schema_fields
     assert TestSchema in SchemaRegistry._schemas.values()

@@ -150,7 +150,7 @@ from schema_gen.core.usr import FieldType
 
 # Available types
 FieldType.STRING
-FieldType.INTEGER  
+FieldType.INTEGER
 FieldType.FLOAT
 FieldType.BOOLEAN
 FieldType.DATETIME
@@ -385,7 +385,7 @@ class User:
     name: str = Field(max_length=100)
     email: str = Field(format="email", unique=True)
     age: Optional[int] = Field(default=None, min_value=0)
-    
+
     class Variants:
         create = ['name', 'email', 'age']
         response = ['id', 'name', 'email', 'age']
