@@ -121,7 +121,7 @@ jobs:
         # Verify generated content is valid Python
         uv run python -c "
         import sys
-        sys.path.append('test_generated')
-        from pydantic.testmodel_models import TestModel, TestModelCreate, TestModelResponse
+        sys.path.append('test_generated/pydantic')
+        from testmodel_models import TestModel, TestModelCreate, TestModelResponse
         print('✅ Generated models imported successfully')
         "
