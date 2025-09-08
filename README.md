@@ -10,6 +10,8 @@
 
 Schema Gen eliminates schema duplication across multiple programming languages and frameworks by providing a single source of truth for your data models. Define your schemas once using Python type annotations, then automatically generate code for 12+ different targets.
 
+This is early `Beta` version and just early implementation of my current thoughts. Please try it out and provide feedback!
+
 ## 🎯 Supported Generators (12)
 
 ### Python Ecosystem
@@ -260,15 +262,6 @@ Generated files are committed to your repository, ensuring:
 - **CLI Tools** - Complete command-line interface
 - **File Watching** - Auto-regeneration during development
 - **Pre-commit Hooks** - Automatic generation in git workflow
-
-### Planned Features
-- **OpenAPI/Swagger** - REST API specifications
-- **Great Expectations** - Data validation schemas
-- **Terraform** - Infrastructure as Code schemas
-- **Rust Serde** - Rust serialization support
-- **C# Records** - .NET ecosystem support
-- **Go Structs** - Go language support
-- **Custom Generators** - Plugin system for custom formats
 
 ## 🛠️ CLI Commands
 
