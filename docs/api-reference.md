@@ -11,9 +11,11 @@ The `@Schema` decorator marks a class as a schema definition.
 ```python
 from schema_gen import Schema
 
+
 @Schema
 class MyModel:
     """Schema description"""
+
     # field definitions...
 ```
 
@@ -94,11 +96,7 @@ Configuration object for Schema Gen projects.
 ```python
 from schema_gen import Config
 
-config = Config(
-    input_dir="schemas",
-    output_dir="generated",
-    targets=["pydantic"]
-)
+config = Config(input_dir="schemas", output_dir="generated", targets=["pydantic"])
 ```
 
 **Parameters:**
@@ -174,13 +172,8 @@ field = USRField(
     name="username",
     type=FieldType.STRING,
     optional=False,
-    constraints={
-        "min_length": 3,
-        "max_length": 30
-    },
-    metadata={
-        "description": "Unique username"
-    }
+    constraints={"min_length": 3, "max_length": 30},
+    metadata={"description": "Unique username"},
 )
 ```
 
@@ -203,7 +196,7 @@ schema = USRSchema(
     name="User",
     fields=[field1, field2, ...],
     variants={"create": ["field1"], "response": ["field1", "field2"]},
-    metadata={"description": "User schema"}
+    metadata={"description": "User schema"},
 )
 ```
 
@@ -379,6 +372,7 @@ from schema_gen.exceptions import GenerationError
 from schema_gen import Schema, Field
 from typing import Optional
 
+
 @Schema
 class User:
     id: int = Field(primary_key=True, auto_increment=True)
@@ -387,8 +381,8 @@ class User:
     age: Optional[int] = Field(default=None, min_value=0)
 
     class Variants:
-        create = ['name', 'email', 'age']
-        response = ['id', 'name', 'email', 'age']
+        create = ["name", "email", "age"]
+        response = ["id", "name", "email", "age"]
 ```
 
 ### Programmatic Usage
@@ -398,11 +392,7 @@ from schema_gen import Config
 from schema_gen.core.generator import SchemaGenerationEngine
 
 # Create configuration
-config = Config(
-    input_dir="schemas",
-    output_dir="generated",
-    targets=["pydantic"]
-)
+config = Config(input_dir="schemas", output_dir="generated", targets=["pydantic"])
 
 # Create engine
 engine = SchemaGenerationEngine(config)

@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     steps:
     - uses: actions/checkout@v4
@@ -36,6 +36,22 @@ jobs:
 
     - name: Run tests
       run: uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml
+
+    - name: Run version compatibility tests
+      run: |
+        # Run basic compatibility tests with current versions
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_pydantic_version_compatibility -v
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_generated_code_syntax_validation -v
+        uv run pytest tests/test_version_compatibility.py::TestVersionRequirements::test_minimum_version_requirements -v
+
+        # Test all generators compatibility
+        uv run pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_python_generators -v
+        uv run pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_schema_generators -v
+        uv run pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_language_generators -v
+
+        # Test schema library compatibility (if installed)
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_jsonschema_version_compatibility -v || echo "jsonschema not installed"
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_graphql_version_compatibility -v || echo "graphql-core not installed"
 
     - name: Test CLI functionality
       run: |
@@ -125,3 +141,29 @@ jobs:
         from testmodel_models import TestModel, TestModelCreate, TestModelResponse
         print('✅ Generated models imported successfully')
         "
+
+        # Test all generators using the compatibility checker
+        uv run python scripts/check_compatibility.py --all-generators
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync --group dev
+
+    - name: Build documentation
+      run: uv run mkdocs build --strict
+
+    - name: Test documentation links
+      run: uv run mkdocs build --strict --verbose

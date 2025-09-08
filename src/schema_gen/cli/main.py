@@ -1,12 +1,13 @@
 """Main CLI entry point for schema-gen"""
 
-import click
 import time
 from pathlib import Path
-from watchdog.observers import Observer
+
+import click
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 from ..core.generator import create_generation_engine
-from ..core.config import Config
 
 
 class SchemaWatcher(FileSystemEventHandler):
@@ -132,7 +133,7 @@ def generate(input_dir, output_dir, targets, config_path):
 
     except Exception as e:
         click.echo(f"❌ Generation failed: {e}")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @main.command()
@@ -211,10 +212,10 @@ def watch(input_dir, output_dir, config_path):
     except FileNotFoundError as e:
         click.echo(f"❌ Directory not found: {e}")
         click.echo("💡 Try running 'schema-gen init' first to set up the project.")
-        raise click.Abort()
+        raise click.Abort() from e
     except Exception as e:
         click.echo(f"❌ Watch failed: {e}")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @main.command()
@@ -273,7 +274,7 @@ def validate(config_path):
 
     except Exception as e:
         click.echo(f"❌ Validation failed: {e}")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @main.command()
@@ -298,7 +299,7 @@ from schema_gen import Config
 config = Config(
     input_dir="{input_dir}",
     output_dir="{output_dir}",
-    targets=[{', '.join(f'"{t.strip()}"' for t in targets.split(','))}],
+    targets=[{", ".join(f'"{t.strip()}"' for t in targets.split(","))}],
 
     # Pydantic-specific settings
     pydantic={{
@@ -318,7 +319,7 @@ config = Config(
         f.write(config_content)
 
     # Create example schema
-    example_schema = f'''"""Example schema definition"""
+    example_schema = '''"""Example schema definition"""
 
 from schema_gen import Schema, Field
 from typing import Optional
@@ -369,10 +370,10 @@ class User:
     with open(f"{input_dir}/user.py", "w") as f:
         f.write(example_schema)
 
-    click.echo(f"✅ Project initialized!")
+    click.echo("✅ Project initialized!")
     click.echo(f"  📁 Schema directory: {input_dir}/")
     click.echo(f"  📁 Output directory: {output_dir}/")
-    click.echo(f"  📋 Config file: .schema-gen.config.py")
+    click.echo("  📋 Config file: .schema-gen.config.py")
     click.echo(f"  📄 Example schema: {input_dir}/user.py")
     click.echo()
     click.echo("Next steps:")
@@ -448,7 +449,7 @@ def install_hooks(install_pre_commit):
             click.echo("✅ Pre-commit hooks installed successfully!")
             click.echo("💡 Now schema generation will run automatically before commits")
 
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             click.echo("❌ Failed to install pre-commit hooks")
             click.echo(
                 "💡 Install manually with: pip install pre-commit && pre-commit install"

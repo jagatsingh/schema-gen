@@ -6,14 +6,17 @@ readme = "README.md"
 authors = [
     { name = "Jagat Singh", email = "jagatsingh@gmail.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
-    "click>=8.0.0",
-    "pydantic>=2.0.0",
-    "watchdog>=3.0.0",
-    "jinja2>=3.0.0",
-    "typing-extensions>=4.0.0",
+    "click>=8.2.1",
+    "pydantic>=2.11.7",
+    "watchdog>=6.0.0",
+    "jinja2>=3.1.6",
+    "typing-extensions>=4.15.0",
     "email-validator>=2.3.0",
+    "pyyaml>=6.0.2",
+    "jsonschema>=4.25.1",
+    "graphql-core>=3.2.6",
 ]
 keywords = ["schema", "pydantic", "sqlalchemy", "fastapi", "code-generation"]
 classifiers = [
@@ -21,8 +24,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -39,9 +40,16 @@ dev = [
     "pre-commit>=3.0.0",
     "twine>=4.0.0",
 ]
-sqlalchemy = ["sqlalchemy>=2.0.0"]
-pathway = ["pathway>=0.7.0"]
-all = ["schema-gen[sqlalchemy,pathway]"]
+sqlalchemy = ["sqlalchemy>=2.0.25"]
+pathway = ["pathway>=0.8.0"]
+jsonschema = ["jsonschema>=4.17.0"]
+graphql = ["graphql-core>=3.2.0"]
+avro = ["avro>=1.11.0"]
+protobuf = ["protobuf>=4.25.0"]
+testing = ["pytest-xdist>=3.0.0"]
+schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf]"]
+compatibility = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]
+all = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]
 
 [project.scripts]
 schema-gen = "schema_gen.cli:main"
@@ -65,3 +73,35 @@ dev = [
     "pytest>=8.4.2",
     "pytest-cov>=6.3.0",
 ]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "W191",  # indentation contains tabs
+    "ARG002",  # unused method arguments (often needed for API consistency)
+    "SIM102", # nested if statements (sometimes more readable)
+    "SIM108", # ternary operator suggestions (not always clearer)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["ARG", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["schema_gen"]

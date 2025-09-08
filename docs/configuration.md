@@ -14,20 +14,27 @@ config = Config(
     output_dir="generated",
     targets=[
         # Python ecosystem
-        "pydantic", "sqlalchemy", "dataclasses", "typeddict", "pathway",
+        "pydantic",
+        "sqlalchemy",
+        "dataclasses",
+        "typeddict",
+        "pathway",
         # TypeScript/JavaScript
         "zod",
         # Schema formats
-        "jsonschema", "graphql", "protobuf", "avro",
+        "jsonschema",
+        "graphql",
+        "protobuf",
+        "avro",
         # JVM languages
-        "jackson", "kotlin"
+        "jackson",
+        "kotlin",
     ],
-
     # Target-specific settings
     pydantic={
         "use_enum": True,
         "extra": "forbid",
-    }
+    },
 )
 ```
 
@@ -83,23 +90,18 @@ config = Config(
     targets=["pydantic"],
     pydantic={
         # Model configuration
-        "use_enum": True,              # Use Enum for Literal types
-        "extra": "forbid",             # Forbid extra fields
-        "validate_assignment": True,   # Validate on assignment
+        "use_enum": True,  # Use Enum for Literal types
+        "extra": "forbid",  # Forbid extra fields
+        "validate_assignment": True,  # Validate on assignment
         "arbitrary_types_allowed": False,  # Allow arbitrary types
-
         # Import settings
-        "imports": [                   # Additional imports
-            "from myproject.types import CustomType"
-        ],
-
+        "imports": ["from myproject.types import CustomType"],  # Additional imports
         # Template customization
         "template_dir": "templates/",  # Custom template directory
-
         # File naming
-        "model_suffix": "_models",     # File suffix (user_models.py)
+        "model_suffix": "_models",  # File suffix (user_models.py)
         "class_naming": "PascalCase",  # Class naming convention
-    }
+    },
 )
 ```
 
@@ -123,10 +125,10 @@ class User:
     created_at: datetime = Field(auto_now_add=True, description="Creation timestamp")
 
     class Variants:
-        create_request = ['name', 'email', 'age']        # For user creation
-        update_request = ['name', 'email', 'age']        # For user updates
-        public_response = ['id', 'name', 'age', 'created_at']  # Public API
-        full_response = ['id', 'name', 'email', 'age', 'created_at']  # Admin API
+        create_request = ["name", "email", "age"]  # For user creation
+        update_request = ["name", "email", "age"]  # For user updates
+        public_response = ["id", "name", "age", "created_at"]  # Public API
+        full_response = ["id", "name", "email", "age", "created_at"]  # Admin API
 ```
 
 **Generated Models:**
@@ -162,13 +164,13 @@ Configure SQLAlchemy ORM model generation:
 config = Config(
     targets=["sqlalchemy"],
     sqlalchemy={
-        "use_declarative": True,       # Use declarative base
-        "base_class": "Base",          # Base class name
+        "use_declarative": True,  # Use declarative base
+        "base_class": "Base",  # Base class name
         "table_naming": "snake_case",  # Table naming convention
-        "relationship_loading": "lazy", # Relationship loading strategy
-        "include_metadata": True,      # Include Column metadata
-        "generate_relationships": True, # Generate relationship mappings
-    }
+        "relationship_loading": "lazy",  # Relationship loading strategy
+        "include_metadata": True,  # Include Column metadata
+        "generate_relationships": True,  # Generate relationship mappings
+    },
 )
 ```
 
@@ -191,12 +193,12 @@ Configure Zod schema generation for TypeScript:
 config = Config(
     targets=["zod"],
     zod={
-        "generate_types": True,        # Generate TypeScript types
-        "strict_mode": True,           # Use strict validation
-        "export_schemas": True,        # Export schema objects
-        "file_extension": ".ts",       # File extension (.ts or .js)
-        "import_style": "named",       # Import style ("named" or "default")
-    }
+        "generate_types": True,  # Generate TypeScript types
+        "strict_mode": True,  # Use strict validation
+        "export_schemas": True,  # Export schema objects
+        "file_extension": ".ts",  # File extension (.ts or .js)
+        "import_style": "named",  # Import style ("named" or "default")
+    },
 )
 ```
 
@@ -216,10 +218,10 @@ config = Config(
 config = Config(
     targets=["pathway"],
     pathway={
-        "column_type": "pw.Column",    # Column type to use
-        "table_type": "pw.Table",      # Table type to use
+        "column_type": "pw.Column",  # Column type to use
+        "table_type": "pw.Table",  # Table type to use
         "optional_handling": "Union",  # How to handle Optional types
-    }
+    },
 )
 ```
 
@@ -238,9 +240,9 @@ config = Config(
     output_dir="generated",
     targets=["pydantic"],
     pydantic={
-        "validate_assignment": True,   # Strict validation for development
+        "validate_assignment": True,  # Strict validation for development
         "extra": "forbid",
-    }
+    },
 )
 ```
 
@@ -255,7 +257,7 @@ config = Config(
     pydantic={
         "validate_assignment": False,  # Less strict for performance
         "extra": "ignore",
-    }
+    },
 )
 ```
 
@@ -295,15 +297,13 @@ is_production = os.getenv("ENV") == "production"
 config = Config(
     input_dir="schemas",
     output_dir="generated",
-
     # More targets in production
     targets=["pydantic", "sqlalchemy"] if is_production else ["pydantic"],
-
     pydantic={
         # Strict validation in development
         "validate_assignment": is_development,
         "extra": "forbid" if is_development else "ignore",
-    }
+    },
 )
 ```
 
@@ -315,18 +315,16 @@ The configuration system provides full type safety and validation:
 from schema_gen import Config
 
 # This will raise a validation error
-config = Config(
-    targets=["invalid_target"]  # ❌ Error: unknown target
-)
+config = Config(targets=["invalid_target"])  # ❌ Error: unknown target
 
 # This will provide IDE autocomplete and type checking
 config = Config(
-    input_dir="schemas",        # ✅ Type: str
-    targets=["pydantic"],       # ✅ Type: List[str], valid values
+    input_dir="schemas",  # ✅ Type: str
+    targets=["pydantic"],  # ✅ Type: List[str], valid values
     pydantic={
-        "extra": "forbid",      # ✅ Type: str, valid enum value
-        "use_enum": True,       # ✅ Type: bool
-    }
+        "extra": "forbid",  # ✅ Type: str, valid enum value
+        "use_enum": True,  # ✅ Type: bool
+    },
 )
 ```
 
@@ -345,7 +343,6 @@ config = Config(
     input_dir="schemas",
     output_dir="generated",
     targets=["pydantic", "sqlalchemy", "zod"],
-
     # Pydantic settings
     pydantic={
         # Model behavior
@@ -353,7 +350,6 @@ config = Config(
         "extra": "forbid",
         "validate_assignment": True,
         "arbitrary_types_allowed": False,
-
         # Code generation
         "imports": [
             "from myproject.types import CustomEnum",
@@ -361,11 +357,9 @@ config = Config(
         ],
         "model_suffix": "_models",
         "class_naming": "PascalCase",
-
         # Template customization
         "template_dir": None,  # Use built-in templates
     },
-
     # SQLAlchemy settings
     sqlalchemy={
         "use_declarative": True,
@@ -373,7 +367,6 @@ config = Config(
         "table_naming": "snake_case",
         "generate_relationships": True,
     },
-
     # Zod settings
     zod={
         "generate_types": True,
@@ -381,11 +374,10 @@ config = Config(
         "export_schemas": True,
         "file_extension": ".ts",
     },
-
     # Future: Pathway settings
     pathway={
         "column_type": "pw.Column",
         "table_type": "pw.Table",
-    }
+    },
 )
 ```

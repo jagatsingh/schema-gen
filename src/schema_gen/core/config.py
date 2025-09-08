@@ -1,8 +1,8 @@
 """Configuration system for schema_gen"""
 
-from typing import Dict, List, Any
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -23,21 +23,21 @@ class Config:
     output_dir: str = "generated/"
 
     # Target schemas to generate
-    targets: List[str] = field(default_factory=lambda: ["pydantic"])
+    targets: list[str] = field(default_factory=lambda: ["pydantic"])
 
     # Target-specific configuration
-    pydantic: Dict[str, Any] = field(default_factory=dict)
-    sqlalchemy: Dict[str, Any] = field(default_factory=dict)
-    zod: Dict[str, Any] = field(default_factory=dict)
-    pathway: Dict[str, Any] = field(default_factory=dict)
-    dataclasses: Dict[str, Any] = field(default_factory=dict)
-    typeddict: Dict[str, Any] = field(default_factory=dict)
-    jsonschema: Dict[str, Any] = field(default_factory=dict)
-    graphql: Dict[str, Any] = field(default_factory=dict)
-    protobuf: Dict[str, Any] = field(default_factory=dict)
-    avro: Dict[str, Any] = field(default_factory=dict)
-    jackson: Dict[str, Any] = field(default_factory=dict)
-    kotlin: Dict[str, Any] = field(default_factory=dict)
+    pydantic: dict[str, Any] = field(default_factory=dict)
+    sqlalchemy: dict[str, Any] = field(default_factory=dict)
+    zod: dict[str, Any] = field(default_factory=dict)
+    pathway: dict[str, Any] = field(default_factory=dict)
+    dataclasses: dict[str, Any] = field(default_factory=dict)
+    typeddict: dict[str, Any] = field(default_factory=dict)
+    jsonschema: dict[str, Any] = field(default_factory=dict)
+    graphql: dict[str, Any] = field(default_factory=dict)
+    protobuf: dict[str, Any] = field(default_factory=dict)
+    avro: dict[str, Any] = field(default_factory=dict)
+    jackson: dict[str, Any] = field(default_factory=dict)
+    kotlin: dict[str, Any] = field(default_factory=dict)
 
     # Generation settings
     overwrite: bool = True
@@ -45,7 +45,7 @@ class Config:
     format_code: bool = True
 
     # Default field behaviors
-    defaults: Dict[str, Any] = field(
+    defaults: dict[str, Any] = field(
         default_factory=lambda: {
             "nullable_by_default": False,
             "string_max_length": 255,
@@ -54,7 +54,7 @@ class Config:
     )
 
     # Custom type mappings
-    type_mappings: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    type_mappings: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
     def from_file(cls, config_path: str = ".schema-gen.config.py") -> "Config":

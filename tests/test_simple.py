@@ -1,7 +1,6 @@
 """Simple tests to verify basic functionality"""
 
-import pytest
-from schema_gen import Schema, Field
+from schema_gen import Field, Schema
 from schema_gen.core.schema import SchemaRegistry
 
 

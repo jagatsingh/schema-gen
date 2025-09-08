@@ -34,80 +34,87 @@ from typing import Optional, List
 from datetime import datetime
 from decimal import Decimal
 
+
 @Schema
 class User:
     """User account schema"""
 
     id: int = Field(
-        primary_key=True,
-        auto_increment=True,
-        description="Unique user identifier"
+        primary_key=True, auto_increment=True, description="Unique user identifier"
     )
 
     username: str = Field(
         min_length=3,
         max_length=30,
-        regex=r'^[a-zA-Z0-9_]+$',
+        regex=r"^[a-zA-Z0-9_]+$",
         unique=True,
-        description="Unique username"
+        description="Unique username",
     )
 
-    email: str = Field(
-        format="email",
-        unique=True,
-        description="User email address"
-    )
+    email: str = Field(format="email", unique=True, description="User email address")
 
     password_hash: str = Field(
         min_length=8,
         description="Hashed password",
-        exclude_from=['public_response', 'admin_response']
+        exclude_from=["public_response", "admin_response"],
     )
 
-    first_name: str = Field(
-        max_length=50,
-        description="User's first name"
-    )
+    first_name: str = Field(max_length=50, description="User's first name")
 
-    last_name: str = Field(
-        max_length=50,
-        description="User's last name"
-    )
+    last_name: str = Field(max_length=50, description="User's last name")
 
-    is_active: bool = Field(
-        default=True,
-        description="Whether the account is active"
-    )
+    is_active: bool = Field(default=True, description="Whether the account is active")
 
     is_admin: bool = Field(
         default=False,
         description="Whether the user has admin privileges",
-        exclude_from=['public_response']
+        exclude_from=["public_response"],
     )
 
     created_at: datetime = Field(
-        auto_now_add=True,
-        description="Account creation timestamp"
+        auto_now_add=True, description="Account creation timestamp"
     )
 
-    updated_at: datetime = Field(
-        auto_now=True,
-        description="Last update timestamp"
-    )
+    updated_at: datetime = Field(auto_now=True, description="Last update timestamp")
 
     class Variants:
         # Registration and authentication
-        register_request = ['username', 'email', 'password_hash', 'first_name', 'last_name']
-        login_request = ['username', 'password_hash']
+        register_request = [
+            "username",
+            "email",
+            "password_hash",
+            "first_name",
+            "last_name",
+        ]
+        login_request = ["username", "password_hash"]
 
         # User management
-        update_profile = ['email', 'first_name', 'last_name']
-        change_password = ['password_hash']
+        update_profile = ["email", "first_name", "last_name"]
+        change_password = ["password_hash"]
 
         # API responses
-        public_response = ['id', 'username', 'first_name', 'last_name', 'created_at']
-        private_response = ['id', 'username', 'email', 'first_name', 'last_name', 'is_active', 'created_at', 'updated_at']
-        admin_response = ['id', 'username', 'email', 'first_name', 'last_name', 'is_active', 'is_admin', 'created_at', 'updated_at']
+        public_response = ["id", "username", "first_name", "last_name", "created_at"]
+        private_response = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        admin_response = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "is_active",
+            "is_admin",
+            "created_at",
+            "updated_at",
+        ]
 ```
 
 ### Product Schema
@@ -119,62 +126,42 @@ from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 
+
 @Schema
 class Product:
     """Product catalog schema"""
 
-    id: int = Field(
-        primary_key=True,
-        auto_increment=True,
-        description="Product ID"
-    )
+    id: int = Field(primary_key=True, auto_increment=True, description="Product ID")
 
-    name: str = Field(
-        min_length=1,
-        max_length=200,
-        description="Product name"
-    )
+    name: str = Field(min_length=1, max_length=200, description="Product name")
 
     slug: str = Field(
         unique=True,
-        regex=r'^[a-z0-9-]+$',
+        regex=r"^[a-z0-9-]+$",
         max_length=100,
-        description="URL-friendly product identifier"
+        description="URL-friendly product identifier",
     )
 
     description: Optional[str] = Field(
-        default=None,
-        max_length=5000,
-        description="Product description"
+        default=None, max_length=5000, description="Product description"
     )
 
     price: Decimal = Field(
-        min_value=0,
-        max_digits=10,
-        decimal_places=2,
-        description="Product price"
+        min_value=0, max_digits=10, decimal_places=2, description="Product price"
     )
 
-    stock_quantity: int = Field(
-        min_value=0,
-        default=0,
-        description="Available stock"
-    )
+    stock_quantity: int = Field(min_value=0, default=0, description="Available stock")
 
     category_id: int = Field(
-        foreign_key="categories.id",
-        description="Product category"
+        foreign_key="categories.id", description="Product category"
     )
 
     tags: List[str] = Field(
-        default_factory=list,
-        max_items=10,
-        description="Product tags"
+        default_factory=list, max_items=10, description="Product tags"
     )
 
     is_published: bool = Field(
-        default=False,
-        description="Whether product is published"
+        default=False, description="Whether product is published"
     )
 
     created_at: datetime = Field(auto_now_add=True)
@@ -182,16 +169,50 @@ class Product:
 
     class Variants:
         # Admin management
-        create_request = ['name', 'slug', 'description', 'price', 'stock_quantity', 'category_id', 'tags']
-        update_request = ['name', 'description', 'price', 'stock_quantity', 'category_id', 'tags', 'is_published']
+        create_request = [
+            "name",
+            "slug",
+            "description",
+            "price",
+            "stock_quantity",
+            "category_id",
+            "tags",
+        ]
+        update_request = [
+            "name",
+            "description",
+            "price",
+            "stock_quantity",
+            "category_id",
+            "tags",
+            "is_published",
+        ]
 
         # Public API
-        list_response = ['id', 'name', 'slug', 'price', 'stock_quantity', 'tags']
-        detail_response = ['id', 'name', 'slug', 'description', 'price', 'stock_quantity', 'tags', 'category_id']
+        list_response = ["id", "name", "slug", "price", "stock_quantity", "tags"]
+        detail_response = [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "price",
+            "stock_quantity",
+            "tags",
+            "category_id",
+        ]
 
         # Admin views
-        admin_list = ['id', 'name', 'slug', 'price', 'stock_quantity', 'is_published', 'created_at', 'updated_at']
-        admin_detail = '__all__'
+        admin_list = [
+            "id",
+            "name",
+            "slug",
+            "price",
+            "stock_quantity",
+            "is_published",
+            "created_at",
+            "updated_at",
+        ]
+        admin_detail = "__all__"
 ```
 
 ### FastAPI Application
@@ -200,15 +221,24 @@ class Product:
 # app/main.py
 from fastapi import FastAPI, HTTPException, Depends
 from generated.pydantic.user_models import (
-    User, UserRegisterRequest, UserUpdateProfile,
-    UserPublicResponse, UserPrivateResponse, UserAdminResponse
+    User,
+    UserRegisterRequest,
+    UserUpdateProfile,
+    UserPublicResponse,
+    UserPrivateResponse,
+    UserAdminResponse,
 )
 from generated.pydantic.product_models import (
-    Product, ProductCreateRequest, ProductUpdateRequest,
-    ProductListResponse, ProductDetailResponse, ProductAdminDetail
+    Product,
+    ProductCreateRequest,
+    ProductUpdateRequest,
+    ProductListResponse,
+    ProductDetailResponse,
+    ProductAdminDetail,
 )
 
 app = FastAPI(title="My API", version="1.0.0")
+
 
 # User endpoints
 @app.post("/register", response_model=UserPublicResponse)
@@ -220,8 +250,9 @@ async def register_user(user_data: UserRegisterRequest):
         username=user_data.username,
         first_name=user_data.first_name,
         last_name=user_data.last_name,
-        created_at=datetime.now()
+        created_at=datetime.now(),
     )
+
 
 @app.get("/users/{user_id}", response_model=UserPrivateResponse)
 async def get_user(user_id: int, current_user: User = Depends(get_current_user)):
@@ -229,33 +260,36 @@ async def get_user(user_id: int, current_user: User = Depends(get_current_user))
     # Authorization checks, database query, etc.
     return UserPrivateResponse(...)
 
+
 @app.put("/users/profile", response_model=UserPrivateResponse)
 async def update_profile(
-    profile_data: UserUpdateProfile,
-    current_user: User = Depends(get_current_user)
+    profile_data: UserUpdateProfile, current_user: User = Depends(get_current_user)
 ):
     """Update user profile"""
     # Update database, etc.
     return UserPrivateResponse(...)
 
+
 # Product endpoints
 @app.post("/products", response_model=ProductDetailResponse)
 async def create_product(
-    product_data: ProductCreateRequest,
-    current_user: User = Depends(get_current_admin)
+    product_data: ProductCreateRequest, current_user: User = Depends(get_current_admin)
 ):
     """Create a new product"""
     return ProductDetailResponse(...)
+
 
 @app.get("/products", response_model=List[ProductListResponse])
 async def list_products():
     """List all published products"""
     return [ProductListResponse(...)]
 
+
 @app.get("/products/{product_id}", response_model=ProductDetailResponse)
 async def get_product(product_id: int):
     """Get product details"""
     return ProductDetailResponse(...)
+
 
 # Admin endpoints
 @app.get("/admin/products", response_model=List[ProductAdminDetail])
@@ -276,71 +310,77 @@ from schema_gen import Schema, Field
 from typing import Optional, Dict, Any
 from datetime import datetime, date
 
+
 @Schema
 class UserEvent:
     """User behavior tracking event"""
 
-    event_id: str = Field(
-        primary_key=True,
-        description="Unique event identifier"
-    )
+    event_id: str = Field(primary_key=True, description="Unique event identifier")
 
     user_id: Optional[int] = Field(
-        default=None,
-        foreign_key="users.id",
-        description="User who triggered the event"
+        default=None, foreign_key="users.id", description="User who triggered the event"
     )
 
-    session_id: str = Field(
-        max_length=100,
-        description="User session identifier"
-    )
+    session_id: str = Field(max_length=100, description="User session identifier")
 
     event_type: str = Field(
-        max_length=50,
-        description="Type of event (page_view, click, purchase, etc.)"
+        max_length=50, description="Type of event (page_view, click, purchase, etc.)"
     )
 
     event_data: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Event-specific data"
+        default_factory=dict, description="Event-specific data"
     )
 
     url: Optional[str] = Field(
-        default=None,
-        max_length=500,
-        description="URL where event occurred"
+        default=None, max_length=500, description="URL where event occurred"
     )
 
     user_agent: Optional[str] = Field(
-        default=None,
-        max_length=500,
-        description="Browser user agent"
+        default=None, max_length=500, description="Browser user agent"
     )
 
     ip_address: Optional[str] = Field(
-        default=None,
-        format="ipv4",
-        description="User IP address"
+        default=None, format="ipv4", description="User IP address"
     )
 
     timestamp: datetime = Field(
-        auto_now_add=True,
-        description="When the event occurred"
+        auto_now_add=True, description="When the event occurred"
     )
 
     class Variants:
         # Data ingestion
-        ingestion_payload = ['user_id', 'session_id', 'event_type', 'event_data', 'url', 'user_agent', 'ip_address']
+        ingestion_payload = [
+            "user_id",
+            "session_id",
+            "event_type",
+            "event_data",
+            "url",
+            "user_agent",
+            "ip_address",
+        ]
 
         # Analytics processing
-        analytics_record = ['event_id', 'user_id', 'session_id', 'event_type', 'event_data', 'timestamp']
+        analytics_record = [
+            "event_id",
+            "user_id",
+            "session_id",
+            "event_type",
+            "event_data",
+            "timestamp",
+        ]
 
         # Reporting
-        summary_view = ['event_id', 'user_id', 'event_type', 'timestamp']
+        summary_view = ["event_id", "user_id", "event_type", "timestamp"]
 
         # Data export
-        csv_export = ['event_id', 'user_id', 'session_id', 'event_type', 'url', 'timestamp']
+        csv_export = [
+            "event_id",
+            "user_id",
+            "session_id",
+            "event_type",
+            "url",
+            "timestamp",
+        ]
 ```
 
 ### Processing Pipeline
@@ -348,10 +388,13 @@ class UserEvent:
 ```python
 # analytics/processor.py
 from generated.pydantic.analytics_models import (
-    UserEvent, UserEventIngestionPayload, UserEventAnalyticsRecord
+    UserEvent,
+    UserEventIngestionPayload,
+    UserEventAnalyticsRecord,
 )
 import asyncio
 from typing import List
+
 
 class EventProcessor:
     """Process user events for analytics"""
@@ -366,10 +409,7 @@ class EventProcessor:
                 payload = UserEventIngestionPayload(**raw_event)
 
                 # Create full event record
-                event = UserEvent(
-                    event_id=generate_event_id(),
-                    **payload.dict()
-                )
+                event = UserEvent(event_id=generate_event_id(), **payload.dict())
 
                 events.append(event)
 
@@ -379,7 +419,9 @@ class EventProcessor:
 
         return events
 
-    async def process_for_analytics(self, events: List[UserEvent]) -> List[UserEventAnalyticsRecord]:
+    async def process_for_analytics(
+        self, events: List[UserEvent]
+    ) -> List[UserEventAnalyticsRecord]:
         """Convert events to analytics format"""
         return [
             UserEventAnalyticsRecord(
@@ -388,7 +430,7 @@ class EventProcessor:
                 session_id=event.session_id,
                 event_type=event.event_type,
                 event_data=event.event_data,
-                timestamp=event.timestamp
+                timestamp=event.timestamp,
             )
             for event in events
         ]
@@ -406,58 +448,62 @@ from schema_gen import Schema, Field
 from typing import Optional
 from datetime import datetime
 
+
 @Schema
 class UserProfile:
     """Shared user profile schema across services"""
 
-    user_id: int = Field(
-        primary_key=True,
-        description="User identifier"
-    )
+    user_id: int = Field(primary_key=True, description="User identifier")
 
-    username: str = Field(
-        unique=True,
-        min_length=3,
-        max_length=30
-    )
+    username: str = Field(unique=True, min_length=3, max_length=30)
 
-    email: str = Field(
-        format="email",
-        unique=True
-    )
+    email: str = Field(format="email", unique=True)
 
-    full_name: str = Field(
-        max_length=100,
-        description="User's display name"
-    )
+    full_name: str = Field(max_length=100, description="User's display name")
 
     avatar_url: Optional[str] = Field(
-        default=None,
-        format="uri",
-        description="Profile picture URL"
+        default=None, format="uri", description="Profile picture URL"
     )
 
-    is_verified: bool = Field(
-        default=False,
-        description="Email verification status"
-    )
+    is_verified: bool = Field(default=False, description="Email verification status")
 
     created_at: datetime = Field(auto_now_add=True)
     updated_at: datetime = Field(auto_now=True)
 
     class Variants:
         # Service-specific views
-        auth_service = ['user_id', 'username', 'email', 'is_verified']
-        profile_service = ['user_id', 'username', 'email', 'full_name', 'avatar_url', 'updated_at']
-        notification_service = ['user_id', 'username', 'email', 'full_name']
+        auth_service = ["user_id", "username", "email", "is_verified"]
+        profile_service = [
+            "user_id",
+            "username",
+            "email",
+            "full_name",
+            "avatar_url",
+            "updated_at",
+        ]
+        notification_service = ["user_id", "username", "email", "full_name"]
 
         # API contracts
-        public_api = ['user_id', 'username', 'full_name', 'avatar_url']
-        internal_api = ['user_id', 'username', 'email', 'full_name', 'avatar_url', 'is_verified']
+        public_api = ["user_id", "username", "full_name", "avatar_url"]
+        internal_api = [
+            "user_id",
+            "username",
+            "email",
+            "full_name",
+            "avatar_url",
+            "is_verified",
+        ]
 
         # Event payloads
-        user_created_event = ['user_id', 'username', 'email', 'created_at']
-        user_updated_event = ['user_id', 'username', 'email', 'full_name', 'avatar_url', 'updated_at']
+        user_created_event = ["user_id", "username", "email", "created_at"]
+        user_updated_event = [
+            "user_id",
+            "username",
+            "email",
+            "full_name",
+            "avatar_url",
+            "updated_at",
+        ]
 ```
 
 ### Service-Specific Usage
@@ -465,8 +511,10 @@ class UserProfile:
 ```python
 # auth-service/handlers.py
 from generated.pydantic.user_profile_models import (
-    UserProfileAuthService, UserProfileUserCreatedEvent
+    UserProfileAuthService,
+    UserProfileUserCreatedEvent,
 )
+
 
 async def create_user(user_data: dict) -> UserProfileAuthService:
     """Create user in auth service"""
@@ -481,7 +529,7 @@ async def create_user(user_data: dict) -> UserProfileAuthService:
         user_id=profile.user_id,
         username=profile.username,
         email=profile.email,
-        created_at=datetime.now()
+        created_at=datetime.now(),
     )
     await publish_event("user.created", event)
 
@@ -491,8 +539,10 @@ async def create_user(user_data: dict) -> UserProfileAuthService:
 ```python
 # profile-service/handlers.py
 from generated.pydantic.user_profile_models import (
-    UserProfileProfileService, UserProfilePublicApi
+    UserProfileProfileService,
+    UserProfilePublicApi,
 )
+
 
 async def get_public_profile(user_id: int) -> UserProfilePublicApi:
     """Get public user profile"""
@@ -504,7 +554,7 @@ async def get_public_profile(user_id: int) -> UserProfilePublicApi:
         user_id=full_profile.user_id,
         username=full_profile.username,
         full_name=full_profile.full_name,
-        avatar_url=full_profile.avatar_url
+        avatar_url=full_profile.avatar_url,
     )
 ```
 
@@ -521,6 +571,7 @@ from typing import Optional, List
 from datetime import datetime
 import math
 
+
 @Schema
 class OptionQuote:
     """Real-time options market data with advanced validation"""
@@ -529,51 +580,27 @@ class OptionQuote:
     symbol: str = Field(
         min_length=1,
         max_length=20,
-        description="Option symbol (e.g., AAPL230616C00150000)"
+        description="Option symbol (e.g., AAPL230616C00150000)",
     )
 
     underlying_symbol: str = Field(
-        min_length=1,
-        max_length=10,
-        description="Underlying asset symbol"
+        min_length=1, max_length=10, description="Underlying asset symbol"
     )
 
-    strike_price: float = Field(
-        min_value=0,
-        description="Strike price of the option"
-    )
+    strike_price: float = Field(min_value=0, description="Strike price of the option")
 
-    expiration_date: datetime = Field(
-        description="Option expiration date"
-    )
+    expiration_date: datetime = Field(description="Option expiration date")
 
     # Market data
-    last_price: float = Field(
-        min_value=0,
-        description="Last traded price"
-    )
+    last_price: float = Field(min_value=0, description="Last traded price")
 
-    bid: float = Field(
-        min_value=0,
-        description="Current bid price"
-    )
+    bid: float = Field(min_value=0, description="Current bid price")
 
-    ask: float = Field(
-        min_value=0,
-        description="Current ask price"
-    )
+    ask: float = Field(min_value=0, description="Current ask price")
 
-    volume: int = Field(
-        min_value=0,
-        default=0,
-        description="Trading volume"
-    )
+    volume: int = Field(min_value=0, default=0, description="Trading volume")
 
-    open_interest: int = Field(
-        min_value=0,
-        default=0,
-        description="Open interest"
-    )
+    open_interest: int = Field(min_value=0, default=0, description="Open interest")
 
     # Greeks (can be messy real-world data)
     delta: float = Field(description="Delta - price sensitivity to underlying")
@@ -583,20 +610,17 @@ class OptionQuote:
     implied_volatility: float = Field(description="Implied volatility")
 
     # Market timestamps
-    quote_time: datetime = Field(
-        description="When the quote was generated"
-    )
+    quote_time: datetime = Field(description="When the quote was generated")
 
     last_trade_time: Optional[datetime] = Field(
-        default=None,
-        description="When the last trade occurred"
+        default=None, description="When the last trade occurred"
     )
 
     class PydanticMeta:
         imports = [
             "import math",
             "from pydantic import field_validator",
-            "from datetime import datetime, timezone"
+            "from datetime import datetime, timezone",
         ]
 
         # Custom validators for financial data
@@ -726,33 +750,62 @@ class OptionQuote:
     class Variants:
         # Trading interface - essential data for traders
         trading_display = [
-            'symbol', 'last_price', 'bid', 'ask', 'volume',
-            'delta', 'implied_volatility', 'quote_time'
+            "symbol",
+            "last_price",
+            "bid",
+            "ask",
+            "volume",
+            "delta",
+            "implied_volatility",
+            "quote_time",
         ]
 
         # Greeks analysis - for options strategists
         greeks_analysis = [
-            'symbol', 'strike_price', 'expiration_date',
-            'delta', 'gamma', 'theta', 'vega', 'implied_volatility'
+            "symbol",
+            "strike_price",
+            "expiration_date",
+            "delta",
+            "gamma",
+            "theta",
+            "vega",
+            "implied_volatility",
         ]
 
         # Risk management - for portfolio risk assessment
         risk_assessment = [
-            'symbol', 'underlying_symbol', 'strike_price', 'last_price',
-            'delta', 'gamma', 'implied_volatility', 'volume', 'open_interest'
+            "symbol",
+            "underlying_symbol",
+            "strike_price",
+            "last_price",
+            "delta",
+            "gamma",
+            "implied_volatility",
+            "volume",
+            "open_interest",
         ]
 
         # Market data feed - minimal data for real-time processing
-        realtime_feed = [
-            'symbol', 'last_price', 'bid', 'ask', 'volume', 'quote_time'
-        ]
+        realtime_feed = ["symbol", "last_price", "bid", "ask", "volume", "quote_time"]
 
         # Analytics export - comprehensive data for research
         analytics_export = [
-            'symbol', 'underlying_symbol', 'strike_price', 'expiration_date',
-            'last_price', 'bid', 'ask', 'volume', 'open_interest',
-            'delta', 'gamma', 'theta', 'vega', 'implied_volatility',
-            'quote_time', 'last_trade_time'
+            "symbol",
+            "underlying_symbol",
+            "strike_price",
+            "expiration_date",
+            "last_price",
+            "bid",
+            "ask",
+            "volume",
+            "open_interest",
+            "delta",
+            "gamma",
+            "theta",
+            "vega",
+            "implied_volatility",
+            "quote_time",
+            "last_trade_time",
         ]
 ```
 
@@ -761,15 +814,20 @@ class OptionQuote:
 ```python
 # trading/market_data_processor.py
 from generated.pydantic.options_data_models import (
-    OptionQuote, OptionQuoteTradingDisplay,
-    OptionQuoteGreeksAnalysis, OptionQuoteRiskAssessment
+    OptionQuote,
+    OptionQuoteTradingDisplay,
+    OptionQuoteGreeksAnalysis,
+    OptionQuoteRiskAssessment,
 )
 from typing import List, Dict, Any
+
 
 class MarketDataProcessor:
     """Process real-time options market data"""
 
-    async def process_market_feed(self, raw_data: List[Dict[str, Any]]) -> List[OptionQuote]:
+    async def process_market_feed(
+        self, raw_data: List[Dict[str, Any]]
+    ) -> List[OptionQuote]:
         """Process incoming market data with validation and cleaning"""
         processed_quotes = []
 
@@ -792,7 +850,9 @@ class MarketDataProcessor:
 
         return processed_quotes
 
-    async def get_trading_view(self, quotes: List[OptionQuote]) -> List[OptionQuoteTradingDisplay]:
+    async def get_trading_view(
+        self, quotes: List[OptionQuote]
+    ) -> List[OptionQuoteTradingDisplay]:
         """Convert to trading display format"""
         return [
             OptionQuoteTradingDisplay(
@@ -803,12 +863,14 @@ class MarketDataProcessor:
                 volume=quote.volume,
                 delta=quote.delta,
                 implied_volatility=quote.implied_volatility,
-                quote_time=quote.quote_time
+                quote_time=quote.quote_time,
             )
             for quote in quotes
         ]
 
-    async def analyze_portfolio_risk(self, portfolio_symbols: List[str]) -> Dict[str, Any]:
+    async def analyze_portfolio_risk(
+        self, portfolio_symbols: List[str]
+    ) -> Dict[str, Any]:
         """Analyze risk across portfolio positions"""
         portfolio_quotes = await self.get_quotes_for_symbols(portfolio_symbols)
 
@@ -823,18 +885,24 @@ class MarketDataProcessor:
                 gamma=quote.gamma,
                 implied_volatility=quote.implied_volatility,
                 volume=quote.volume,
-                open_interest=quote.open_interest
+                open_interest=quote.open_interest,
             )
-            risk_data.append({
-                "quote": risk_quote,
-                "metrics": quote.get_risk_metrics(),
-                "moneyness": quote.get_moneyness(await self.get_underlying_price(quote.underlying_symbol))
-            })
+            risk_data.append(
+                {
+                    "quote": risk_quote,
+                    "metrics": quote.get_risk_metrics(),
+                    "moneyness": quote.get_moneyness(
+                        await self.get_underlying_price(quote.underlying_symbol)
+                    ),
+                }
+            )
 
         return {
             "portfolio_risk": risk_data,
             "aggregate_delta": sum(r["quote"].delta for r in risk_data),
-            "high_risk_positions": [r for r in risk_data if r["metrics"]["risk_level"] == "high"]
+            "high_risk_positions": [
+                r for r in risk_data if r["metrics"]["risk_level"] == "high"
+            ],
         }
 ```
 

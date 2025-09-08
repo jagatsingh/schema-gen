@@ -1,8 +1,7 @@
 """Parser to convert schema_gen Schema classes to USR format"""
 
-from typing import Type, List, Dict, Any
 from ..core.schema import SchemaRegistry
-from ..core.usr import USRSchema, USRField, TypeMapper
+from ..core.usr import TypeMapper, USRSchema
 
 
 class SchemaParser:
@@ -11,7 +10,7 @@ class SchemaParser:
     def __init__(self):
         self.type_mapper = TypeMapper()
 
-    def parse_schema(self, schema_class: Type) -> USRSchema:
+    def parse_schema(self, schema_class: type) -> USRSchema:
         """Convert a schema_gen Schema class to USR format
 
         Args:
@@ -57,14 +56,14 @@ class SchemaParser:
             metadata={},
         )
 
-    def parse_all_schemas(self) -> List[USRSchema]:
+    def parse_all_schemas(self) -> list[USRSchema]:
         """Parse all registered schemas to USR format
 
         Returns:
             List of USRSchema objects for all registered schemas
         """
         usr_schemas = []
-        for schema_name, schema_class in SchemaRegistry.get_all_schemas().items():
+        for _schema_name, schema_class in SchemaRegistry.get_all_schemas().items():
             usr_schema = self.parse_schema(schema_class)
             usr_schemas.append(usr_schema)
         return usr_schemas

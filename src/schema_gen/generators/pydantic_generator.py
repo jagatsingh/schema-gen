@@ -1,9 +1,11 @@
 """Generator to create Pydantic models from USR schemas"""
 
-from typing import List, Dict, Any, Optional
-from jinja2 import Template
 from datetime import datetime
-from ..core.usr import USRSchema, USRField, FieldType
+from typing import Any
+
+from jinja2 import Template
+
+from ..core.usr import FieldType, USRField, USRSchema
 
 
 class PydanticGenerator:
@@ -12,7 +14,7 @@ class PydanticGenerator:
     def __init__(self):
         self.template = Template(self._get_template())
 
-    def generate_model(self, schema: USRSchema, variant: Optional[str] = None) -> str:
+    def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a Pydantic model for a schema variant
 
         Args:
@@ -31,7 +33,7 @@ class PydanticGenerator:
 
         # Generate field definitions
         field_definitions = []
-        imports = set(["pydantic", "typing"])
+        imports = {"pydantic", "typing"}
 
         for field in fields:
             field_def, field_imports = self._generate_field_definition(field)
@@ -49,7 +51,7 @@ class PydanticGenerator:
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
-    def generate_all_variants(self, schema: USRSchema) -> Dict[str, str]:
+    def generate_all_variants(self, schema: USRSchema) -> dict[str, str]:
         """Generate all variants for a schema
 
         Args:
@@ -64,7 +66,7 @@ class PydanticGenerator:
         variants["base"] = self.generate_model(schema)
 
         # Generate specific variants
-        for variant_name in schema.variants.keys():
+        for variant_name in schema.variants:
             variants[variant_name] = self.generate_model(schema, variant_name)
 
         return variants
@@ -79,7 +81,7 @@ class PydanticGenerator:
             Complete file content with all models
         """
         # Collect all imports needed
-        all_imports = set(["pydantic"])
+        all_imports = {"pydantic"}
         all_fields = []
         all_models = []
 
@@ -104,7 +106,7 @@ class PydanticGenerator:
         all_models.append(base_model)
 
         # Generate variants (without custom code)
-        for variant_name in schema.variants.keys():
+        for variant_name in schema.variants:
             variant_fields = schema.get_variant_fields(variant_name)
             variant_field_defs = []
 
@@ -187,7 +189,7 @@ class PydanticGenerator:
         # Build field definition
         if field_params:
             imports.add("pydantic.Field")
-            field_def = f'    {field.name}: {type_annotation} = Field({", ".join(field_params)})'
+            field_def = f"    {field.name}: {type_annotation} = Field({', '.join(field_params)})"
         else:
             field_def = f"    {field.name}: {type_annotation}"
 
@@ -254,7 +256,7 @@ class PydanticGenerator:
                 union_types = [
                     self._get_pydantic_type(ut, imports) for ut in field.union_types
                 ]
-                base_type = f'Union[{", ".join(union_types)}]'
+                base_type = f"Union[{', '.join(union_types)}]"
             else:
                 base_type = "Any"
 
@@ -265,7 +267,7 @@ class PydanticGenerator:
                     for v in field.literal_values
                 ]
                 imports.add("typing.Literal")
-                base_type = f'Literal[{", ".join(values)}]'
+                base_type = f"Literal[{', '.join(values)}]"
             else:
                 base_type = "str"
 
@@ -279,7 +281,7 @@ class PydanticGenerator:
 
         return base_type
 
-    def _needs_config(self, fields: List[USRField]) -> bool:
+    def _needs_config(self, fields: list[USRField]) -> bool:
         """Check if the model needs a Config class"""
         # Check if any field has database relationships
         return any(field.relationship is not None for field in fields)
@@ -288,10 +290,10 @@ class PydanticGenerator:
         self,
         model_name: str,
         description: str,
-        field_defs: List[str],
+        field_defs: list[str],
         has_config: bool,
         is_base_model: bool = False,
-        custom_code: Dict[str, Any] = None,
+        custom_code: dict[str, Any] = None,
     ) -> str:
         """Generate a single model class definition"""
         lines = [f"class {model_name}(BaseModel):"]
@@ -349,8 +351,8 @@ class PydanticGenerator:
         self,
         schema_name: str,
         imports: set,
-        models: List[str],
-        custom_code: Dict[str, Any] = None,
+        models: list[str],
+        custom_code: dict[str, Any] = None,
     ) -> str:
         """Generate complete file with header, imports, and all models"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")

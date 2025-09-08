@@ -1,18 +1,17 @@
 """Integration tests for end-to-end schema generation"""
 
-import pytest
 import tempfile
-import os
-from pathlib import Path
-from typing import Optional, List
 from datetime import datetime
+from pathlib import Path
 
-from schema_gen import Schema, Field
-from schema_gen.core.schema import SchemaRegistry
-from schema_gen.parsers.schema_parser import SchemaParser
-from schema_gen.generators.pydantic_generator import PydanticGenerator
-from schema_gen.core.generator import SchemaGenerationEngine
+import pytest
+
+from schema_gen import Field, Schema
 from schema_gen.core.config import Config
+from schema_gen.core.generator import SchemaGenerationEngine
+from schema_gen.core.schema import SchemaRegistry
+from schema_gen.generators.pydantic_generator import PydanticGenerator
+from schema_gen.parsers.schema_parser import SchemaParser
 
 
 class TestEndToEndGeneration:
@@ -48,7 +47,7 @@ class TestEndToEndGeneration:
                 format="email", unique=True, description="User email address"
             )
 
-            age: Optional[int] = Field(
+            age: int | None = Field(
                 default=None, min_value=13, max_value=120, description="User age"
             )
 
@@ -165,7 +164,7 @@ class TestModel:
             id: int = Field(primary_key=True)
             name: str = Field()
             # Test simple relationship field
-            related_items: List[str] = Field(
+            related_items: list[str] = Field(
                 relationship="one_to_many", back_populates="parent"
             )
 

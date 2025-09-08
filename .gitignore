@@ -1,10 +1,111 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+*.pyo
+*.pyd
+*.so
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+*.egg
+*.whl
 
 # Virtual environments
-.venv
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# UV-specific
+.python-version
+uv.lock
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+coverage.xml
+htmlcov/
+.nox/
+.cache
+nosetests.xml
+coverage/
+*.cover
+.hypothesis/
+
+# Schema-gen specific generated files
+generated/
+test_generated/
+test_schemas/
+*.generated.*
+
+# Documentation
+docs/_build/
+docs/site/
+site/
+.mkdocs_cache/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.gz
+.tmp/
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Security and secrets
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+secrets.yaml
+.secrets/
+
+# Package manager
+node_modules/
+package-lock.json
+yarn.lock
+
+# Pre-commit
+.pre-commit-config.yaml.bak
+
+# Development tools
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.orig

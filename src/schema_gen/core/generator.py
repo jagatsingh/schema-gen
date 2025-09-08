@@ -1,26 +1,23 @@
 """Core generation engine for schema_gen"""
 
-import os
-import sys
 import importlib.util
+import sys
 from pathlib import Path
-from typing import List, Dict, Any
 
-from .config import Config
-from .schema import SchemaRegistry
-from ..parsers.schema_parser import SchemaParser
+from ..generators.avro_generator import AvroGenerator
+from ..generators.dataclasses_generator import DataclassesGenerator
+from ..generators.graphql_generator import GraphQLGenerator
+from ..generators.jackson_generator import JacksonGenerator
+from ..generators.jsonschema_generator import JsonSchemaGenerator
+from ..generators.kotlin_generator import KotlinGenerator
+from ..generators.pathway_generator import PathwayGenerator
+from ..generators.protobuf_generator import ProtobufGenerator
 from ..generators.pydantic_generator import PydanticGenerator
 from ..generators.sqlalchemy_generator import SqlAlchemyGenerator
-from ..generators.zod_generator import ZodGenerator
-from ..generators.pathway_generator import PathwayGenerator
-from ..generators.dataclasses_generator import DataclassesGenerator
 from ..generators.typeddict_generator import TypedDictGenerator
-from ..generators.jsonschema_generator import JsonSchemaGenerator
-from ..generators.graphql_generator import GraphQLGenerator
-from ..generators.protobuf_generator import ProtobufGenerator
-from ..generators.avro_generator import AvroGenerator
-from ..generators.jackson_generator import JacksonGenerator
-from ..generators.kotlin_generator import KotlinGenerator
+from ..generators.zod_generator import ZodGenerator
+from ..parsers.schema_parser import SchemaParser
+from .config import Config
 
 
 class SchemaGenerationEngine:
@@ -84,7 +81,7 @@ class SchemaGenerationEngine:
             except Exception as e:
                 print(f"Warning: Failed to import {schema_file}: {e}")
 
-    def generate_all(self, targets: List[str] = None, output_dir: str = None):
+    def generate_all(self, targets: list[str] = None, output_dir: str = None):
         """Generate all schemas for specified targets
 
         Args:
@@ -187,7 +184,7 @@ class SchemaGenerationEngine:
             base_class = schema.name
             variant_classes = [
                 generator._variant_to_class_name(schema.name, v)
-                for v in schema.variants.keys()
+                for v in schema.variants
             ]
             all_classes = [base_class] + variant_classes
 
@@ -205,13 +202,13 @@ class SchemaGenerationEngine:
                 base_class = schema.name
                 variant_classes = [
                     generator._variant_to_class_name(schema.name, v)
-                    for v in schema.variants.keys()
+                    for v in schema.variants
                 ]
                 all_classes = [f'"{c}"' for c in [base_class] + variant_classes]
-                f.write(f'    {", ".join(all_classes)},\n')
+                f.write(f"    {', '.join(all_classes)},\n")
             f.write("]\n")
 
-        print(f"  ✓ __init__.py")
+        print("  ✓ __init__.py")
         print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
 
     def _generate_sqlalchemy_files(self, generator, schemas, output_dir: Path):
@@ -249,7 +246,7 @@ class SchemaGenerationEngine:
                 f.write(f'    "{schema.name}",\n')
             f.write("]\n")
 
-        print(f"  ✓ __init__.py")
+        print("  ✓ __init__.py")
         print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
 
     def _generate_zod_files(self, generator, schemas, output_dir: Path):
@@ -276,7 +273,7 @@ class SchemaGenerationEngine:
             base_export = f"{schema.name}Schema, {schema.name}"
             variant_exports = [
                 f"{generator._variant_to_schema_name(schema.name, v)}Schema, {generator._variant_to_schema_name(schema.name, v)}"
-                for v in schema.variants.keys()
+                for v in schema.variants
             ]
             all_exports = [base_export] + variant_exports
 
@@ -293,7 +290,7 @@ class SchemaGenerationEngine:
             for export_line in exports:
                 f.write(export_line + "\n")
 
-        print(f"  ✓ index.ts")
+        print("  ✓ index.ts")
         print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
 
     def _generate_python_files(
@@ -322,7 +319,7 @@ class SchemaGenerationEngine:
             base_class = schema.name
             variant_classes = [
                 generator._variant_to_class_name(schema.name, v)
-                for v in schema.variants.keys()
+                for v in schema.variants
             ]
             all_classes = [base_class] + variant_classes
 
@@ -340,13 +337,13 @@ class SchemaGenerationEngine:
                 base_class = schema.name
                 variant_classes = [
                     generator._variant_to_class_name(schema.name, v)
-                    for v in schema.variants.keys()
+                    for v in schema.variants
                 ]
                 all_classes = [f'"{c}"' for c in [base_class] + variant_classes]
-                f.write(f'    {", ".join(all_classes)},\n')
+                f.write(f"    {', '.join(all_classes)},\n")
             f.write("]\n")
 
-        print(f"  ✓ __init__.py")
+        print("  ✓ __init__.py")
         print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
 
     def _generate_json_files(self, generator, schemas, output_dir: Path):

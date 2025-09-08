@@ -89,48 +89,39 @@ from schema_gen import Schema, Field
 from typing import Optional
 from datetime import datetime
 
+
 @Schema
 class User:
     """User account schema"""
 
     id: int = Field(
-        primary_key=True,
-        auto_increment=True,
-        description="Unique user identifier"
+        primary_key=True, auto_increment=True, description="Unique user identifier"
     )
 
     username: str = Field(
         min_length=3,
         max_length=30,
-        regex=r'^[a-zA-Z0-9_]+$',
+        regex=r"^[a-zA-Z0-9_]+$",
         unique=True,
-        description="Unique username"
+        description="Unique username",
     )
 
-    email: str = Field(
-        format="email",
-        unique=True,
-        description="User email address"
-    )
+    email: str = Field(format="email", unique=True, description="User email address")
 
     age: Optional[int] = Field(
-        default=None,
-        min_value=13,
-        max_value=120,
-        description="User age"
+        default=None, min_value=13, max_value=120, description="User age"
     )
 
     created_at: datetime = Field(
-        auto_now_add=True,
-        description="Account creation timestamp"
+        auto_now_add=True, description="Account creation timestamp"
     )
 
     class Variants:
         # Different model variants for different use cases
-        create_request = ['username', 'email', 'age']
-        update_request = ['email', 'age']
-        public_response = ['id', 'username', 'age', 'created_at']
-        admin_response = ['id', 'username', 'email', 'age', 'created_at']
+        create_request = ["username", "email", "age"]
+        update_request = ["email", "age"]
+        public_response = ["id", "username", "age", "created_at"]
+        admin_response = ["id", "username", "email", "age", "created_at"]
 ```
 
 ### Generate Your Models
@@ -157,9 +148,8 @@ This generates code for all configured targets:
 **Python FastAPI:**
 ```python
 # Import generated models
-from generated.pydantic.user_models import (
-    User, UserCreateRequest, UserPublicResponse
-)
+from generated.pydantic.user_models import User, UserCreateRequest, UserPublicResponse
+
 
 @app.post("/users", response_model=UserPublicResponse)
 async def create_user(user_data: UserCreateRequest):
@@ -211,7 +201,7 @@ name: str = Field(
     min_length=1,
     max_length=100,
     description="User's full name",
-    pydantic={"example": "John Doe"}
+    pydantic={"example": "John Doe"},
 )
 ```
 
@@ -220,10 +210,10 @@ Create different views of the same schema for different use cases:
 
 ```python
 class Variants:
-    create_request = ['name', 'email']           # For user registration
-    update_request = ['name', 'bio']             # For profile updates
-    public_api = ['id', 'name', 'avatar_url']    # For public endpoints
-    admin_view = ['id', 'name', 'email', 'role'] # For admin interface
+    create_request = ["name", "email"]  # For user registration
+    update_request = ["name", "bio"]  # For profile updates
+    public_api = ["id", "name", "avatar_url"]  # For public endpoints
+    admin_view = ["id", "name", "email", "role"]  # For admin interface
 ```
 
 ### Custom Code Injection
@@ -232,17 +222,17 @@ Add complex validation logic and business methods to your generated models:
 class PydanticMeta:
     imports = ["import math", "from pydantic import field_validator"]
 
-    raw_code = '''
+    raw_code = """
     @field_validator("price", mode="before")
     def clean_price_data(cls, value) -> float:
         # Handle NaN, infinity, and string values from data feeds
         if isinstance(value, str) and value.lower() == 'nan':
             return 0.0
-        return float(value)'''
+        return float(value)"""
 
-    methods = '''
+    methods = """
     def calculate_total_value(self, quantity: int) -> float:
-        return self.price * quantity'''
+        return self.price * quantity"""
 ```
 
 Future generators will use their own meta classes:
@@ -328,26 +318,29 @@ config = Config(
     output_dir="generated",
     targets=[
         # Python ecosystem
-        "pydantic", "sqlalchemy", "dataclasses", "typeddict", "pathway",
+        "pydantic",
+        "sqlalchemy",
+        "dataclasses",
+        "typeddict",
+        "pathway",
         # TypeScript/JavaScript
         "zod",
         # Schema formats
-        "jsonschema", "graphql", "protobuf", "avro",
+        "jsonschema",
+        "graphql",
+        "protobuf",
+        "avro",
         # JVM languages
-        "jackson", "kotlin"
+        "jackson",
+        "kotlin",
     ],
-
     # Target-specific settings
     pydantic={
         "use_enum": True,
         "extra": "forbid",
         "validate_assignment": True,
     },
-
-    sqlalchemy={
-        "use_declarative": True,
-        "naming_convention": "snake_case"
-    }
+    sqlalchemy={"use_declarative": True, "naming_convention": "snake_case"},
 )
 ```
 

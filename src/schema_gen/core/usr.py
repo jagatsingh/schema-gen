@@ -1,9 +1,10 @@
 """Universal Schema Representation (USR) - Internal schema format"""
 
-from enum import Enum
-from typing import Any, Dict, List, Optional, Union, Type
-from dataclasses import dataclass, field
 import typing
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Optional, Union
 
 
 class FieldType(Enum):
@@ -34,52 +35,52 @@ class USRField:
 
     name: str
     type: FieldType
-    python_type: Type  # Original Python type for reference
+    python_type: type  # Original Python type for reference
 
     # Value properties
     optional: bool = False
     default: Any = None
-    default_factory: Optional[callable] = None
+    default_factory: Callable | None = None
 
     # Type-specific properties
     inner_type: Optional["USRField"] = None  # For List, Optional, etc.
-    union_types: List["USRField"] = field(default_factory=list)  # For Union
-    literal_values: List[Any] = field(default_factory=list)  # For Literal
-    nested_schema: Optional[str] = None  # Schema name for nested types
+    union_types: list["USRField"] = field(default_factory=list)  # For Union
+    literal_values: list[Any] = field(default_factory=list)  # For Literal
+    nested_schema: str | None = None  # Schema name for nested types
 
     # Validation constraints
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
-    regex_pattern: Optional[str] = None
-    format_type: Optional[str] = None  # email, uri, uuid, etc.
+    min_length: int | None = None
+    max_length: int | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    regex_pattern: str | None = None
+    format_type: str | None = None  # email, uri, uuid, etc.
 
     # Database properties
     primary_key: bool = False
     unique: bool = False
     index: bool = False
-    foreign_key: Optional[str] = None
+    foreign_key: str | None = None
     auto_increment: bool = False
     auto_now_add: bool = False
     auto_now: bool = False
 
     # Relationship properties
-    relationship: Optional[str] = None  # one_to_many, many_to_one, many_to_many
-    back_populates: Optional[str] = None
-    cascade: Optional[str] = None
-    through_table: Optional[str] = None
+    relationship: str | None = None  # one_to_many, many_to_one, many_to_many
+    back_populates: str | None = None
+    cascade: str | None = None
+    through_table: str | None = None
 
     # Generation control
-    exclude_from: List[str] = field(default_factory=list)
-    include_only: List[str] = field(default_factory=list)
+    exclude_from: list[str] = field(default_factory=list)
+    include_only: list[str] = field(default_factory=list)
 
     # Target-specific configuration
-    target_config: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Metadata
-    description: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    description: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -87,31 +88,31 @@ class USRSchema:
     """Universal representation of a complete schema"""
 
     name: str
-    fields: List[USRField]
-    description: Optional[str] = None
+    fields: list[USRField]
+    description: str | None = None
 
     # Variants configuration
-    variants: Dict[str, List[str]] = field(default_factory=dict)
+    variants: dict[str, list[str]] = field(default_factory=dict)
 
     # Custom code sections for complex model features
-    custom_code: Dict[str, Any] = field(default_factory=dict)
+    custom_code: dict[str, Any] = field(default_factory=dict)
 
     # Schema-level metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def get_field(self, name: str) -> Optional[USRField]:
+    def get_field(self, name: str) -> USRField | None:
         """Get a field by name"""
         return next((f for f in self.fields if f.name == name), None)
 
-    def get_primary_key_fields(self) -> List[USRField]:
+    def get_primary_key_fields(self) -> list[USRField]:
         """Get all primary key fields"""
         return [f for f in self.fields if f.primary_key]
 
-    def get_relationship_fields(self) -> List[USRField]:
+    def get_relationship_fields(self) -> list[USRField]:
         """Get all relationship fields"""
         return [f for f in self.fields if f.relationship is not None]
 
-    def get_variant_fields(self, variant_name: str) -> List[USRField]:
+    def get_variant_fields(self, variant_name: str) -> list[USRField]:
         """Get fields for a specific variant"""
         if variant_name not in self.variants:
             return self.fields  # Return all fields if variant doesn't exist
@@ -134,7 +135,7 @@ class TypeMapper:
     }
 
     @classmethod
-    def python_type_to_usr(cls, python_type: Type) -> FieldType:
+    def python_type_to_usr(cls, python_type: type) -> FieldType:
         """Convert Python type to USR FieldType"""
 
         # Handle basic types
@@ -160,8 +161,8 @@ class TypeMapper:
 
         # Handle standard library types
         import datetime
-        import uuid
         import decimal
+        import uuid
 
         if python_type is datetime.datetime:
             return FieldType.DATETIME
@@ -181,7 +182,7 @@ class TypeMapper:
                 and typing.get_origin(python_type) is typing.Literal
             ):
                 return FieldType.LITERAL
-        except:
+        except (AttributeError, TypeError, ValueError):
             pass
 
         # Default to nested schema for unknown types
@@ -189,7 +190,7 @@ class TypeMapper:
 
     @classmethod
     def create_usr_field_from_python(
-        cls, name: str, python_type: Type, field_info: Any
+        cls, name: str, python_type: type, field_info: Any
     ) -> USRField:
         """Create USR field from Python type and field info"""
 
@@ -233,7 +234,7 @@ class TypeMapper:
         if field_type == FieldType.LITERAL:
             try:
                 literal_values = list(typing.get_args(actual_type))
-            except:
+            except (AttributeError, TypeError, ValueError):
                 literal_values = []
 
         elif field_type == FieldType.NESTED_SCHEMA:

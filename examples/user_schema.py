@@ -1,8 +1,8 @@
 """Example user schema definition"""
 
-from schema_gen import Schema, Field
-from typing import Optional
 from datetime import datetime
+
+from schema_gen import Field, Schema
 
 
 @Schema
@@ -19,7 +19,7 @@ class User:
         unique=True, format="email", index=True, description="User's email address"
     )
 
-    age: Optional[int] = Field(
+    age: int | None = Field(
         default=None, min_value=13, max_value=120, description="User's age"
     )
 

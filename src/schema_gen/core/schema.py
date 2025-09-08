@@ -1,8 +1,8 @@
 """Core schema definition API for schema_gen"""
 
-from typing import Any, Dict, List, Optional, Type, get_type_hints
+from collections.abc import Callable
 from dataclasses import dataclass, field
-import inspect
+from typing import Any, get_type_hints
 
 
 @dataclass
@@ -11,72 +11,72 @@ class FieldInfo:
 
     # Core field properties
     default: Any = None
-    default_factory: Optional[callable] = None
-    description: Optional[str] = None
+    default_factory: Callable | None = None
+    description: str | None = None
 
     # Type constraints
-    min_length: Optional[int] = None
-    max_length: Optional[int] = None
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
-    regex: Optional[str] = None
-    format: Optional[str] = None  # email, uri, uuid, etc.
+    min_length: int | None = None
+    max_length: int | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    regex: str | None = None
+    format: str | None = None  # email, uri, uuid, etc.
 
     # Database attributes
     primary_key: bool = False
     unique: bool = False
     index: bool = False
-    foreign_key: Optional[str] = None
+    foreign_key: str | None = None
     auto_increment: bool = False
     auto_now_add: bool = False
     auto_now: bool = False
 
     # Relationship attributes
-    relationship: Optional[str] = None  # one_to_many, many_to_one, many_to_many
-    back_populates: Optional[str] = None
-    cascade: Optional[str] = None
-    through_table: Optional[str] = None
+    relationship: str | None = None  # one_to_many, many_to_one, many_to_many
+    back_populates: str | None = None
+    cascade: str | None = None
+    through_table: str | None = None
 
     # Generation control
-    exclude_from: List[str] = field(default_factory=list)
-    include_only: List[str] = field(default_factory=list)
+    exclude_from: list[str] = field(default_factory=list)
+    include_only: list[str] = field(default_factory=list)
 
     # Target-specific overrides
-    pydantic: Dict[str, Any] = field(default_factory=dict)
-    sqlalchemy: Dict[str, Any] = field(default_factory=dict)
-    pathway: Dict[str, Any] = field(default_factory=dict)
+    pydantic: dict[str, Any] = field(default_factory=dict)
+    sqlalchemy: dict[str, Any] = field(default_factory=dict)
+    pathway: dict[str, Any] = field(default_factory=dict)
 
     # Additional metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def Field(
     default: Any = None,
     *,
-    default_factory: Optional[callable] = None,
-    description: Optional[str] = None,
-    min_length: Optional[int] = None,
-    max_length: Optional[int] = None,
-    min_value: Optional[float] = None,
-    max_value: Optional[float] = None,
-    regex: Optional[str] = None,
-    format: Optional[str] = None,
+    default_factory: Callable | None = None,
+    description: str | None = None,
+    min_length: int | None = None,
+    max_length: int | None = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    regex: str | None = None,
+    format: str | None = None,
     primary_key: bool = False,
     unique: bool = False,
     index: bool = False,
-    foreign_key: Optional[str] = None,
+    foreign_key: str | None = None,
     auto_increment: bool = False,
     auto_now_add: bool = False,
     auto_now: bool = False,
-    relationship: Optional[str] = None,
-    back_populates: Optional[str] = None,
-    cascade: Optional[str] = None,
-    through_table: Optional[str] = None,
-    exclude_from: Optional[List[str]] = None,
-    include_only: Optional[List[str]] = None,
-    pydantic: Optional[Dict[str, Any]] = None,
-    sqlalchemy: Optional[Dict[str, Any]] = None,
-    pathway: Optional[Dict[str, Any]] = None,
+    relationship: str | None = None,
+    back_populates: str | None = None,
+    cascade: str | None = None,
+    through_table: str | None = None,
+    exclude_from: list[str] | None = None,
+    include_only: list[str] | None = None,
+    pydantic: dict[str, Any] | None = None,
+    sqlalchemy: dict[str, Any] | None = None,
+    pathway: dict[str, Any] | None = None,
     **metadata: Any,
 ) -> FieldInfo:
     """Create a field definition for a schema
@@ -141,26 +141,26 @@ def Field(
 class SchemaRegistry:
     """Global registry of all schema definitions"""
 
-    _schemas: Dict[str, Type] = {}
+    _schemas: dict[str, type] = {}
 
     @classmethod
-    def register(cls, schema_class: Type) -> Type:
+    def register(cls, schema_class: type) -> type:
         """Register a schema class"""
         cls._schemas[schema_class.__name__] = schema_class
         return schema_class
 
     @classmethod
-    def get_schema(cls, name: str) -> Optional[Type]:
+    def get_schema(cls, name: str) -> type | None:
         """Get a registered schema by name"""
         return cls._schemas.get(name)
 
     @classmethod
-    def get_all_schemas(cls) -> Dict[str, Type]:
+    def get_all_schemas(cls) -> dict[str, type]:
         """Get all registered schemas"""
         return cls._schemas.copy()
 
 
-def Schema(cls: Type) -> Type:
+def Schema(cls: type) -> type:
     """Decorator to mark a class as a schema definition
 
     Usage:

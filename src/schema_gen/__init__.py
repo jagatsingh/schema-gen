@@ -14,8 +14,8 @@ Example:
         age: int | None = Field(default=None)
 """
 
-from .core.schema import Schema, Field
 from .core.config import Config
+from .core.schema import Field, Schema
 
 __version__ = "0.1.0"
 __all__ = ["Schema", "Field", "Config", "__version__"]

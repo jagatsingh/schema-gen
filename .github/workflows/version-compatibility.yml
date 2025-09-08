@@ -1,0 +1,307 @@
+name: Version Compatibility Tests
+
+on:
+  schedule:
+    # Run compatibility tests weekly on Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    # Allow manual triggering
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/schema_gen/generators/**'
+      - 'tests/test-matrix.yml'
+      - 'tests/test_version_compatibility.py'
+
+jobs:
+  pydantic-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pydantic-version: ["2.9.0", "2.10.0", "2.11.0"]
+        python-version: ["3.10", "3.11", "3.12"]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install base dependencies
+      run: |
+        uv sync --dev
+        # Install specific Pydantic version
+        uv pip install "pydantic==${{ matrix.pydantic-version }}"
+
+    - name: Test Pydantic generator compatibility
+      run: |
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_pydantic_version_compatibility -v
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_field_constraint_translation -v
+
+    - name: Test generated code validation
+      run: |
+        # Create test schema and generate Pydantic models
+        cat > test_pydantic_schema.py << 'EOF'
+        from schema_gen import Schema, Field
+        from typing import Optional
+        from datetime import datetime
+
+        @Schema
+        class TestUser:
+            id: int = Field(primary_key=True)
+            username: str = Field(min_length=3, max_length=50)
+            email: str = Field(format="email")
+            age: Optional[int] = Field(default=None, min_value=13, max_value=120)
+            created_at: datetime = Field(auto_now_add=True)
+
+            class Variants:
+                create = ['username', 'email', 'age']
+                response = ['id', 'username', 'age', 'created_at']
+        EOF
+
+        # Generate and validate Pydantic models
+        uv run python -c "
+        import sys
+        sys.path.append('.')
+        from schema_gen.parsers.schema_parser import SchemaParser
+        from schema_gen.generators.pydantic_generator import PydanticGenerator
+        from test_pydantic_schema import TestUser
+
+        parser = SchemaParser()
+        schema = parser.parse_schema(TestUser)
+        generator = PydanticGenerator()
+
+        # Generate all variants
+        base_model = generator.generate_model(schema)
+        create_model = generator.generate_model(schema, 'create')
+        response_model = generator.generate_model(schema, 'response')
+
+        # Write to file and test import
+        with open('generated_models.py', 'w') as f:
+            f.write(base_model)
+
+        # Test that generated model works
+        compile(base_model, '<test>', 'exec')
+        print(f'✅ Pydantic ${{ matrix.pydantic-version }} compatibility test passed')
+        "
+
+  sqlalchemy-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sqlalchemy-version: ["2.0.25", "2.0.36"]
+        python-version: ["3.10", "3.11", "3.12"]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install base dependencies
+      run: |
+        uv sync --dev
+        # Install specific SQLAlchemy version
+        uv pip install "sqlalchemy==${{ matrix.sqlalchemy-version }}"
+
+    - name: Test SQLAlchemy generator compatibility
+      run: |
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_sqlalchemy_version_compatibility -v
+
+    - name: Test generated SQLAlchemy models
+      run: |
+        # Create test schema and generate SQLAlchemy models
+        cat > test_sqlalchemy_schema.py << 'EOF'
+        from schema_gen import Schema, Field
+        from typing import Optional
+        from datetime import datetime
+
+        @Schema
+        class TestModel:
+            id: int = Field(primary_key=True, auto_increment=True)
+            name: str = Field(max_length=100, unique=True)
+            description: Optional[str] = Field(default=None, max_length=500)
+            created_at: datetime = Field(auto_now_add=True)
+
+            class Variants:
+                create = ['name', 'description']
+                update = ['name', 'description']
+        EOF
+
+        # Generate and validate SQLAlchemy models
+        uv run python -c "
+        import sys
+        sys.path.append('.')
+        from schema_gen.parsers.schema_parser import SchemaParser
+        from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
+        from test_sqlalchemy_schema import TestModel
+
+        parser = SchemaParser()
+        schema = parser.parse_schema(TestModel)
+        generator = SqlAlchemyGenerator()
+
+        # Generate model
+        model_code = generator.generate_model(schema)
+
+        # Test that generated model compiles
+        compile(model_code, '<test>', 'exec')
+        print(f'✅ SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility test passed')
+        "
+
+  pathway-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pathway-version: ["0.8.0", "0.9.0"]
+        python-version: ["3.10", "3.11", "3.12"]
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install base dependencies
+      run: |
+        uv sync --dev
+        # Install specific Pathway version
+        uv pip install "pathway==${{ matrix.pathway-version }}"
+
+    - name: Test Pathway generator compatibility
+      run: |
+        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_pathway_version_compatibility -v
+
+  cross-version-integration:
+    runs-on: ubuntu-latest
+    needs: [pydantic-compatibility, sqlalchemy-compatibility]
+    strategy:
+      matrix:
+        combo:
+          - { pydantic: "2.10.0", sqlalchemy: "2.0.25" }
+          - { pydantic: "2.11.0", sqlalchemy: "2.0.36" }
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Install dependencies
+      run: |
+        uv sync --dev
+        uv pip install "pydantic==${{ matrix.combo.pydantic }}" "sqlalchemy==${{ matrix.combo.sqlalchemy }}"
+
+    - name: Test cross-version integration
+      run: |
+        # Test that both generators work together
+        cat > test_integration.py << 'EOF'
+        from schema_gen import Schema, Field
+        from typing import Optional
+
+        @Schema
+        class IntegrationTest:
+            id: int = Field(primary_key=True)
+            name: str = Field(min_length=2, max_length=100)
+            active: bool = Field(default=True)
+
+            class Variants:
+                api = ['id', 'name', 'active']
+                db = ['id', 'name', 'active']
+        EOF
+
+        uv run python -c "
+        import sys
+        sys.path.append('.')
+        from schema_gen.parsers.schema_parser import SchemaParser
+        from schema_gen.generators.pydantic_generator import PydanticGenerator
+        from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
+        from test_integration import IntegrationTest
+
+        parser = SchemaParser()
+        schema = parser.parse_schema(IntegrationTest)
+
+        # Test both generators
+        pydantic_gen = PydanticGenerator()
+        sqlalchemy_gen = SqlAlchemyGenerator()
+
+        pydantic_code = pydantic_gen.generate_model(schema)
+        sqlalchemy_code = sqlalchemy_gen.generate_model(schema)
+
+        # Verify both compile
+        compile(pydantic_code, '<pydantic>', 'exec')
+        compile(sqlalchemy_code, '<sqlalchemy>', 'exec')
+
+        print('✅ Cross-version integration test passed')
+        print('Pydantic: ${{ matrix.combo.pydantic }}')
+        print('SQLAlchemy: ${{ matrix.combo.sqlalchemy }}')
+        "
+
+  version-matrix-validation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Validate version matrix configuration
+      run: |
+        uv run python -c "
+        import yaml
+        with open('tests/test-matrix.yml', 'r') as f:
+            matrix = yaml.safe_load(f)
+
+        # Validate matrix structure
+        assert 'version_matrix' in matrix
+        assert 'test_scenarios' in matrix
+
+        # Validate that all specified versions exist in package repositories
+        # (This is a basic validation - in practice you'd check PyPI APIs)
+        for library, versions in matrix['version_matrix'].items():
+            assert isinstance(versions, list)
+            assert len(versions) > 0
+            for version in versions:
+                assert isinstance(version, str)
+                # Basic version format check
+                parts = version.split('.')
+                assert len(parts) >= 2
+                assert all(part.isdigit() for part in parts)
+
+        print('✅ Version matrix configuration is valid')
+        "
