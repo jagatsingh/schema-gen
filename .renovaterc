@@ -1,0 +1,3 @@
+{
+  "extends": ["local>schema-gen:renovate.json"]
+}

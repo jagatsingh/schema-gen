@@ -1,0 +1,144 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":separatePatchReleases"
+  ],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "timezone": "UTC",
+  "labels": [
+    "dependencies"
+  ],
+  "assigneesFromCodeOwners": true,
+  "reviewersFromCodeOwners": true,
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "stabilityDays": 3,
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "description": "Group Python dependencies",
+      "groupName": "Python dependencies",
+      "matchManagers": ["pep621"],
+      "matchFileNames": ["pyproject.toml"],
+      "matchPackagePatterns": ["*"],
+      "excludePackagePatterns": ["^(pydantic|sqlalchemy|pathway)$"],
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Schema generation core libraries - separate PRs for major updates",
+      "groupName": "Schema generation core",
+      "matchManagers": ["pep621"],
+      "matchFileNames": ["pyproject.toml"],
+      "matchPackageNames": [
+        "pydantic",
+        "sqlalchemy",
+        "pathway",
+        "jsonschema",
+        "graphql-core",
+        "avro",
+        "protobuf"
+      ],
+      "separateMajorMinor": true,
+      "separateMinorPatch": false,
+      "schedule": ["before 6am on monday"],
+      "labels": ["dependencies", "core-libraries"]
+    },
+    {
+      "description": "Development dependencies - can be grouped",
+      "groupName": "Development dependencies",
+      "matchManagers": ["pep621"],
+      "matchFileNames": ["pyproject.toml"],
+      "matchDepTypes": ["dev-dependencies"],
+      "matchPackagePatterns": [
+        "^pytest",
+        "^ruff",
+        "^mypy",
+        "^black",
+        "^isort",
+        "^pre-commit",
+        "^mkdocs",
+        "^coverage"
+      ],
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "GitHub Actions",
+      "groupName": "GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "schedule": ["before 6am on monday"],
+      "labels": ["dependencies", "github-actions"]
+    },
+    {
+      "description": "Pin GitHub Actions to digest for security",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    },
+    {
+      "description": "Auto-merge patch updates for development dependencies",
+      "matchManagers": ["pep621"],
+      "matchFileNames": ["pyproject.toml"],
+      "matchDepTypes": ["dev-dependencies"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Auto-merge GitHub Actions patch updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "platformAutomerge": true
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security", "dependencies"]
+  },
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "pep621": {
+    "enabled": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update versions in test matrix YAML",
+      "fileMatch": ["^tests/test-matrix\\.yml$"],
+      "matchStrings": [
+        "\\s+-\\s+\"(?<currentValue>[^\"]+)\"\\s*#.*(?<depName>pydantic|sqlalchemy|pathway|avro|protobuf|jsonschema|graphql-core)"
+      ],
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Python versions in workflows",
+      "fileMatch": ["^\\.github/workflows/.*\\.yml$"],
+      "matchStrings": [
+        "python-version:\\s*\\[\"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "python",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
+  ],
+  "regexManagers": [
+    {
+      "description": "Update library versions in version compatibility workflow",
+      "fileMatch": ["^\\.github/workflows/version-compatibility\\.yml$"],
+      "matchStrings": [
+        "(?<depName>pydantic|sqlalchemy|pathway)-version:\\s*\\[\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "pypi",
+      "versioningTemplate": "semver"
+    }
+  ]
+}

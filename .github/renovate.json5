@@ -1,0 +1,77 @@
+{
+  // Renovate configuration for schema-gen
+  // This extends the base renovate.json with additional GitHub-specific settings
+
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Inherit base configuration
+  "extends": ["local>schema-gen:renovate.json"],
+
+  // GitHub-specific settings
+  "platform": "github",
+  "gitAuthor": "renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>",
+
+  // PR settings
+  "prTitle": "{{semanticPrefix}}{{#if isPin}}Pin{{else}}Update{{/if}} dependency {{depName}} to {{#if isMajor}}v{{newMajor}}{{else}}{{#if isSingleVersion}}{{prettyNewVersion}}{{else}}{{#if newValue}}{{{newValue}}}{{else}}{{{newDigest}}}{{/if}}{{/if}}{{/if}}",
+  "prBodyTemplate": "{{{header}}}{{{table}}}{{{notes}}}{{{changelogs}}}",
+
+  // Commit message format
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageAction": "update",
+  "commitMessageExtra": "to {{#if isSingleVersion}}{{prettyNewVersion}}{{else}}{{#if newValue}}{{{newValue}}}{{else}}{{{newDigest}}}{{/if}}{{/if}}",
+
+  // Branch naming
+  "branchPrefix": "renovate/",
+  "branchNameStrict": true,
+
+  // Additional package rules for schema-gen specific needs
+  "packageRules": [
+    {
+      "description": "High priority updates for security vulnerabilities",
+      "matchDepTypes": ["*"],
+      "vulnerabilityAlerts": true,
+      "labels": ["security", "high-priority"],
+      "prPriority": 10,
+      "schedule": ["at any time"]
+    },
+    {
+      "description": "Schema generation libraries - require manual review",
+      "matchPackageNames": [
+        "pydantic",
+        "sqlalchemy",
+        "pathway"
+      ],
+      "reviewersFromCodeOwners": false,
+      "assigneesFromCodeOwners": false,
+      "labels": ["dependencies", "core-libraries", "requires-review"],
+      "prPriority": 5
+    },
+    {
+      "description": "Pin exact versions for core dependencies in production",
+      "matchManagers": ["pep621"],
+      "matchFileNames": ["pyproject.toml"],
+      "matchDepTypes": ["dependencies"],
+      "matchPackageNames": [
+        "pydantic",
+        "sqlalchemy",
+        "pathway",
+        "jsonschema",
+        "graphql-core"
+      ],
+      "rangeStrategy": "pin"
+    },
+    {
+      "description": "Allow ranges for development dependencies",
+      "matchManagers": ["pep621"],
+      "matchFileNames": ["pyproject.toml"],
+      "matchDepTypes": ["dev-dependencies"],
+      "rangeStrategy": "bump"
+    }
+  ],
+
+  // Custom dashboard
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "📦 Dependency Updates Dashboard",
+  "dependencyDashboardHeader": "This dashboard shows all pending dependency updates for the schema-gen project.",
+  "dependencyDashboardFooter": "- 🔒 Security updates are prioritized and processed immediately\\n- 🏗️ Core library updates require manual review\\n- 🤖 Development dependencies can be auto-merged for patch updates"
+}

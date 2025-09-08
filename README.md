@@ -4,6 +4,7 @@
 [![PyPI version](https://badge.fury.io/py/schema-gen.svg)](https://badge.fury.io/py/schema-gen)
 [![Python versions](https://img.shields.io/pypi/pyversions/schema-gen.svg)](https://pypi.org/project/schema-gen/)
 [![Documentation Status](https://readthedocs.org/projects/schema-gen/badge/?version=latest)](https://schema-gen.readthedocs.io/en/latest/?badge=latest)
+[![Renovate enabled](https://img.shields.io/badge/renovate-enabled-brightgreen.svg)](https://renovatebot.com/)
 
 **Universal schema converter - define once, generate everywhere.**
 
