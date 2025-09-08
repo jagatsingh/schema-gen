@@ -316,6 +316,52 @@ class AllGeneratorTest:
         for gen_name, (class_name, import_stmt) in generators.items():
             print(f"\n📦 Testing {gen_name} generator...")
 
+            # Build validation logic specific to this generator
+            if gen_name in ["pydantic", "sqlalchemy", "pathway"]:
+                validation_code = """
+        # Python generators - compile test
+        compile(model_code, "<test>", "exec")"""
+            elif gen_name in ["jsonschema", "avro"]:
+                if gen_name == "jsonschema":
+                    validation_code = """
+        # JSON generators - JSON parse test
+        import json
+        json.loads(model_code)
+
+        # For jsonschema, test actual validation
+        import jsonschema
+        schema_data = json.loads(model_code)
+        # Test basic validation works
+        test_data = {"id": 1, "name": "test", "email": "test@example.com"}
+        jsonschema.validate(test_data, schema_data)"""
+                else:  # avro
+                    validation_code = """
+        # JSON generators - JSON parse test
+        import json
+        json.loads(model_code)
+
+        # For avro, test schema parsing
+        import avro.schema
+        avro_data = json.loads(model_code)
+        if "schemas" in avro_data:
+            main_schema = next((s for s in avro_data["schemas"] if s.get("name")), None)
+            if main_schema:
+                avro.schema.parse(json.dumps(main_schema))"""
+            elif gen_name == "graphql":
+                validation_code = """
+        # GraphQL generators - basic syntax check
+        if not ("type " in model_code or "input " in model_code):
+            raise ValueError("Missing GraphQL type/input definition")"""
+            elif gen_name == "protobuf":
+                validation_code = """
+        # Proto generators - basic message syntax check
+        if "message " not in model_code:
+            raise ValueError("Missing protobuf message definition")"""
+            else:
+                validation_code = """
+        # Basic validation for other generators
+        pass"""
+
             test_script = f'''
 import sys
 sys.path.append("{temp_dir}")
@@ -352,41 +398,7 @@ try:
         raise ValueError("Generated empty code")
 
     # Library-specific validation
-    if gen_name in ["pydantic", "sqlalchemy", "pathway"]:
-        # Python generators - compile test
-        compile(model_code, "<test>", "exec")
-    elif gen_name in ["jsonschema", "avro"]:
-        # JSON generators - JSON parse test
-        import json
-        json.loads(model_code)
-
-        # For jsonschema, test actual validation
-        if gen_name == "jsonschema":
-            import jsonschema
-            schema_data = json.loads(model_code)
-            # Test basic validation works
-            test_data = {{"id": 1, "name": "test", "email": "test@example.com"}}
-            jsonschema.validate(test_data, schema_data)
-
-        # For avro, test schema parsing
-        elif gen_name == "avro":
-            import avro.schema
-            import json
-            avro_data = json.loads(model_code)
-            if "schemas" in avro_data:
-                main_schema = next((s for s in avro_data["schemas"] if s.get("name")), None)
-                if main_schema:
-                    avro.schema.parse(json.dumps(main_schema))
-
-    elif gen_name == "graphql":
-        # GraphQL generators - basic syntax check
-        if not ("type " in model_code or "input " in model_code):
-            raise ValueError("Missing GraphQL type/input definition")
-
-    elif gen_name == "protobuf":
-        # Proto generators - basic message syntax check
-        if "message " not in model_code:
-            raise ValueError("Missing protobuf message definition")
+    {validation_code}
 
     print(f"SUCCESS: {{variant_count}} variant(s) generated and validated")
 

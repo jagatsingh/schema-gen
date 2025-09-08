@@ -143,7 +143,7 @@ jobs:
         "
 
         # Test all generators using the compatibility checker
-        uv run python scripts/check_compatibility.py --all-generators
+        uv run python scripts/check_compatibility.py --library all-generators
 
   docs:
     runs-on: ubuntu-latest
