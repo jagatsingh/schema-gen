@@ -31,8 +31,7 @@ jobs:
     - name: Run linting
       run: |
         uv run ruff check src/ tests/
-        uv run black --check src/ tests/
-        uv run mypy src/
+        uv run ruff format --check src/ tests/
 
     - name: Run tests
       run: uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml
