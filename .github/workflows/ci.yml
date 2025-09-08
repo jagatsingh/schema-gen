@@ -72,14 +72,6 @@ jobs:
         test -f generated/pydantic/user_models.py
         test -f generated/pydantic/__init__.py
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: true
-
   schema-validation:
     runs-on: ubuntu-latest
     steps:
