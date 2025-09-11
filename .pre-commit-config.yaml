@@ -79,6 +79,13 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
+  - repo: https://github.com/AlexanderDokuchaev/md-dead-link-check
+    rev: "v1.2.0"
+    hooks:
+      - id: md-dead-link-check
+        args: ["--warn"]
+        files: \.md$
+
   # Type checking with mypy (temporarily disabled for faster iteration)
   # - repo: https://github.com/pre-commit/mirrors-mypy
   #   rev: v1.17.1
