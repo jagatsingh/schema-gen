@@ -34,6 +34,9 @@ RUN apt-get update && apt-get install -y \
 # Install TypeScript globally
 RUN npm install -g typescript@latest
 
+# Install TypeScript dependencies for validation
+RUN npm install -g zod @types/node
+
 # Install Kotlin compiler
 RUN curl -s https://api.github.com/repos/JetBrains/kotlin/releases/latest \
     | grep "browser_download_url.*kotlin-compiler.*zip" \
@@ -44,6 +47,13 @@ RUN curl -s https://api.github.com/repos/JetBrains/kotlin/releases/latest \
     && rm kotlin-compiler.zip \
     && ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc \
     && ln -s /opt/kotlinc/bin/kotlin /usr/local/bin/kotlin
+
+# Create directory for Kotlin dependencies and download serialization library
+RUN mkdir -p /opt/kotlin-libs \
+    && wget -O /opt/kotlin-libs/kotlinx-serialization-core.jar \
+       https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.6.2/kotlinx-serialization-core-jvm-1.6.2.jar \
+    && wget -O /opt/kotlin-libs/kotlinx-serialization-json.jar \
+       https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.6.2/kotlinx-serialization-json-jvm-1.6.2.jar
 
 # Create directory for Java dependencies
 RUN mkdir -p /opt/java-libs

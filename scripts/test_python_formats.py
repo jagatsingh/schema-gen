@@ -661,7 +661,7 @@ def main():
     # Test results
     results = {}
     passed = 0
-    total = len(format_tests) + len(not_implemented)
+    total = len(format_tests)  # Only count actually tested formats
 
     for format_name, test_func in format_tests.items():
         print(f"\n🔍 Testing {format_name.upper()}...")
@@ -699,9 +699,12 @@ def main():
     print("\n" + "=" * 50)
     print("🎯 VALIDATION SUMMARY")
     print("=" * 50)
+    all_formats = total + len(not_implemented)
+    print(f"Total formats: {all_formats}")
     print(f"Formats tested: {total}")
     print(f"Formats passed: {passed}")
-    print(f"Success rate: {(passed / total) * 100:.1f}%")
+    print(f"Formats not implemented: {len(not_implemented)}")
+    print(f"Success rate (of tested): {(passed / total) * 100:.1f}%")
 
     # Detailed results
     print("\n📋 DETAILED RESULTS:")

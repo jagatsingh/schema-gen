@@ -263,9 +263,11 @@ class FormatValidator:
 
             # Try TypeScript compilation if available
             ts_result = self.validate_external_syntax(
-                code, ".ts", ["npx", "tsc", "--noEmit"]
+                code, ".ts", ["tsc", "--noEmit", "--moduleResolution", "node"]
             )
-            if ts_result["error"] and "not found" not in ts_result["error"]:
+            if ts_result.get("error") and "not found" not in str(
+                ts_result.get("error", "")
+            ):
                 result["details"]["typescript_validation"] = ts_result
         else:
             result["error"] = "Missing required Zod structures"
@@ -336,11 +338,47 @@ class FormatValidator:
             result["details"]["has_syntax"] = True
             result["details"]["has_message"] = True
 
-            # Try protobuf compilation if available
-            protoc_result = self.validate_external_syntax(
-                code, ".proto", ["protoc", "--python_out=/tmp"]
-            )
-            if protoc_result["error"] and "not found" not in protoc_result["error"]:
+            # Try protobuf compilation if available - need special handling for protoc
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".proto", delete=False
+                ) as f:
+                    f.write(code)
+                    temp_path = Path(f.name)
+                    temp_dir = temp_path.parent
+
+                # Use temp directory as proto_path
+                cmd = [
+                    "protoc",
+                    f"--proto_path={temp_dir}",
+                    "--python_out=/tmp",
+                    str(temp_path),
+                ]
+                proc_result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=30
+                )
+
+                if proc_result.returncode == 0:
+                    protoc_result = {"valid": True, "details": {"compiled": True}}
+                else:
+                    protoc_result = {
+                        "valid": False,
+                        "error": f"Compilation failed: {proc_result.stderr}",
+                        "details": {
+                            "stdout": proc_result.stdout,
+                            "stderr": proc_result.stderr,
+                        },
+                    }
+
+                temp_path.unlink(missing_ok=True)
+            except Exception as e:
+                protoc_result = {
+                    "valid": False,
+                    "error": f"Protoc validation failed: {e}",
+                }
+            if protoc_result.get("error") and "not found" not in str(
+                protoc_result.get("error", "")
+            ):
                 result["details"]["protoc_validation"] = protoc_result
         else:
             result["error"] = "Missing required protobuf structures"
@@ -382,9 +420,68 @@ class FormatValidator:
             result["details"]["has_getters"] = "public int getId()" in code
             result["details"]["has_setters"] = "public void setId(" in code
 
-            # Try Java compilation if available
-            java_result = self.validate_external_syntax(code, ".java", ["javac"])
-            if java_result["error"] and "not found" not in java_result["error"]:
+            # Try Java compilation if available - special handling for class naming
+            try:
+                # Extract class names from the code to create proper file names
+                import re
+
+                class_matches = re.findall(r"public class (\w+)", code)
+
+                if class_matches:
+                    # Create a temporary directory for Java files
+                    with tempfile.TemporaryDirectory() as temp_dir:
+                        temp_path = Path(temp_dir)
+
+                        # Create separate file for each public class
+                        for class_name in class_matches:
+                            # Extract class definition
+                            class_pattern = rf"public class {class_name}\s*\{{[^}}]*\}}"
+                            class_matches_full = re.findall(
+                                class_pattern, code, re.DOTALL
+                            )
+                            if class_matches_full:
+                                class_code = class_matches_full[0]
+                                # Add imports at the beginning
+                                imports = re.findall(r"import [^;]+;", code)
+                                full_code = "\n".join(imports) + "\n\n" + class_code
+
+                                # Write to properly named file
+                                java_file = temp_path / f"{class_name}.java"
+                                java_file.write_text(full_code)
+
+                        # Try to compile the first class only (to avoid complexity)
+                        if class_matches:
+                            main_class = class_matches[0]
+                            java_file = temp_path / f"{main_class}.java"
+
+                            cmd = ["javac", str(java_file)]
+                            proc_result = subprocess.run(
+                                cmd, capture_output=True, text=True, timeout=30
+                            )
+
+                            if proc_result.returncode == 0:
+                                java_result = {
+                                    "valid": True,
+                                    "details": {"compiled": True},
+                                }
+                            else:
+                                java_result = {
+                                    "valid": False,
+                                    "error": f"Compilation failed: {proc_result.stderr}",
+                                    "details": {
+                                        "stdout": proc_result.stdout,
+                                        "stderr": proc_result.stderr,
+                                    },
+                                }
+                else:
+                    java_result = {"valid": False, "error": "No public classes found"}
+
+            except Exception as e:
+                java_result = {"valid": False, "error": f"Java validation failed: {e}"}
+
+            if java_result.get("error") and "not found" not in str(
+                java_result.get("error", "")
+            ):
                 result["details"]["javac_validation"] = java_result
         else:
             result["error"] = "Missing Java class definition"
@@ -404,9 +501,14 @@ class FormatValidator:
             result["details"]["has_data_class"] = True
             result["details"]["has_properties"] = "val id:" in code
 
-            # Try Kotlin compilation if available
-            kotlin_result = self.validate_external_syntax(code, ".kt", ["kotlinc"])
-            if kotlin_result["error"] and "not found" not in kotlin_result["error"]:
+            # Try Kotlin compilation if available with serialization libraries
+            kotlin_libs = "/opt/kotlin-libs/kotlinx-serialization-core.jar:/opt/kotlin-libs/kotlinx-serialization-json.jar"
+            kotlin_result = self.validate_external_syntax(
+                code, ".kt", ["kotlinc", "-cp", kotlin_libs]
+            )
+            if kotlin_result.get("error") and "not found" not in str(
+                kotlin_result.get("error", "")
+            ):
                 result["details"]["kotlinc_validation"] = kotlin_result
         else:
             result["error"] = "Missing Kotlin data class definition"
