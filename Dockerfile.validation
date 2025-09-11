@@ -158,7 +158,7 @@ echo "====================================="
 # Install schema-gen in development mode
 if [ -f "pyproject.toml" ]; then
     echo "📦 Installing schema-gen..."
-    uv pip install -e .
+    uv pip install -e . --system
 else
     echo "⚠️  No pyproject.toml found. Make sure schema-gen source is mounted."
     exit 1
@@ -166,10 +166,10 @@ fi
 
 # Run validation tests
 echo "🧪 Running format validation tests..."
-uv run pytest tests/test_format_validation.py -v
+uv run --system pytest tests/test_format_validation.py -v
 
 echo "🔍 Running comprehensive format validation..."
-uv run python scripts/validate_all_formats.py --verbose
+uv run --system python scripts/validate_all_formats.py --verbose
 
 echo "🐍 Testing Python format libraries..."
 python3 scripts/test_python_formats.py
@@ -207,7 +207,7 @@ fi
 
 # Install package in development mode
 if [ -f "pyproject.toml" ]; then
-    uv pip install -e .
+    uv pip install -e . --system
     echo "✅ Package installed in development mode"
 fi
 
