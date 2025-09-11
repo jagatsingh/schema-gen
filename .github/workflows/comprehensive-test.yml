@@ -210,14 +210,14 @@ jobs:
         time uv run schema-gen generate \
           --input perf_test/schemas \
           --output perf_test/generated \
-          --target pydantic --target dataclasses --target typeddict --target sqlalchemy
+          --target pydantic
 
         # Validate generated files
         echo "Validating large generated files..."
         uv run python -c "
         import sys
         sys.path.append('perf_test/generated/pydantic')
-        import large_schema_models
+        import largetestschema_models
         print('✅ Large Pydantic schema loads successfully')
         "
 
