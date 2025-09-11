@@ -75,6 +75,7 @@ jobs:
         context: .
         file: ./Dockerfile.validation
         tags: schema-gen-validation:latest
+        load: true  # Load image into local Docker daemon
         cache-from: type=gha
         cache-to: type=gha,mode=max
         push: false
@@ -129,7 +130,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     steps:
     - uses: actions/checkout@v4
@@ -209,7 +210,7 @@ jobs:
         time uv run schema-gen generate \
           --input perf_test/schemas \
           --output perf_test/generated \
-          --targets pydantic,dataclasses,typeddict,sqlalchemy \
+          --target pydantic --target dataclasses --target typeddict --target sqlalchemy \
           --verbose
 
         # Validate generated files

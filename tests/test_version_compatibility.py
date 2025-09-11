@@ -1,6 +1,7 @@
 """Version compatibility tests for schema generators"""
 
 import importlib
+import importlib.metadata
 import sys
 import tempfile
 from pathlib import Path
@@ -211,11 +212,9 @@ Base = declarative_base()
     def test_current_jsonschema_version_compatibility(self, test_schema):
         """Test compatibility with currently installed jsonschema version"""
         try:
-            import jsonschema
-
-            jsonschema_version = jsonschema.__version__
-        except ImportError:
-            pytest.skip("jsonschema not installed")
+            jsonschema_version = importlib.metadata.version("jsonschema")
+        except importlib.metadata.PackageNotFoundError:
+            pytest.skip("jsonschema package not found")
 
         generator = JsonSchemaGenerator()
 

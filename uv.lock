@@ -2891,6 +2891,7 @@ dev = [
     { name = "pymdown-extensions" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "setuptools" },
 ]
 
 [package.metadata]
@@ -2933,6 +2934,7 @@ dev = [
     { name = "pymdown-extensions", specifier = ">=10.16.1" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-cov", specifier = ">=6.3.0" },
+    { name = "setuptools", specifier = "<81" },
 ]
 
 [[package]]
