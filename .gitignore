@@ -109,3 +109,4 @@ dmypy.json
 # Backup files
 *.bak
 *.orig
+build.sh

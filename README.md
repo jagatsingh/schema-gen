@@ -12,6 +12,8 @@ Schema Gen eliminates schema duplication across multiple programming languages a
 
 This is early `Beta` version and just early implementation of my current thoughts. Please try it out and provide feedback!
 
+See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-examples/)
+
 ## 🎯 Supported Generators (12)
 
 ### Python Ecosystem
@@ -366,7 +368,7 @@ config = Config(
 
 ## 📚 Documentation
 
-- **[Schema Format Specification](docs/SCHEMA_FORMAT.md)** - Complete field types and constraints
+- **[Schema Format Specification](docs/schema-format.md)** - Complete field types and constraints
 - **[API Reference](https://schema-gen.readthedocs.io)** - Full API documentation
 - **[Examples](examples/)** - Real-world usage examples
 - **[Contributing](CONTRIBUTING.md)** - Development setup and guidelines

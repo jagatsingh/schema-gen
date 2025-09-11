@@ -58,7 +58,7 @@ schema-gen = "schema_gen.cli:main"
 [project.urls]
 Homepage = "https://github.com/jagatsingh/schema-gen"
 Repository = "https://github.com/jagatsingh/schema-gen"
-Documentation = "https://github.com/jagatsingh/schema-gen#readme"
+Documentation = "https://schema-gen.readthedocs.io/"
 Issues = "https://github.com/jagatsingh/schema-gen/issues"
 
 [build-system]
