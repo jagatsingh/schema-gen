@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  schema-gen-validation:
+    build:
+      context: .
+      dockerfile: Dockerfile.validation
+    container_name: schema-gen-validation
+    volumes:
+      # Mount source code for development
+      - .:/app
+      # Cache for uv and pip
+      - schema-gen-uv-cache:/root/.cache/uv
+      - schema-gen-pip-cache:/root/.cache/pip
+      # Node modules cache
+      - schema-gen-node-cache:/root/.npm
+    working_dir: /app
+    environment:
+      # Python environment
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+      # Java environment
+      - JAVA_HOME=/usr/lib/jvm/default-java
+      - CLASSPATH=/opt/java-libs/*
+      # Development mode
+      - DEVELOPMENT=true
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+
+  # Service for running CI-style validation
+  schema-gen-ci:
+    build:
+      context: .
+      dockerfile: Dockerfile.validation
+    container_name: schema-gen-ci
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+      - JAVA_HOME=/usr/lib/jvm/default-java
+      - CLASSPATH=/opt/java-libs/*
+      - CI=true
+    command: test-all-formats-docker
+    profiles: ["ci"]
+
+  # Service for testing individual formats
+  schema-gen-format-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.validation
+    container_name: schema-gen-format-test
+    volumes:
+      - .:/app
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/src
+      - PYTHONUNBUFFERED=1
+      - JAVA_HOME=/usr/lib/jvm/default-java
+      - CLASSPATH=/opt/java-libs/*
+    command: uv run python scripts/validate_all_formats.py --verbose
+    profiles: ["format-test"]
+
+volumes:
+  schema-gen-uv-cache:
+    driver: local
+  schema-gen-pip-cache:
+    driver: local
+  schema-gen-node-cache:
+    driver: local

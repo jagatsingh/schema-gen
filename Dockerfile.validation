@@ -1,0 +1,236 @@
+# Comprehensive validation environment for schema-gen
+# Includes all external compilers and tools needed for complete format validation
+FROM python:3.13-slim
+
+LABEL maintainer="schema-gen"
+LABEL description="Complete validation environment with all external compilers"
+LABEL version="1.0"
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # Basic build tools
+    build-essential \
+    curl \
+    wget \
+    unzip \
+    git \
+    # Java environment
+    default-jdk \
+    maven \
+    # Node.js and npm (for TypeScript)
+    nodejs \
+    npm \
+    # Protocol Buffers
+    protobuf-compiler \
+    # Additional utilities
+    vim \
+    less \
+    tree \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install TypeScript globally
+RUN npm install -g typescript@latest
+
+# Install Kotlin compiler
+RUN curl -s https://api.github.com/repos/JetBrains/kotlin/releases/latest \
+    | grep "browser_download_url.*kotlin-compiler.*zip" \
+    | cut -d '"' -f 4 \
+    | head -1 \
+    | xargs wget -O kotlin-compiler.zip \
+    && unzip kotlin-compiler.zip -d /opt \
+    && rm kotlin-compiler.zip \
+    && ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc \
+    && ln -s /opt/kotlinc/bin/kotlin /usr/local/bin/kotlin
+
+# Create directory for Java dependencies
+RUN mkdir -p /opt/java-libs
+
+# Download Jackson and validation dependencies for Java
+RUN cd /opt/java-libs && \
+    # Jackson Core
+    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.18.0/jackson-core-2.18.0.jar && \
+    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.18.0/jackson-databind-2.18.0.jar && \
+    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.18.0/jackson-annotations-2.18.0.jar && \
+    # Bean Validation API
+    wget https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar && \
+    # Hibernate Validator (reference implementation)
+    wget https://repo1.maven.org/maven2/org/hibernate/validator/hibernate-validator/6.2.5.Final/hibernate-validator-6.2.5.Final.jar && \
+    # Expression Language (required by Hibernate Validator)
+    wget https://repo1.maven.org/maven2/org/glassfish/javax.el/3.0.0/javax.el-3.0.0.jar
+
+# Set Java classpath for validation
+ENV CLASSPATH="/opt/java-libs/*"
+ENV JAVA_HOME="/usr/lib/jvm/default-java"
+
+# Install Python package manager (uv)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
+
+# Install Python dependencies for development and format validation
+RUN pip install --no-cache-dir \
+    # Development tools
+    pytest \
+    pytest-cov \
+    ruff \
+    mypy \
+    black \
+    isort \
+    # Format-specific libraries for validation
+    pydantic>=2.0 \
+    sqlalchemy>=2.0 \
+    jinja2>=3.0 \
+    pyyaml>=6.0 \
+    jsonschema>=4.0 \
+    graphql-core>=3.2 \
+    avro-python3>=1.11 \
+    pathway>=0.7 \
+    email-validator>=2.0 \
+    # Additional validation tools
+    click>=8.0 \
+    typing-extensions>=4.0 \
+    watchdog>=3.0
+
+# Create validation script
+RUN cat > /usr/local/bin/validate-compilers << 'EOF'
+#!/bin/bash
+# Comprehensive compiler validation script
+
+set -e
+
+echo "🧪 Validating External Compilers"
+echo "================================="
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Test TypeScript/Node.js
+echo -e "\n${YELLOW}Testing TypeScript compiler...${NC}"
+node --version
+npm --version
+tsc --version
+echo -e "${GREEN}✅ TypeScript environment ready${NC}"
+
+# Test Java
+echo -e "\n${YELLOW}Testing Java environment...${NC}"
+java --version
+javac --version
+echo "Jackson libs available:"
+ls -la /opt/java-libs/jackson-*.jar
+echo -e "${GREEN}✅ Java environment ready${NC}"
+
+# Test Kotlin
+echo -e "\n${YELLOW}Testing Kotlin compiler...${NC}"
+kotlinc -version
+echo -e "${GREEN}✅ Kotlin environment ready${NC}"
+
+# Test Protocol Buffers
+echo -e "\n${YELLOW}Testing Protocol Buffers compiler...${NC}"
+protoc --version
+echo -e "${GREEN}✅ Protocol Buffers environment ready${NC}"
+
+# Test Python
+echo -e "\n${YELLOW}Testing Python environment...${NC}"
+python --version
+uv --version
+echo -e "${GREEN}✅ Python environment ready${NC}"
+
+echo -e "\n${GREEN}🎉 All validation tools are ready!${NC}"
+EOF
+
+RUN chmod +x /usr/local/bin/validate-compilers
+
+# Create comprehensive test script
+RUN cat > /usr/local/bin/test-all-formats-docker << 'EOF'
+#!/bin/bash
+# Docker-optimized format validation script
+
+set -e
+
+echo "🐳 Schema-Gen Docker Validation Suite"
+echo "====================================="
+
+# Install schema-gen in development mode
+if [ -f "pyproject.toml" ]; then
+    echo "📦 Installing schema-gen..."
+    uv pip install -e .
+else
+    echo "⚠️  No pyproject.toml found. Make sure schema-gen source is mounted."
+    exit 1
+fi
+
+# Run validation tests
+echo "🧪 Running format validation tests..."
+uv run pytest tests/test_format_validation.py -v
+
+echo "🔍 Running comprehensive format validation..."
+uv run python scripts/validate_all_formats.py --verbose
+
+echo "🐍 Testing Python format libraries..."
+python3 scripts/test_python_formats.py
+
+echo "🔧 All external compilers validated during setup..."
+validate-compilers
+
+echo "🚀 Running end-to-end tests..."
+bash scripts/test_all_formats.sh
+
+echo "✅ All Docker validation tests completed!"
+EOF
+
+RUN chmod +x /usr/local/bin/test-all-formats-docker
+
+# Create development helper script
+RUN cat > /usr/local/bin/dev-setup << 'EOF'
+#!/bin/bash
+# Development environment setup
+
+echo "🛠️  Setting up development environment..."
+
+# Install pre-commit if available
+if [ -f ".pre-commit-config.yaml" ]; then
+    pip install pre-commit
+    pre-commit install
+    echo "✅ Pre-commit hooks installed"
+fi
+
+# Install development dependencies
+if [ -f "requirements-dev.txt" ]; then
+    pip install -r requirements-dev.txt
+    echo "✅ Development dependencies installed"
+fi
+
+# Install package in development mode
+if [ -f "pyproject.toml" ]; then
+    uv pip install -e .
+    echo "✅ Package installed in development mode"
+fi
+
+echo "🎉 Development environment ready!"
+echo "Available commands:"
+echo "  validate-compilers    - Test all external compilers"
+echo "  test-all-formats-docker - Run complete validation suite"
+echo "  dev-setup            - Setup development environment (run once)"
+EOF
+
+RUN chmod +x /usr/local/bin/dev-setup
+
+# Set default command
+CMD ["/bin/bash"]
+
+# Health check to verify all tools are available
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD validate-compilers || exit 1
+
+# Labels for metadata
+LABEL tools.typescript="included" \
+      tools.java="included" \
+      tools.kotlin="included" \
+      tools.protobuf="included" \
+      tools.python="3.13" \
+      validation.comprehensive="true"

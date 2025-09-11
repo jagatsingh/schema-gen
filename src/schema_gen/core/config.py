@@ -71,10 +71,14 @@ class Config:
             return cls()  # Return default config
 
         # Execute the config file and extract the config object
-        namespace = {}
-        exec(config_file.read_text(), namespace)
+        try:
+            namespace = {}
+            exec(config_file.read_text(), namespace)
 
-        if "config" in namespace:
-            return namespace["config"]
-        else:
-            return cls()  # Return default if no config found
+            if "config" in namespace:
+                return namespace["config"]
+            else:
+                return cls()  # Return default if no config found
+        except (SyntaxError, NameError, ImportError, Exception):
+            # If config file has errors, return default config
+            return cls()

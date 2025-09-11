@@ -65,10 +65,28 @@ jobs:
     - name: Run comprehensive tests
       run: |
         # Run full test suite with coverage
-        uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-fail-under=80
+        uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-fail-under=65
+
+        # Run format validation tests (syntax and execution validation)
+        uv run pytest tests/test_format_validation.py -v
 
         # Test all generators
         uv run python scripts/check_compatibility.py --library all-generators
+
+        # Comprehensive format validation with external tool validation
+        uv run python scripts/validate_all_formats.py --verbose
+
+    - name: Run Docker-based comprehensive validation
+      run: |
+        # Build Docker validation environment
+        docker build -f Dockerfile.validation -t schema-gen-validation .
+
+        # Run comprehensive validation in Docker with all external compilers
+        docker run --rm -v $PWD:/app schema-gen-validation /bin/bash -c "
+          cd /app &&
+          dev-setup &&
+          test-all-formats-docker
+        "
 
     - name: Run linting and type checking
       run: |

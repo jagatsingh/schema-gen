@@ -30,14 +30,31 @@ class DataclassesGenerator:
         if variant:
             class_name = self._variant_to_class_name(schema.name, variant)
 
-        # Generate field definitions
-        field_definitions = []
+        # Generate field definitions with proper ordering
+        # Required fields must come before optional/default fields in dataclasses
+        required_fields = []
+        optional_fields = []
         imports = {"dataclasses"}
 
         for field in fields:
             field_def, field_imports = self._generate_field_definition(field)
-            field_definitions.append(field_def)
             imports.update(field_imports)
+
+            # Check if field has default value, is optional, has default_factory, is a datetime field, or auto_now/auto_now_add
+            if (
+                field.default is not None
+                or field.optional
+                or field.default_factory is not None
+                or field.type == FieldType.DATETIME
+                or (hasattr(field, "auto_now_add") and field.auto_now_add)
+                or (hasattr(field, "auto_now") and field.auto_now)
+            ):
+                optional_fields.append(field_def)
+            else:
+                required_fields.append(field_def)
+
+        # Combine required fields first, then optional fields
+        field_definitions = required_fields + optional_fields
 
         return self.template.render(
             class_name=class_name,
@@ -61,29 +78,61 @@ class DataclassesGenerator:
         all_imports = {"dataclasses"}
         all_dataclasses = []
 
-        # Generate base dataclass
+        # Generate base dataclass with proper field ordering
         base_fields = schema.fields
-        base_field_defs = []
+        base_required_fields = []
+        base_optional_fields = []
 
         for field in base_fields:
             field_def, field_imports = self._generate_field_definition(field)
-            base_field_defs.append(field_def)
             all_imports.update(field_imports)
+
+            # Check if field has default value, is optional, has default_factory, is a datetime field, or auto_now/auto_now_add
+            if (
+                field.default is not None
+                or field.optional
+                or field.default_factory is not None
+                or field.type == FieldType.DATETIME
+                or (hasattr(field, "auto_now_add") and field.auto_now_add)
+                or (hasattr(field, "auto_now") and field.auto_now)
+            ):
+                base_optional_fields.append(field_def)
+            else:
+                base_required_fields.append(field_def)
+
+        # Combine required fields first, then optional fields
+        base_field_defs = base_required_fields + base_optional_fields
 
         base_dataclass = self._generate_single_dataclass(
             schema.name, schema.description, base_field_defs, is_base_class=True
         )
         all_dataclasses.append(base_dataclass)
 
-        # Generate variants
+        # Generate variants with proper field ordering
         for variant_name in schema.variants:
             variant_fields = schema.get_variant_fields(variant_name)
-            variant_field_defs = []
+            variant_required_fields = []
+            variant_optional_fields = []
 
             for field in variant_fields:
                 field_def, field_imports = self._generate_field_definition(field)
-                variant_field_defs.append(field_def)
                 all_imports.update(field_imports)
+
+                # Check if field has default value, is optional, has default_factory, is a datetime field, or auto_now/auto_now_add
+                if (
+                    field.default is not None
+                    or field.optional
+                    or field.default_factory is not None
+                    or field.type == FieldType.DATETIME
+                    or (hasattr(field, "auto_now_add") and field.auto_now_add)
+                    or (hasattr(field, "auto_now") and field.auto_now)
+                ):
+                    variant_optional_fields.append(field_def)
+                else:
+                    variant_required_fields.append(field_def)
+
+            # Combine required fields first, then optional fields
+            variant_field_defs = variant_required_fields + variant_optional_fields
 
             variant_class_name = self._variant_to_class_name(schema.name, variant_name)
             variant_dataclass = self._generate_single_dataclass(
@@ -114,7 +163,7 @@ class DataclassesGenerator:
                 field_def = f'    {field.name}: {type_annotation} = "{field.default}"'
             else:
                 default_value = (
-                    str(field.default).lower()
+                    str(field.default)  # Python booleans are already "True"/"False"
                     if isinstance(field.default, bool)
                     else field.default
                 )
@@ -124,6 +173,35 @@ class DataclassesGenerator:
         elif field.default_factory is not None:
             imports.add("dataclasses.field")
             field_def = f"    {field.name}: {type_annotation} = field(default_factory={field.default_factory.__name__})"
+        elif hasattr(field, "auto_now_add") and field.auto_now_add:
+            # Handle auto_now_add fields for datetime types
+            imports.add("dataclasses.field")
+            if field.type == FieldType.DATETIME:
+                imports.add("datetime")
+                field_def = f"    {field.name}: {type_annotation} = field(default_factory=datetime.datetime.now)"
+            elif field.type == FieldType.DATE:
+                imports.add("datetime")
+                field_def = f"    {field.name}: {type_annotation} = field(default_factory=datetime.date.today)"
+            else:
+                # Fallback for other types with auto_now_add
+                field_def = f"    {field.name}: {type_annotation}"
+        elif hasattr(field, "auto_now") and field.auto_now:
+            # Handle auto_now fields similarly
+            imports.add("dataclasses.field")
+            if field.type == FieldType.DATETIME:
+                imports.add("datetime")
+                field_def = f"    {field.name}: {type_annotation} = field(default_factory=datetime.datetime.now)"
+            elif field.type == FieldType.DATE:
+                imports.add("datetime")
+                field_def = f"    {field.name}: {type_annotation} = field(default_factory=datetime.date.today)"
+            else:
+                # Fallback for other types with auto_now
+                field_def = f"    {field.name}: {type_annotation}"
+        elif field.type == FieldType.DATETIME:
+            # Special handling for datetime fields without defaults - give them a default factory
+            imports.add("dataclasses.field")
+            imports.add("datetime")
+            field_def = f"    {field.name}: {type_annotation} = field(default_factory=datetime.datetime.now)"
         else:
             field_def = f"    {field.name}: {type_annotation}"
 

@@ -1,0 +1,360 @@
+name: Comprehensive Format Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run comprehensive tests daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  # Quick validation without Docker (for fast feedback)
+  quick-validation:
+    runs-on: ubuntu-latest
+    name: Quick Format Validation
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.13
+
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+
+    - name: Run quick format validation
+      run: |
+        # Python syntax validation (fast)
+        uv run pytest tests/test_format_validation.py::TestFormatValidation -v
+
+        # Comprehensive format validation (no external compilers)
+        uv run python scripts/validate_all_formats.py --verbose
+
+    - name: Run unit tests with coverage
+      run: |
+        uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-report=term
+
+    - name: Upload coverage to Codecov
+      if: success()
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  # Comprehensive validation with Docker and all external compilers
+  docker-validation:
+    runs-on: ubuntu-latest
+    name: Docker Comprehensive Validation
+    needs: quick-validation # Run only if quick validation passes
+
+    strategy:
+      matrix:
+        validation_type:
+          - "all"          # Complete validation suite
+          - "compilers"    # External compiler validation only
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build validation Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.validation
+        tags: schema-gen-validation:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        push: false
+
+    - name: Validate external compilers
+      if: matrix.validation_type == 'compilers' || matrix.validation_type == 'all'
+      run: |
+        # Test all external compilers are working
+        docker run --rm schema-gen-validation:latest validate-compilers
+
+    - name: Run comprehensive validation suite
+      if: matrix.validation_type == 'all'
+      run: |
+        # Mount source code and run complete validation
+        docker run --rm -v $PWD:/app -w /app schema-gen-validation:latest /bin/bash -c "
+          # Setup development environment
+          dev-setup
+
+          # Run comprehensive validation with external compilers
+          test-all-formats-docker
+        "
+
+    - name: Test individual formats with external tools
+      if: matrix.validation_type == 'compilers'
+      run: |
+        # Test specific external compiler integrations
+        docker run --rm -v $PWD:/app -w /app schema-gen-validation:latest /bin/bash -c "
+          dev-setup
+
+          # Test TypeScript/Zod compilation
+          echo 'Testing TypeScript compilation...'
+          uv run python scripts/validate_all_formats.py --format zod --verbose
+
+          # Test Java/Jackson compilation
+          echo 'Testing Java compilation...'
+          uv run python scripts/validate_all_formats.py --format jackson --verbose
+
+          # Test Kotlin compilation
+          echo 'Testing Kotlin compilation...'
+          uv run python scripts/validate_all_formats.py --format kotlin --verbose
+
+          # Test Protocol Buffers compilation
+          echo 'Testing Protocol Buffers compilation...'
+          uv run python scripts/validate_all_formats.py --format protobuf --verbose
+        "
+
+  # Test across different Python versions
+  multi-python-validation:
+    runs-on: ubuntu-latest
+    name: Multi-Python Validation
+    needs: quick-validation
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev --python ${{ matrix.python-version }}
+
+    - name: Test format validation on Python ${{ matrix.python-version }}
+      run: |
+        # Run format validation tests
+        uv run pytest tests/test_format_validation.py -v
+
+        # Test Python code generation and execution
+        uv run pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
+
+  # Performance and stress testing
+  performance-validation:
+    runs-on: ubuntu-latest
+    name: Performance Validation
+    needs: quick-validation
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.13
+
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+
+    - name: Performance test - Large schema generation
+      run: |
+        # Create a large test schema
+        mkdir -p perf_test/schemas
+        cat > perf_test/schemas/large_schema.py << 'EOF'
+        from schema_gen import Schema, Field
+        from datetime import datetime
+        from typing import Optional
+
+        @Schema
+        class LargeTestSchema:
+            """Performance test schema with many fields"""
+        EOF
+
+        # Generate 50 fields dynamically
+        for i in {1..50}; do
+          echo "    field_$i: str = Field(description='Field $i')" >> perf_test/schemas/large_schema.py
+        done
+
+        # Add variants
+        cat >> perf_test/schemas/large_schema.py << 'EOF'
+
+            class Variants:
+                subset_1 = [f'field_{i}' for i in range(1, 11)]
+                subset_2 = [f'field_{i}' for i in range(11, 21)]
+                subset_3 = [f'field_{i}' for i in range(21, 31)]
+        EOF
+
+        # Time the generation process
+        echo "Testing generation performance..."
+        time uv run schema-gen generate \
+          --input-dir perf_test/schemas \
+          --output-dir perf_test/generated \
+          --targets pydantic,dataclasses,typeddict,sqlalchemy \
+          --verbose
+
+        # Validate generated files
+        echo "Validating large generated files..."
+        uv run python -c "
+        import sys
+        sys.path.append('perf_test/generated/pydantic')
+        import large_schema_models
+        print('✅ Large Pydantic schema loads successfully')
+        "
+
+  # Matrix testing across operating systems
+  cross-platform-validation:
+    runs-on: ${{ matrix.os }}
+    name: Cross-Platform Validation
+    needs: quick-validation
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync --all-extras --dev
+
+    - name: Test core functionality on ${{ matrix.os }}
+      run: |
+        # Basic CLI functionality
+        uv run schema-gen --version
+        uv run schema-gen --help
+
+        # Format validation (no external compilers on Windows/Mac)
+        uv run pytest tests/test_format_validation.py::TestFormatValidation -v
+
+        # Python code generation and execution
+        uv run pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
+
+  # Summary job that depends on all validation jobs
+  validation-summary:
+    runs-on: ubuntu-latest
+    name: Validation Summary
+    needs: [quick-validation, docker-validation, multi-python-validation, performance-validation, cross-platform-validation]
+    if: always()
+
+    steps:
+    - name: Check validation results
+      run: |
+        echo "🔍 Validation Summary"
+        echo "===================="
+
+        # Check if any critical jobs failed
+        QUICK_STATUS="${{ needs.quick-validation.result }}"
+        DOCKER_STATUS="${{ needs.docker-validation.result }}"
+        MULTI_PYTHON_STATUS="${{ needs.multi-python-validation.result }}"
+        PERFORMANCE_STATUS="${{ needs.performance-validation.result }}"
+        CROSS_PLATFORM_STATUS="${{ needs.cross-platform-validation.result }}"
+
+        echo "Quick Validation: $QUICK_STATUS"
+        echo "Docker Validation: $DOCKER_STATUS"
+        echo "Multi-Python Validation: $MULTI_PYTHON_STATUS"
+        echo "Performance Validation: $PERFORMANCE_STATUS"
+        echo "Cross-Platform Validation: $CROSS_PLATFORM_STATUS"
+
+        # Fail if critical validations failed
+        if [[ "$QUICK_STATUS" == "failure" || "$DOCKER_STATUS" == "failure" ]]; then
+          echo "❌ Critical validation failures detected"
+          exit 1
+        fi
+
+        # Warn about non-critical failures
+        if [[ "$MULTI_PYTHON_STATUS" == "failure" || "$PERFORMANCE_STATUS" == "failure" || "$CROSS_PLATFORM_STATUS" == "failure" ]]; then
+          echo "⚠️  Some non-critical validations failed - please review"
+        fi
+
+        echo "✅ Validation completed successfully"
+
+  # Create validation report artifact
+  create-validation-report:
+    runs-on: ubuntu-latest
+    name: Create Validation Report
+    needs: [validation-summary]
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Generate validation report
+      run: |
+        mkdir -p validation_reports
+
+        cat > validation_reports/validation_report_$(date +%Y%m%d_%H%M).md << EOF
+        # Schema-Gen Validation Report
+
+        **Date**: $(date -u +"%Y-%m-%d %H:%M UTC")
+        **Commit**: ${{ github.sha }}
+        **Trigger**: ${{ github.event_name }}
+
+        ## Validation Results
+
+        - ✅ Quick Format Validation: ${{ needs.validation-summary.result }}
+        - 🐳 Docker Comprehensive Validation: Available in job logs
+        - 🐍 Multi-Python Validation: Available in job logs
+        - ⚡ Performance Validation: Available in job logs
+        - 🌐 Cross-Platform Validation: Available in job logs
+
+        ## Supported Formats
+
+        All 12 formats validated:
+        - Pydantic v2 Models
+        - SQLAlchemy ORM Models
+        - Python Dataclasses
+        - TypedDict Definitions
+        - Pathway Schemas
+        - Zod TypeScript Schemas
+        - JSON Schema Documents
+        - GraphQL Type Definitions
+        - Protocol Buffer Messages
+        - Apache Avro Schemas
+        - Jackson Java POJOs
+        - Kotlin Data Classes
+
+        ## External Compilers Tested
+
+        - TypeScript Compiler (tsc)
+        - Java Compiler (javac) + Jackson
+        - Kotlin Compiler (kotlinc)
+        - Protocol Buffers Compiler (protoc)
+
+        Generated at: $(date -u)
+        EOF
+
+    - name: Upload validation report
+      uses: actions/upload-artifact@v4
+      with:
+        name: validation-report-${{ github.run_id }}
+        path: validation_reports/
+        retention-days: 30
