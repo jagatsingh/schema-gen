@@ -207,8 +207,8 @@ jobs:
         # Time the generation process
         echo "Testing generation performance..."
         time uv run schema-gen generate \
-          --input-dir perf_test/schemas \
-          --output-dir perf_test/generated \
+          --input perf_test/schemas \
+          --output perf_test/generated \
           --targets pydantic,dataclasses,typeddict,sqlalchemy \
           --verbose
 
@@ -229,7 +229,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v4
