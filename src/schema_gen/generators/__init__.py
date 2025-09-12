@@ -3,7 +3,9 @@
 from .avro_generator import AvroGenerator
 from .dataclasses_generator import DataclassesGenerator
 from .graphql_generator import GraphQLGenerator
+from .jackson_generator import JacksonGenerator
 from .jsonschema_generator import JsonSchemaGenerator
+from .kotlin_generator import KotlinGenerator
 from .pathway_generator import PathwayGenerator
 from .protobuf_generator import ProtobufGenerator
 from .pydantic_generator import PydanticGenerator
@@ -22,4 +24,6 @@ __all__ = [
     "GraphQLGenerator",
     "ProtobufGenerator",
     "AvroGenerator",
+    "JacksonGenerator",
+    "KotlinGenerator",
 ]

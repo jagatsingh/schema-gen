@@ -113,7 +113,12 @@ class KotlinGenerator:
         for i, field in enumerate(fields):
             param_def = self._generate_parameter_definition(field)
             separator = "," if i < len(fields) - 1 else ""
-            lines.append(f"    {param_def}{separator}")
+            # Split parameter and comment to avoid syntax errors
+            if "  // " in param_def:
+                param_part, comment_part = param_def.split("  // ", 1)
+                lines.append(f"    {param_part}{separator}  // {comment_part}")
+            else:
+                lines.append(f"    {param_def}{separator}")
 
         lines.append(")")
 
@@ -144,11 +149,27 @@ class KotlinGenerator:
             if isinstance(field.default, str):
                 default_value = f' = "{field.default}"'
             elif isinstance(field.default, bool):
-                default_value = f" = {str(field.default).lower()}"
+                # Use Kotlin boolean literals
+                default_value = f" = {'true' if field.default else 'false'}"
+            elif isinstance(field.default, list):
+                # Use Kotlin list initialization
+                if field.default == []:
+                    default_value = " = emptyList()"
+                else:
+                    # For non-empty lists, format properly
+                    if all(isinstance(x, str) for x in field.default):
+                        list_items = ", ".join(f'"{x}"' for x in field.default)
+                        default_value = f" = listOf({list_items})"
+                    else:
+                        list_items = ", ".join(str(x) for x in field.default)
+                        default_value = f" = listOf({list_items})"
             else:
                 default_value = f" = {field.default}"
         elif field.optional:
             default_value = " = null"
+        elif field.type == FieldType.LIST and not field.optional:
+            # Non-optional lists should have empty list as default
+            default_value = " = emptyList()"
 
         # Build complete parameter
         annotation_str = " ".join(annotations) + " " if annotations else ""

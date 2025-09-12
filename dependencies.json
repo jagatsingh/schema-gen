@@ -1,0 +1,133 @@
+{
+  "python_libraries": {
+    "validation_libraries": {
+      "pydantic": {
+        "min_version": "2.0",
+        "current_constraint": ">=2.0",
+        "description": "Data validation and settings management using Python type annotations",
+        "critical": true
+      },
+      "sqlalchemy": {
+        "min_version": "2.0",
+        "current_constraint": ">=2.0",
+        "description": "SQL toolkit and Object-Relational Mapping (ORM) library",
+        "critical": true
+      },
+      "jsonschema": {
+        "min_version": "4.0",
+        "current_constraint": ">=4.0",
+        "description": "JSON Schema validation library",
+        "critical": true
+      },
+      "graphql-core": {
+        "min_version": "3.2",
+        "current_constraint": ">=3.2",
+        "description": "GraphQL implementation for Python",
+        "critical": true
+      },
+      "avro-python3": {
+        "min_version": "1.11",
+        "current_constraint": ">=1.11",
+        "description": "Apache Avro serialization library",
+        "critical": true
+      },
+      "pathway": {
+        "min_version": "0.7",
+        "current_constraint": ">=0.7",
+        "description": "Pathway data processing framework",
+        "critical": true
+      }
+    },
+    "development_tools": {
+      "pytest": {
+        "current_constraint": null,
+        "description": "Testing framework",
+        "critical": false
+      },
+      "pytest-cov": {
+        "current_constraint": null,
+        "description": "Coverage plugin for pytest",
+        "critical": false
+      },
+      "ruff": {
+        "current_constraint": null,
+        "description": "Fast Python linter",
+        "critical": false
+      },
+      "mypy": {
+        "current_constraint": null,
+        "description": "Static type checker",
+        "critical": false
+      }
+    }
+  },
+  "external_compilers": {
+    "typescript": {
+      "current_version": "5.9.2",
+      "installation": "npm install -g typescript@latest",
+      "version_check": "tsc --version",
+      "description": "TypeScript compiler for Zod validation",
+      "critical": true,
+      "dockerfile_location": "RUN npm install -g typescript@latest"
+    },
+    "node": {
+      "current_version": "v22.19.0",
+      "installation": "NodeSource repository installation",
+      "version_check": "node --version",
+      "description": "Node.js runtime for TypeScript",
+      "critical": true,
+      "dockerfile_location": "curl -fsSL https://deb.nodesource.com/setup_22.x | bash -"
+    },
+    "java": {
+      "current_version": "21.0.8",
+      "installation": "Docker base image default-jdk",
+      "version_check": "java --version",
+      "description": "Java JDK for Jackson validation",
+      "critical": true,
+      "dockerfile_location": "apt-get install default-jdk"
+    },
+    "kotlin": {
+      "current_version": "v2.2.20",
+      "installation": "Direct download from GitHub releases",
+      "version_check": "kotlinc -version",
+      "description": "Kotlin compiler for data class validation",
+      "critical": true,
+      "dockerfile_location": "wget kotlin-compiler-2.2.20.zip",
+      "update_url": "https://github.com/JetBrains/kotlin/releases/latest"
+    },
+    "protoc": {
+      "current_version": "3.21.12",
+      "installation": "apt-get install protobuf-compiler",
+      "version_check": "protoc --version",
+      "description": "Protocol Buffers compiler",
+      "critical": true,
+      "dockerfile_location": "apt-get install protobuf-compiler"
+    }
+  },
+  "external_libraries": {
+    "jackson": {
+      "core_version": "2.19.0",
+      "databind_version": "2.19.0",
+      "annotations_version": "2.19.0",
+      "validation_api_version": "2.0.1.Final",
+      "hibernate_validator_version": "6.2.5.Final",
+      "description": "Jackson JSON processing libraries for Java",
+      "dockerfile_location": "wget jackson-*.jar",
+      "update_check": "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/"
+    },
+    "kotlinx_serialization": {
+      "core_version": "1.9.0",
+      "json_version": "1.9.0",
+      "description": "Kotlin serialization libraries",
+      "dockerfile_location": "wget kotlinx-serialization-*.jar",
+      "update_check": "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/"
+    }
+  },
+  "update_strategy": {
+    "check_frequency": "weekly",
+    "auto_update_dev_tools": true,
+    "auto_update_critical_libs": false,
+    "testing_required": ["validation", "compilation", "docker_build"],
+    "notification_methods": ["github_issue", "workflow_failure"]
+  }
+}

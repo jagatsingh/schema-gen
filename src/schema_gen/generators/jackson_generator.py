@@ -102,13 +102,15 @@ class JacksonGenerator:
         if description:
             lines.extend(["/**", f" * {description}", " */"])
 
+        # Only the base class should be public, variants should be package-private
+        visibility = "public " if is_base_class else ""
         lines.extend(
             [
                 "@JsonInclude(JsonInclude.Include.NON_NULL)",
                 "@JsonPropertyOrder({"
                 + ", ".join(f'"{f.name}"' for f in fields)
                 + "})",
-                f"public class {class_name} {{",
+                f"{visibility}class {class_name} {{",
             ]
         )
 
@@ -182,13 +184,23 @@ class JacksonGenerator:
                 annotations.append("    @Email")
 
         elif field.type in [FieldType.INTEGER, FieldType.FLOAT]:
-            validation_parts = []
             if field.min_value is not None:
-                validation_parts.append(f"value = {field.min_value}")
-            if validation_parts:
-                annotations.append(f"    @Min({', '.join(validation_parts)})")
+                # For integer fields, use the value directly
+                # For float fields, convert to int for @Min annotation compatibility
+                min_val = (
+                    int(field.min_value)
+                    if field.type == FieldType.FLOAT
+                    else field.min_value
+                )
+                annotations.append(f"    @Min(value = {min_val})")
             if field.max_value is not None:
-                annotations.append(f"    @Max({field.max_value})")
+                # Same conversion for max value
+                max_val = (
+                    int(field.max_value)
+                    if field.type == FieldType.FLOAT
+                    else field.max_value
+                )
+                annotations.append(f"    @Max({max_val})")
 
         lines.extend(annotations)
 

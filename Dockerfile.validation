@@ -20,15 +20,18 @@ RUN apt-get update && apt-get install -y \
     # Java environment
     default-jdk \
     maven \
-    # Node.js and npm (for TypeScript)
-    nodejs \
-    npm \
     # Protocol Buffers
     protobuf-compiler \
     # Additional utilities
     vim \
     less \
     tree \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js LTS v22.19.0 from NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs=22.19.0-1nodesource1 \
+    && apt-mark hold nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install TypeScript globally
@@ -43,12 +46,36 @@ RUN mkdir -p /opt/typescript-validation \
     && npm init -y \
     && npm install zod @types/node typescript
 
+# Create proper TypeScript configuration for Zod validation
+RUN cat > /opt/typescript-validation/tsconfig.json << 'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+EOF
+
+# Create src directory for TypeScript validation
+RUN mkdir -p /opt/typescript-validation/src
+
 # Install Kotlin compiler
-RUN curl -s https://api.github.com/repos/JetBrains/kotlin/releases/latest \
-    | grep "browser_download_url.*kotlin-compiler.*zip" \
-    | cut -d '"' -f 4 \
-    | head -1 \
-    | xargs wget -O kotlin-compiler.zip \
+RUN wget -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip" \
     && unzip kotlin-compiler.zip -d /opt \
     && rm kotlin-compiler.zip \
     && ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc \
@@ -57,9 +84,9 @@ RUN curl -s https://api.github.com/repos/JetBrains/kotlin/releases/latest \
 # Create directory for Kotlin dependencies and download serialization library
 RUN mkdir -p /opt/kotlin-libs \
     && wget -O /opt/kotlin-libs/kotlinx-serialization-core.jar \
-       https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.6.2/kotlinx-serialization-core-jvm-1.6.2.jar \
+       https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.9.0/kotlinx-serialization-core-jvm-1.9.0.jar \
     && wget -O /opt/kotlin-libs/kotlinx-serialization-json.jar \
-       https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.6.2/kotlinx-serialization-json-jvm-1.6.2.jar
+       https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.9.0/kotlinx-serialization-json-jvm-1.9.0.jar
 
 # Create directory for Java dependencies
 RUN mkdir -p /opt/java-libs
@@ -67,9 +94,9 @@ RUN mkdir -p /opt/java-libs
 # Download Jackson and validation dependencies for Java
 RUN cd /opt/java-libs && \
     # Jackson Core
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.18.0/jackson-core-2.18.0.jar && \
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.18.0/jackson-databind-2.18.0.jar && \
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.18.0/jackson-annotations-2.18.0.jar && \
+    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar && \
+    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar && \
+    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar && \
     # Bean Validation API
     wget https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar && \
     # Hibernate Validator (reference implementation)

@@ -1,0 +1,171 @@
+name: Dependency Version Check
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Allow manual trigger
+  push:
+    paths:
+      - 'Dockerfile.validation'
+      - 'pyproject.toml'
+      - '.github/workflows/dependency-check.yml'
+
+jobs:
+  check-dependencies:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependency checker requirements
+        run: |
+          pip install requests packaging
+
+      - name: Install validation dependencies
+        run: |
+          pip install pydantic>=2.0 sqlalchemy>=2.0 jsonschema>=4.0 graphql-core>=3.2 avro-python3>=1.11 pathway>=0.7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install TypeScript
+        run: npm install -g typescript
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'openjdk'
+          java-version: '21'
+
+      - name: Install Protocol Buffers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Check dependency versions
+        id: check
+        run: |
+          python scripts/check_dependency_versions.py > dependency_report.txt 2>&1 || true
+          echo "report_content<<EOF" >> $GITHUB_OUTPUT
+          cat dependency_report.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-report
+          path: |
+            dependency_report.txt
+            dependency_check.json
+
+      - name: Check for updates needed
+        id: updates
+        run: |
+          if grep -q "UPDATE AVAILABLE" dependency_report.txt; then
+            echo "updates_needed=true" >> $GITHUB_OUTPUT
+            echo "🟡 Dependency updates are available"
+          else
+            echo "updates_needed=false" >> $GITHUB_OUTPUT
+            echo "✅ All dependencies are current"
+          fi
+
+      - name: Create or update issue
+        if: steps.updates.outputs.updates_needed == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const title = '🔄 Dependency Updates Available';
+            const body = `## Dependency Update Report
+
+            This is an automated report of available dependency updates.
+
+            ### Report Details
+            \`\`\`
+            ${{ steps.check.outputs.report_content }}
+            \`\`\`
+
+            ### Next Steps
+            1. Review the recommended updates
+            2. Test compatibility with updated versions
+            3. Update Dockerfile.validation and pyproject.toml as needed
+            4. Verify all validation tests still pass
+
+            ### Files to Update
+            - \`Dockerfile.validation\` - External compiler versions
+            - \`pyproject.toml\` - Python library versions
+            - Library-specific JAR downloads in Dockerfile
+
+            ---
+            *This issue was automatically created by the dependency-check workflow.*
+            *Last updated: ${new Date().toISOString()}*
+            `;
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: ['dependencies', 'automation']
+            });
+
+            const existingIssue = issues.data.find(issue => issue.title === title);
+
+            if (existingIssue) {
+              // Update existing issue
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: body
+              });
+              console.log(`Updated existing issue #${existingIssue.number}`);
+            } else {
+              // Create new issue
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['dependencies', 'automation', 'enhancement']
+              });
+              console.log(`Created new issue #${issue.data.number}`);
+            }
+
+      - name: Comment on success
+        if: steps.updates.outputs.updates_needed == 'false'
+        run: |
+          echo "✅ All dependencies are up to date! No action needed."
+
+  validate-docker-build:
+    runs-on: ubuntu-latest
+    needs: check-dependencies
+    if: always() # Run even if dependency check finds updates
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test Docker build
+        run: |
+          echo "🐳 Testing Docker build with current dependencies..."
+          docker build -f Dockerfile.validation -t schema-gen-validation:test . --no-cache
+          echo "✅ Docker build successful"
+
+      - name: Test validation environment
+        run: |
+          echo "🧪 Testing validation environment..."
+          docker run --rm schema-gen-validation:test validate-compilers
+          echo "✅ Validation environment working"

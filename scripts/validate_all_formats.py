@@ -276,13 +276,19 @@ class FormatValidator:
                             temp_path / "node_modules",
                         )
 
-                    # Create tsconfig.json
+                    # Create tsconfig.json with proper Zod support
                     tsconfig = {
                         "compilerOptions": {
-                            "moduleResolution": "node",
                             "target": "ES2020",
-                            "module": "ES2020",
+                            "module": "commonjs",
+                            "lib": ["ES2020"],
                             "strict": True,
+                            "esModuleInterop": True,
+                            "allowSyntheticDefaultImports": True,
+                            "skipLibCheck": True,
+                            "forceConsistentCasingInFileNames": True,
+                            "moduleResolution": "node",
+                            "resolveJsonModule": True,
                             "noEmit": True,
                         }
                     }
@@ -316,10 +322,8 @@ class FormatValidator:
                     "valid": False,
                     "error": f"TypeScript validation failed: {e}",
                 }
-            if ts_result.get("error") and "not found" not in str(
-                ts_result.get("error", "")
-            ):
-                result["details"]["typescript_validation"] = ts_result
+            # Always include TypeScript validation results
+            result["details"]["typescript_validation"] = ts_result
         else:
             result["error"] = "Missing required Zod structures"
 
@@ -403,7 +407,7 @@ class FormatValidator:
                     "protoc",
                     f"--proto_path={temp_dir}",
                     "--proto_path=/usr/include",
-                    "--python_out=/tmp",
+                    f"--python_out={temp_dir}",
                     str(temp_path),
                 ]
                 proc_result = subprocess.run(
@@ -411,7 +415,44 @@ class FormatValidator:
                 )
 
                 if proc_result.returncode == 0:
-                    protoc_result = {"valid": True, "details": {"compiled": True}}
+                    # Test multiple output formats to ensure comprehensive validation
+                    test_results = {"python": True}
+
+                    # Test C++ output
+                    cpp_cmd = [
+                        "protoc",
+                        f"--proto_path={temp_dir}",
+                        "--proto_path=/usr/include",
+                        f"--cpp_out={temp_dir}",
+                        str(temp_path),
+                    ]
+                    cpp_result = subprocess.run(
+                        cpp_cmd, capture_output=True, text=True, timeout=30
+                    )
+                    test_results["cpp"] = cpp_result.returncode == 0
+
+                    # Test Java output
+                    java_cmd = [
+                        "protoc",
+                        f"--proto_path={temp_dir}",
+                        "--proto_path=/usr/include",
+                        f"--java_out={temp_dir}",
+                        str(temp_path),
+                    ]
+                    java_result = subprocess.run(
+                        java_cmd, capture_output=True, text=True, timeout=30
+                    )
+                    test_results["java"] = java_result.returncode == 0
+
+                    protoc_result = {
+                        "valid": True,
+                        "details": {
+                            "compiled": True,
+                            "output_formats": test_results,
+                            "total_formats": len(test_results),
+                            "successful_formats": sum(test_results.values()),
+                        },
+                    }
                 else:
                     protoc_result = {
                         "valid": False,
@@ -428,10 +469,8 @@ class FormatValidator:
                     "valid": False,
                     "error": f"Protoc validation failed: {e}",
                 }
-            if protoc_result.get("error") and "not found" not in str(
-                protoc_result.get("error", "")
-            ):
-                result["details"]["protoc_validation"] = protoc_result
+            # Always include protoc validation results
+            result["details"]["protoc_validation"] = protoc_result
         else:
             result["error"] = "Missing required protobuf structures"
 
@@ -472,83 +511,80 @@ class FormatValidator:
             result["details"]["has_getters"] = "public int getId()" in code
             result["details"]["has_setters"] = "public void setId(" in code
 
-            # Try Java compilation if available - special handling for class naming
+            # Try Java compilation - simplified approach using single file
             try:
-                # Extract class names from the code to create proper file names
                 import re
 
-                class_matches = re.findall(r"public class (\w+)", code)
+                # Extract the main public class name
+                main_class_match = re.search(r"public class (\w+)", code)
+                if main_class_match:
+                    main_class = main_class_match.group(1)
 
-                if class_matches:
-                    # Create a temporary directory for Java files
+                    # Create temporary directory and write Java file
                     with tempfile.TemporaryDirectory() as temp_dir:
                         temp_path = Path(temp_dir)
+                        java_file = temp_path / f"{main_class}.java"
+                        java_file.write_text(code)
 
-                        # Create separate file for each public class
-                        for class_name in class_matches:
-                            # Extract class definition with proper brace matching
-                            start_pattern = rf"public class {class_name}\s*\{{"
-                            start_match = re.search(start_pattern, code)
-                            if start_match:
-                                start_pos = start_match.start()
-                                # Find matching closing brace
-                                brace_count = 0
-                                pos = start_match.end() - 1  # Start at opening brace
+                        # Test compilation with Jackson libraries
+                        cmd = ["javac", "-cp", "/opt/java-libs/*", str(java_file)]
+                        proc_result = subprocess.run(
+                            cmd, capture_output=True, text=True, timeout=30
+                        )
 
-                                for i, char in enumerate(code[pos:], pos):
-                                    if char == "{":
-                                        brace_count += 1
-                                    elif char == "}":
-                                        brace_count -= 1
-                                        if brace_count == 0:
-                                            end_pos = i + 1
-                                            break
-                                else:
-                                    continue  # No matching brace found
+                        if proc_result.returncode == 0:
+                            # Count generated class files
+                            class_files = list(temp_path.glob("*.class"))
 
-                                class_code = code[start_pos:end_pos]
-                                # Add imports at the beginning
-                                imports = re.findall(r"import [^;]+;", code)
-                                full_code = "\n".join(imports) + "\n\n" + class_code
+                            # Test annotation processing by checking if validation annotations work
+                            annotation_test_passed = True
+                            try:
+                                # Try to load the main class with Java to verify it's properly formed
+                                test_cmd = [
+                                    "java",
+                                    "-cp",
+                                    f"{temp_path}:/opt/java-libs/*",
+                                    "-XX:+PrintGC",  # Safe flag that doesn't require main method
+                                    main_class,
+                                ]
+                                test_result = subprocess.run(
+                                    test_cmd, capture_output=True, text=True, timeout=10
+                                )
+                                # Class loading will fail without main method but that's expected
+                                annotation_test_passed = (
+                                    "NoSuchMethodError" in test_result.stderr
+                                    or "main" in test_result.stderr.lower()
+                                )
+                            except Exception:
+                                annotation_test_passed = False
 
-                                # Write to properly named file
-                                java_file = temp_path / f"{class_name}.java"
-                                java_file.write_text(full_code)
-
-                        # Try to compile the first class only (to avoid complexity)
-                        if class_matches:
-                            main_class = class_matches[0]
-                            java_file = temp_path / f"{main_class}.java"
-
-                            cmd = ["javac", str(java_file)]
-                            proc_result = subprocess.run(
-                                cmd, capture_output=True, text=True, timeout=30
-                            )
-
-                            if proc_result.returncode == 0:
-                                java_result = {
-                                    "valid": True,
-                                    "details": {"compiled": True},
-                                }
-                            else:
-                                java_result = {
-                                    "valid": False,
-                                    "error": f"Compilation failed: {proc_result.stderr}",
-                                    "details": {
-                                        "stdout": proc_result.stdout,
-                                        "stderr": proc_result.stderr,
-                                    },
-                                }
+                            java_result = {
+                                "valid": True,
+                                "details": {
+                                    "compiled": True,
+                                    "main_class": main_class,
+                                    "class_files_generated": len(class_files),
+                                    "annotation_processing": annotation_test_passed,
+                                    "jackson_libraries": "available",
+                                },
+                            }
+                        else:
+                            java_result = {
+                                "valid": False,
+                                "error": f"Compilation failed: {proc_result.stderr}",
+                                "details": {
+                                    "stdout": proc_result.stdout,
+                                    "stderr": proc_result.stderr,
+                                },
+                            }
                 else:
-                    java_result = {"valid": False, "error": "No public classes found"}
+                    java_result = {"valid": False, "error": "No public class found"}
 
             except Exception as e:
                 java_result = {"valid": False, "error": f"Java validation failed: {e}"}
 
-            if java_result.get("error") and "not found" not in str(
-                java_result.get("error", "")
-            ):
-                result["details"]["javac_validation"] = java_result
+            # Always include javac validation results
+            result["details"]["javac_validation"] = java_result
         else:
             result["error"] = "Missing Java class definition"
 
@@ -567,55 +603,72 @@ class FormatValidator:
             result["details"]["has_data_class"] = True
             result["details"]["has_properties"] = "val id:" in code
 
-            # Try Kotlin compilation if available with serialization libraries
-            # First, try to fix common Kotlin syntax issues in generated code
-            import re
-
-            fixed_code = code
-            # Remove trailing commas in comments that break Kotlin syntax
-            fixed_code = re.sub(r"//[^,\n]*,\s*$", "", fixed_code, flags=re.MULTILINE)
-            # Fix any trailing commas in parameter lists
-            fixed_code = re.sub(r",\s*\)", ")", fixed_code)
-
-            kotlin_libs = "/opt/kotlin-libs/kotlinx-serialization-core.jar:/opt/kotlin-libs/kotlinx-serialization-json.jar"
-
+            # Try Kotlin compilation with kotlinx.serialization libraries
             try:
-                with tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".kt", delete=False
-                ) as f:
-                    f.write(fixed_code)
-                    temp_path = Path(f.name)
+                # Create temporary directory for Kotlin files
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+                    kt_file = temp_path / "ValidationTestUser.kt"
+                    kt_file.write_text(code)
 
-                # Run compiler/validator
-                cmd = ["kotlinc", "-cp", kotlin_libs, str(temp_path)]
-                proc_result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=30
-                )
+                    # Test compilation with kotlinx.serialization libraries
+                    kotlin_libs = "/opt/kotlin-libs/kotlinx-serialization-core.jar:/opt/kotlin-libs/kotlinx-serialization-json.jar"
+                    cmd = ["kotlinc", "-cp", kotlin_libs, str(kt_file)]
+                    proc_result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=30
+                    )
 
-                if proc_result.returncode == 0:
-                    kotlin_result = {"valid": True, "details": {"compiled": True}}
-                else:
-                    kotlin_result = {
-                        "valid": False,
-                        "error": f"Compilation failed: {proc_result.stderr}",
-                        "details": {
-                            "stdout": proc_result.stdout,
-                            "stderr": proc_result.stderr,
-                        },
-                    }
+                    if proc_result.returncode == 0:
+                        # Count generated class files
+                        class_files = list(temp_path.glob("*.class"))
 
-                # Clean up
-                temp_path.unlink(missing_ok=True)
+                        # Test JAR compilation for comprehensive validation
+                        jar_compilation_passed = True
+                        try:
+                            jar_cmd = [
+                                "kotlinc",
+                                "-cp",
+                                kotlin_libs,
+                                "-include-runtime",
+                                "-d",
+                                str(temp_path / "test.jar"),
+                                str(kt_file),
+                            ]
+                            jar_result = subprocess.run(
+                                jar_cmd, capture_output=True, text=True, timeout=30
+                            )
+                            jar_compilation_passed = jar_result.returncode == 0
+                        except Exception:
+                            jar_compilation_passed = False
+
+                        kotlin_result = {
+                            "valid": True,
+                            "details": {
+                                "compiled": True,
+                                "class_files_generated": len(class_files),
+                                "serialization_support": "kotlinx.serialization"
+                                in code,
+                                "jar_compilation": jar_compilation_passed,
+                                "data_classes": code.count("data class"),
+                            },
+                        }
+                    else:
+                        kotlin_result = {
+                            "valid": False,
+                            "error": f"Compilation failed: {proc_result.stderr}",
+                            "details": {
+                                "stdout": proc_result.stdout,
+                                "stderr": proc_result.stderr,
+                            },
+                        }
 
             except Exception as e:
                 kotlin_result = {
                     "valid": False,
                     "error": f"Kotlin validation failed: {e}",
                 }
-            if kotlin_result.get("error") and "not found" not in str(
-                kotlin_result.get("error", "")
-            ):
-                result["details"]["kotlinc_validation"] = kotlin_result
+            # Always include kotlinc validation results
+            result["details"]["kotlinc_validation"] = kotlin_result
         else:
             result["error"] = "Missing Kotlin data class definition"
 

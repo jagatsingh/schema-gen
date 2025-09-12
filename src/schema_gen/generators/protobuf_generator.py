@@ -285,7 +285,23 @@ class ProtobufGenerator:
         for field in schema.fields:
             check_field(field)
 
+        # Check if we need google.protobuf.Empty for service definitions
+        if self._has_service_definition(schema):
+            imports.append('import "google/protobuf/empty.proto";')
+
         return sorted(set(imports))
+
+    def _has_service_definition(self, schema: USRSchema) -> bool:
+        """Check if schema will generate a service definition"""
+        # Only generate service for schemas that have CRUD-like variants
+        crud_variants = []
+        for variant_name in schema.variants:
+            if any(
+                crud in variant_name.lower()
+                for crud in ["create", "update", "get", "list", "delete"]
+            ):
+                crud_variants.append(variant_name)
+        return len(crud_variants) > 0
 
     def _generate_service_definition(self, schema: USRSchema) -> str | None:
         """Generate gRPC service definition if appropriate"""
