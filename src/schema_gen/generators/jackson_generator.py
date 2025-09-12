@@ -25,9 +25,7 @@ class JacksonGenerator:
         if variant:
             class_name = self._variant_to_class_name(schema.name, variant)
 
-        return self._generate_single_class(
-            class_name, schema.description, fields, is_base_class=(variant is None)
-        )
+        return self._generate_single_class(class_name, schema.description, fields)
 
     def generate_file(self, schema: USRSchema) -> str:
         """Generate a complete Java file with all class variants
@@ -72,7 +70,7 @@ class JacksonGenerator:
 
         # Generate base class
         base_class = self._generate_single_class(
-            schema.name, schema.description, schema.fields, is_base_class=True
+            schema.name, schema.description, schema.fields
         )
         lines.append(base_class)
         lines.append("")
@@ -94,7 +92,6 @@ class JacksonGenerator:
         class_name: str,
         description: str,
         fields: list[USRField],
-        is_base_class: bool = False,
     ) -> str:
         """Generate a single Java class definition"""
         lines = []
@@ -102,15 +99,14 @@ class JacksonGenerator:
         if description:
             lines.extend(["/**", f" * {description}", " */"])
 
-        # Only the base class should be public, variants should be package-private
-        visibility = "public " if is_base_class else ""
+        # All classes should be public
         lines.extend(
             [
                 "@JsonInclude(JsonInclude.Include.NON_NULL)",
                 "@JsonPropertyOrder({"
                 + ", ".join(f'"{f.name}"' for f in fields)
                 + "})",
-                f"{visibility}class {class_name} {{",
+                f"public class {class_name} {{",
             ]
         )
 
