@@ -37,6 +37,12 @@ RUN npm install -g typescript@latest
 # Install TypeScript dependencies for validation
 RUN npm install -g zod @types/node
 
+# Create a global node_modules directory for TypeScript validation
+RUN mkdir -p /opt/typescript-validation \
+    && cd /opt/typescript-validation \
+    && npm init -y \
+    && npm install zod @types/node typescript
+
 # Install Kotlin compiler
 RUN curl -s https://api.github.com/repos/JetBrains/kotlin/releases/latest \
     | grep "browser_download_url.*kotlin-compiler.*zip" \

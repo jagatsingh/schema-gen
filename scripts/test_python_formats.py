@@ -22,8 +22,9 @@ def test_format_with_library(format_name: str, code: str, test_func) -> dict[str
     }
 
     try:
-        # First test Python syntax
-        ast.parse(code)
+        # First test Python syntax (skip for non-Python formats)
+        if format_name not in ["graphql", "jsonschema", "avro"]:
+            ast.parse(code)
         result["syntax_valid"] = True
 
         # Then test with the specific library
@@ -431,10 +432,50 @@ def test_json_schema_format(code: str) -> dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-def test_graphql_format(_code: str) -> dict[str, Any]:
-    """Test GraphQL schema functionality - currently not implemented"""
-    # GraphQL generator not fully wired up yet in the system
-    return {"success": False, "error": "GraphQL generator not implemented yet"}
+def test_graphql_format(code: str) -> dict[str, Any]:
+    """Test GraphQL schema functionality"""
+    try:
+        # Try to import graphql-core for validation
+        try:
+            import graphql
+        except ImportError:
+            return {"success": False, "error": "graphql-core not installed"}
+
+        # Basic syntax validation - check for GraphQL constructs
+        if "type " not in code and "scalar " not in code:
+            return {"success": False, "error": "No GraphQL types found"}
+
+        # Try to parse the GraphQL schema
+        try:
+            schema = graphql.build_schema(code)
+            type_map = schema.type_map
+
+            # Check if we have meaningful types (not just built-in scalars)
+            custom_types = [
+                name
+                for name in type_map
+                if not name.startswith("__")
+                and name not in ["String", "Int", "Float", "Boolean", "ID"]
+            ]
+
+            if not custom_types:
+                return {"success": False, "error": "No custom types defined"}
+
+            return {
+                "success": True,
+                "details": {
+                    "schema_valid": True,
+                    "custom_types": custom_types,
+                    "total_types": len(custom_types),
+                    "built_in_scalars": ["String", "Int", "Float", "Boolean"],
+                },
+            }
+
+        except Exception as e:
+            return {"success": False, "error": f"GraphQL schema parsing failed: {e}"}
+
+    except Exception as e:
+        return {"success": False, "error": f"GraphQL validation failed: {e}"}
 
 
 def test_pathway_format(code: str) -> dict[str, Any]:
@@ -623,13 +664,13 @@ type Query {
 import pathway as pw
 from datetime import datetime
 
-class User(pw.Schema):
-    id: int = pw.column_definition(primary_key=True)
-    name: str = pw.column_definition()
-    email: str = pw.column_definition()
-    age: int | None = pw.column_definition(default=None)
-    is_active: bool = pw.column_definition(default=True)
-    created_at: datetime = pw.column_definition()
+class User(pw.Table):
+    id: pw.ColumnExpression  # int
+    name: pw.ColumnExpression  # str
+    email: pw.ColumnExpression  # str
+    age: pw.ColumnExpression  # int | None
+    is_active: pw.ColumnExpression  # bool
+    created_at: pw.ColumnExpression  # datetime
 """,
     }
 
@@ -639,7 +680,7 @@ def main():
     print("🐍 Comprehensive Python Format Validation")
     print("=" * 50)
 
-    # Test format mappings (working formats only)
+    # Test format mappings (working formats)
     format_tests = {
         "pydantic": test_pydantic_format,
         "sqlalchemy": test_sqlalchemy_format,
@@ -647,13 +688,12 @@ def main():
         "typeddict": test_typeddict_format,
         "avro": test_avro_format,
         "jsonschema": test_json_schema_format,
+        "graphql": test_graphql_format,
+        "pathway": test_pathway_format,
     }
 
-    # Not yet implemented formats
-    not_implemented = {
-        "graphql": "GraphQL generator not fully wired up",
-        "pathway": "Pathway generator not fully wired up",
-    }
+    # Not yet implemented formats (none currently)
+    not_implemented = {}
 
     # Generate sample schemas
     sample_schemas = generate_sample_schemas()

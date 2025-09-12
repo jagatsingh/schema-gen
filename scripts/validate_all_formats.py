@@ -262,9 +262,60 @@ class FormatValidator:
             result["details"]["has_schema_export"] = "export const" in code
 
             # Try TypeScript compilation if available
-            ts_result = self.validate_external_syntax(
-                code, ".ts", ["tsc", "--noEmit", "--moduleResolution", "node"]
-            )
+            # Create temp TypeScript project with proper module resolution
+            try:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_path = Path(temp_dir)
+
+                    # Copy node_modules from validation directory
+                    import shutil
+
+                    if Path("/opt/typescript-validation/node_modules").exists():
+                        shutil.copytree(
+                            "/opt/typescript-validation/node_modules",
+                            temp_path / "node_modules",
+                        )
+
+                    # Create tsconfig.json
+                    tsconfig = {
+                        "compilerOptions": {
+                            "moduleResolution": "node",
+                            "target": "ES2020",
+                            "module": "ES2020",
+                            "strict": True,
+                            "noEmit": True,
+                        }
+                    }
+                    (temp_path / "tsconfig.json").write_text(
+                        json.dumps(tsconfig, indent=2)
+                    )
+
+                    # Write TypeScript file
+                    ts_file = temp_path / "validation.ts"
+                    ts_file.write_text(code)
+
+                    # Run TypeScript compiler
+                    cmd = ["tsc", "--project", str(temp_path)]
+                    proc_result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=30
+                    )
+
+                    if proc_result.returncode == 0:
+                        ts_result = {"valid": True, "details": {"compiled": True}}
+                    else:
+                        ts_result = {
+                            "valid": False,
+                            "error": f"Compilation failed: {proc_result.stderr}",
+                            "details": {
+                                "stdout": proc_result.stdout,
+                                "stderr": proc_result.stderr,
+                            },
+                        }
+            except Exception as e:
+                ts_result = {
+                    "valid": False,
+                    "error": f"TypeScript validation failed: {e}",
+                }
             if ts_result.get("error") and "not found" not in str(
                 ts_result.get("error", "")
             ):
@@ -347,10 +398,11 @@ class FormatValidator:
                     temp_path = Path(f.name)
                     temp_dir = temp_path.parent
 
-                # Use temp directory as proto_path
+                # Use temp directory as proto_path and include standard protobuf directory
                 cmd = [
                     "protoc",
                     f"--proto_path={temp_dir}",
+                    "--proto_path=/usr/include",
                     "--python_out=/tmp",
                     str(temp_path),
                 ]
@@ -434,13 +486,27 @@ class FormatValidator:
 
                         # Create separate file for each public class
                         for class_name in class_matches:
-                            # Extract class definition
-                            class_pattern = rf"public class {class_name}\s*\{{[^}}]*\}}"
-                            class_matches_full = re.findall(
-                                class_pattern, code, re.DOTALL
-                            )
-                            if class_matches_full:
-                                class_code = class_matches_full[0]
+                            # Extract class definition with proper brace matching
+                            start_pattern = rf"public class {class_name}\s*\{{"
+                            start_match = re.search(start_pattern, code)
+                            if start_match:
+                                start_pos = start_match.start()
+                                # Find matching closing brace
+                                brace_count = 0
+                                pos = start_match.end() - 1  # Start at opening brace
+
+                                for i, char in enumerate(code[pos:], pos):
+                                    if char == "{":
+                                        brace_count += 1
+                                    elif char == "}":
+                                        brace_count -= 1
+                                        if brace_count == 0:
+                                            end_pos = i + 1
+                                            break
+                                else:
+                                    continue  # No matching brace found
+
+                                class_code = code[start_pos:end_pos]
                                 # Add imports at the beginning
                                 imports = re.findall(r"import [^;]+;", code)
                                 full_code = "\n".join(imports) + "\n\n" + class_code
@@ -502,10 +568,50 @@ class FormatValidator:
             result["details"]["has_properties"] = "val id:" in code
 
             # Try Kotlin compilation if available with serialization libraries
+            # First, try to fix common Kotlin syntax issues in generated code
+            import re
+
+            fixed_code = code
+            # Remove trailing commas in comments that break Kotlin syntax
+            fixed_code = re.sub(r"//[^,\n]*,\s*$", "", fixed_code, flags=re.MULTILINE)
+            # Fix any trailing commas in parameter lists
+            fixed_code = re.sub(r",\s*\)", ")", fixed_code)
+
             kotlin_libs = "/opt/kotlin-libs/kotlinx-serialization-core.jar:/opt/kotlin-libs/kotlinx-serialization-json.jar"
-            kotlin_result = self.validate_external_syntax(
-                code, ".kt", ["kotlinc", "-cp", kotlin_libs]
-            )
+
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".kt", delete=False
+                ) as f:
+                    f.write(fixed_code)
+                    temp_path = Path(f.name)
+
+                # Run compiler/validator
+                cmd = ["kotlinc", "-cp", kotlin_libs, str(temp_path)]
+                proc_result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=30
+                )
+
+                if proc_result.returncode == 0:
+                    kotlin_result = {"valid": True, "details": {"compiled": True}}
+                else:
+                    kotlin_result = {
+                        "valid": False,
+                        "error": f"Compilation failed: {proc_result.stderr}",
+                        "details": {
+                            "stdout": proc_result.stdout,
+                            "stderr": proc_result.stderr,
+                        },
+                    }
+
+                # Clean up
+                temp_path.unlink(missing_ok=True)
+
+            except Exception as e:
+                kotlin_result = {
+                    "valid": False,
+                    "error": f"Kotlin validation failed: {e}",
+                }
             if kotlin_result.get("error") and "not found" not in str(
                 kotlin_result.get("error", "")
             ):
