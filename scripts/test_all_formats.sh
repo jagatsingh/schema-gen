@@ -211,12 +211,30 @@ UserSchema.parse(validUser);
 console.log("✅ Zod schema works");
 EOF
 
-    if npx tsc --noEmit "$temp_ts" 2>/dev/null; then
+    # Create a temp directory for TypeScript compilation with proper setup
+    temp_ts_dir=$(mktemp -d)
+    mv "$temp_ts" "$temp_ts_dir/test.ts"
+
+    # Try to use existing node_modules or install zod
+    if [ -d "/opt/typescript-validation/node_modules" ]; then
+        ln -s /opt/typescript-validation/node_modules "$temp_ts_dir/node_modules"
+    else
+        # Create package.json and install zod
+        echo '{"name":"test","dependencies":{"zod":"^3.22.0"}}' > "$temp_ts_dir/package.json"
+        (cd "$temp_ts_dir" && npm install --silent) 2>/dev/null
+    fi
+
+    # Create tsconfig.json
+    echo '{"compilerOptions":{"target":"ES2020","module":"commonjs","strict":true,"esModuleInterop":true,"skipLibCheck":true,"noEmit":true}}' > "$temp_ts_dir/tsconfig.json"
+
+    if (cd "$temp_ts_dir" && npx tsc test.ts --noEmit); then
         print_success "TypeScript compilation works"
         external_passed=$((external_passed + 1))
     else
-        print_warning "TypeScript compiler validation failed (this is optional)"
+        print_error "TypeScript compiler validation failed"
+        echo "Error: TypeScript compilation failed. Make sure TypeScript and Zod are installed."
     fi
+    rm -rf "$temp_ts_dir"
     external_tests=$((external_tests + 1))
     rm -f "$temp_ts"
 else
@@ -226,7 +244,9 @@ fi
 # Check for Java compiler
 if command_exists javac; then
     print_step "Testing Java/Jackson validation"
-    temp_java=$(mktemp --suffix=.java)
+    # Java requires file name to match class name for public classes
+    temp_dir=$(mktemp -d)
+    temp_java="$temp_dir/User.java"
     cat > "$temp_java" << 'EOF'
 public class User {
     private int id;
@@ -246,14 +266,15 @@ public class User {
 }
 EOF
 
-    if javac "$temp_java" 2>/dev/null; then
+    if javac "$temp_java"; then
         print_success "Java compilation works"
         external_passed=$((external_passed + 1))
     else
-        print_warning "Java compiler validation failed (this is optional)"
+        print_error "Java compiler validation failed"
+        echo "Error: Java compilation failed. Make sure JDK is installed."
     fi
     external_tests=$((external_tests + 1))
-    rm -f "$temp_java" "${temp_java%.java}.class"
+    rm -rf "$temp_dir"
 else
     print_warning "Java compiler not available - skipping Java validation"
 fi
@@ -273,11 +294,15 @@ message User {
 }
 EOF
 
-    if protoc --python_out=/tmp "$temp_proto" 2>/dev/null; then
+    # Get the directory of the proto file for proto_path
+    proto_dir=$(dirname "$temp_proto")
+
+    if protoc --proto_path="$proto_dir" --python_out=/tmp "$temp_proto"; then
         print_success "Protocol Buffers compilation works"
         external_passed=$((external_passed + 1))
     else
-        print_warning "Protocol Buffers compiler validation failed (this is optional)"
+        print_error "Protocol Buffers compiler validation failed"
+        echo "Error: protoc compilation failed. Make sure protobuf-compiler is installed."
     fi
     external_tests=$((external_tests + 1))
     rm -f "$temp_proto"

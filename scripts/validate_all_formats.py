@@ -267,14 +267,62 @@ class FormatValidator:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     temp_path = Path(temp_dir)
 
-                    # Copy node_modules from validation directory
+                    # Option 1: Try to use existing node_modules from validation directory
                     import shutil
 
+                    node_modules_available = False
+
                     if Path("/opt/typescript-validation/node_modules").exists():
-                        shutil.copytree(
-                            "/opt/typescript-validation/node_modules",
-                            temp_path / "node_modules",
+                        try:
+                            # Create symlink instead of copying (faster and uses less space)
+                            (temp_path / "node_modules").symlink_to(
+                                "/opt/typescript-validation/node_modules"
+                            )
+                            node_modules_available = True
+                        except Exception:
+                            # If symlink fails, try copying
+                            try:
+                                shutil.copytree(
+                                    "/opt/typescript-validation/node_modules",
+                                    temp_path / "node_modules",
+                                    symlinks=True,
+                                )
+                                node_modules_available = True
+                            except Exception as e:
+                                print(f"Warning: Could not copy node_modules: {e}")
+
+                    # Option 2: If node_modules not available, install zod locally
+                    if not node_modules_available:
+                        print("Installing Zod for TypeScript validation...")
+                        # Create package.json
+                        package_json = {
+                            "name": "temp-validation",
+                            "version": "1.0.0",
+                            "dependencies": {"zod": "^3.22.0"},
+                        }
+                        (temp_path / "package.json").write_text(
+                            json.dumps(package_json, indent=2)
                         )
+
+                        # Install zod
+                        npm_install = subprocess.run(
+                            ["npm", "install", "--silent"],
+                            cwd=temp_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                        )
+
+                        if npm_install.returncode != 0:
+                            raise Exception(
+                                f"Failed to install Zod: {npm_install.stderr}"
+                            )
+
+                        # Verify zod was installed
+                        if not (temp_path / "node_modules" / "zod").exists():
+                            raise Exception(
+                                "Zod installation failed - module not found"
+                            )
 
                     # Create tsconfig.json with proper Zod support
                     tsconfig = {
@@ -309,14 +357,18 @@ class FormatValidator:
                     if proc_result.returncode == 0:
                         ts_result = {"valid": True, "details": {"compiled": True}}
                     else:
+                        # TypeScript compilation should always work - don't fail gracefully
                         ts_result = {
                             "valid": False,
-                            "error": f"Compilation failed: {proc_result.stderr}",
+                            "error": f"TypeScript compilation failed: {proc_result.stderr}",
                             "details": {
                                 "stdout": proc_result.stdout,
                                 "stderr": proc_result.stderr,
                             },
                         }
+                        # Log the failure for debugging
+                        print("❌ TypeScript compilation failed!")
+                        print(f"Error: {proc_result.stderr}")
             except Exception as e:
                 ts_result = {
                     "valid": False,

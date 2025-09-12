@@ -253,7 +253,8 @@ class TestAllGenerators:
         # Verify content
         assert "package com.example.testuser;" in file_content
         assert "public class TestUser {" in file_content
-        assert "public class TestUserCreateRequest {" in file_content
+        # Variant classes should be package-private (not public) to allow multiple classes in one file
+        assert "class TestUserCreateRequest {" in file_content
         assert '@JsonProperty("id")' in file_content
         assert '@JsonProperty("name")' in file_content
         assert "@NotNull" in file_content

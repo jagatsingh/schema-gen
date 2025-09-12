@@ -25,7 +25,11 @@ class JacksonGenerator:
         if variant:
             class_name = self._variant_to_class_name(schema.name, variant)
 
-        return self._generate_single_class(class_name, schema.description, fields)
+        # Only the base class should be public
+        is_public = variant is None
+        return self._generate_single_class(
+            class_name, schema.description, fields, is_public
+        )
 
     def generate_file(self, schema: USRSchema) -> str:
         """Generate a complete Java file with all class variants
@@ -68,9 +72,9 @@ class JacksonGenerator:
             lines.append(import_stmt)
         lines.append("")
 
-        # Generate base class
+        # Generate base class (public)
         base_class = self._generate_single_class(
-            schema.name, schema.description, schema.fields
+            schema.name, schema.description, schema.fields, is_public=True
         )
         lines.append(base_class)
         lines.append("")
@@ -79,8 +83,9 @@ class JacksonGenerator:
         for variant_name in schema.variants:
             variant_fields = schema.get_variant_fields(variant_name)
             variant_class_name = self._variant_to_class_name(schema.name, variant_name)
+            # Variant classes are package-private (not public)
             variant_class = self._generate_single_class(
-                variant_class_name, schema.description, variant_fields
+                variant_class_name, schema.description, variant_fields, is_public=False
             )
             lines.append(variant_class)
             lines.append("")
@@ -92,6 +97,7 @@ class JacksonGenerator:
         class_name: str,
         description: str,
         fields: list[USRField],
+        is_public: bool = True,
     ) -> str:
         """Generate a single Java class definition"""
         lines = []
@@ -99,14 +105,15 @@ class JacksonGenerator:
         if description:
             lines.extend(["/**", f" * {description}", " */"])
 
-        # All classes should be public
+        # Only the main class should be public, variants are package-private
+        class_modifier = "public " if is_public else ""
         lines.extend(
             [
                 "@JsonInclude(JsonInclude.Include.NON_NULL)",
                 "@JsonPropertyOrder({"
                 + ", ".join(f'"{f.name}"' for f in fields)
                 + "})",
-                f"public class {class_name} {{",
+                f"{class_modifier}class {class_name} {{",
             ]
         )
 
