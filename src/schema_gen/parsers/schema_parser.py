@@ -1,9 +1,13 @@
 """Parser to convert schema_gen Schema classes to USR format"""
 
+import logging
+import warnings
 from enum import Enum
 
 from ..core.schema import SchemaRegistry
 from ..core.usr import FieldType, TypeMapper, USREnum, USRSchema
+
+logger = logging.getLogger(__name__)
 
 
 class SchemaParser:
@@ -83,7 +87,7 @@ class SchemaParser:
         # Extract custom code if available
         custom_code = getattr(schema_class, "_custom_code", {})
 
-        return USRSchema(
+        usr_schema = USRSchema(
             name=schema_class.__name__,
             fields=usr_fields,
             description=schema_class.__doc__,
@@ -93,16 +97,51 @@ class SchemaParser:
             metadata={},
         )
 
+        # Validate the parsed schema
+        issues = usr_schema.validate()
+        errors = [i for i in issues if i.severity == "error"]
+        warns = [i for i in issues if i.severity == "warning"]
+        infos = [i for i in issues if i.severity == "info"]
+
+        for info in infos:
+            logger.info("Schema '%s': %s", usr_schema.name, info.message)
+
+        for warn in warns:
+            warnings.warn(
+                f"Schema '{usr_schema.name}': {warn.message}",
+                stacklevel=2,
+            )
+
+        if errors:
+            error_msgs = [f"  - {e.message}" for e in errors]
+            raise ValueError(
+                f"Schema '{usr_schema.name}' has validation errors:\n"
+                + "\n".join(error_msgs)
+            )
+
+        return usr_schema
+
     def parse_all_schemas(self) -> list[USRSchema]:
         """Parse all registered schemas to USR format
 
         Returns:
             List of USRSchema objects for all registered schemas
+
+        Raises:
+            ValueError: If any schema has validation errors
         """
         usr_schemas = []
+        all_errors = []
         for _schema_name, schema_class in SchemaRegistry.get_all_schemas().items():
-            usr_schema = self.parse_schema(schema_class)
-            usr_schemas.append(usr_schema)
+            try:
+                usr_schema = self.parse_schema(schema_class)
+                usr_schemas.append(usr_schema)
+            except ValueError as e:
+                all_errors.append(str(e))
+
+        if all_errors:
+            raise ValueError("Schema validation failed:\n" + "\n".join(all_errors))
+
         return usr_schemas
 
     def parse_schema_by_name(self, schema_name: str) -> USRSchema:

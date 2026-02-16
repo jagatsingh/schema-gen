@@ -74,11 +74,17 @@ class Config:
         try:
             namespace = {}
             exec(config_file.read_text(), namespace)
+        except SyntaxError as e:
+            raise SyntaxError(
+                f"Syntax error in config file '{config_path}': {e}"
+            ) from e
+        except (NameError, ImportError) as e:
+            raise type(e)(f"Error loading config file '{config_path}': {e}") from e
 
-            if "config" in namespace:
-                return namespace["config"]
-            else:
-                return cls()  # Return default if no config found
-        except (SyntaxError, NameError, ImportError, Exception):
-            # If config file has errors, return default config
-            return cls()
+        if "config" not in namespace:
+            raise ValueError(
+                f"Config file '{config_path}' must define a 'config' variable. "
+                f"Example: config = Config(targets=['pydantic'])"
+            )
+
+        return namespace["config"]

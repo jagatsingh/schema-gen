@@ -9,6 +9,10 @@ from ..parsers.schema_parser import SchemaParser
 from .config import Config
 
 
+class SchemaImportError(Exception):
+    """Raised when a schema file cannot be imported"""
+
+
 class SchemaGenerationEngine:
     """Main engine that orchestrates schema generation"""
 
@@ -18,9 +22,14 @@ class SchemaGenerationEngine:
 
         # Initialize generators based on config targets using the registry
         self.generators = {}
+        invalid_targets = [t for t in config.targets if t not in GENERATOR_REGISTRY]
+        if invalid_targets:
+            available = sorted(GENERATOR_REGISTRY.keys())
+            raise ValueError(
+                f"Unknown target(s): {invalid_targets}. Available targets: {available}"
+            )
         for target in config.targets:
-            if target in GENERATOR_REGISTRY:
-                self.generators[target] = GENERATOR_REGISTRY[target]()
+            self.generators[target] = GENERATOR_REGISTRY[target]()
 
     def load_schemas_from_directory(self, input_dir: str = None):
         """Load all schema files from input directory
@@ -47,7 +56,9 @@ class SchemaGenerationEngine:
             try:
                 self._import_schema_file(schema_file)
             except Exception as e:
-                print(f"Warning: Failed to import {schema_file}: {e}")
+                raise SchemaImportError(
+                    f"Failed to import schema file {schema_file}: {e}"
+                ) from e
 
     def generate_all(self, targets: list[str] = None, output_dir: str = None):
         """Generate all schemas for specified targets
@@ -72,8 +83,10 @@ class SchemaGenerationEngine:
         # Generate for each target
         for target in targets:
             if target not in self.generators:
-                print(f"Warning: Generator for '{target}' not implemented yet")
-                continue
+                raise ValueError(
+                    f"Generator for '{target}' not found. "
+                    f"Available: {sorted(self.generators.keys())}"
+                )
 
             self._generate_target(target, schemas, output_dir)
 

@@ -1,18 +1,14 @@
 repos:
-  # Schema Gen specific hooks (using our own published hooks)
-  # Temporarily disabled until we have actual schemas to validate
-  # - repo: local
-  #   hooks:
-  #     - id: schema-gen-validate
-  #       name: Validate generated schemas
-  #       entry: uv run schema-gen validate
-  #       language: system
-  #       pass_filenames: false
-  #       files: '\.py$'
-  #       stages: [pre-commit]
-
   - repo: local
     hooks:
+      - id: schema-gen-validate
+        name: Validate generated schemas
+        entry: uv run schema-gen validate
+        language: system
+        pass_filenames: false
+        files: '\.py$'
+        stages: [pre-commit]
+
       - id: schema-gen-generate
         name: Generate schemas
         entry: uv run schema-gen generate

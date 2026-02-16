@@ -252,9 +252,16 @@ class USRSchema:
         return result
 
     def get_variant_fields(self, variant_name: str) -> list[USRField]:
-        """Get fields for a specific variant"""
+        """Get fields for a specific variant
+
+        Raises:
+            KeyError: If variant_name is not defined on this schema
+        """
         if variant_name not in self.variants:
-            return self.fields  # Return all fields if variant doesn't exist
+            raise KeyError(
+                f"Variant '{variant_name}' not found on schema '{self.name}'. "
+                f"Available: {list(self.variants.keys())}"
+            )
 
         variant_field_names = self.variants[variant_name]
         return [f for f in self.fields if f.name in variant_field_names]

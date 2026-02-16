@@ -66,5 +66,5 @@ class TestCLIBasic:
 
         result = self.runner.invoke(main, ["validate"])
 
-        assert result.exit_code == 1
-        assert "❌ Output directory does not exist!" in result.output
+        assert result.exit_code != 0
+        assert "Output directory does not exist!" in result.output

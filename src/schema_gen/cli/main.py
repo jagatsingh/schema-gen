@@ -1,5 +1,6 @@
 """Main CLI entry point for schema-gen"""
 
+import re
 import time
 from pathlib import Path
 
@@ -8,6 +9,14 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from ..core.generator import create_generation_engine
+
+# Pattern to match timestamp lines across all generators
+_TIMESTAMP_RE = re.compile(r"^.*Generated at:.*$", re.MULTILINE)
+
+
+def _normalize_generated(content: str) -> str:
+    """Strip timestamp lines so content can be compared across runs."""
+    return _TIMESTAMP_RE.sub("", content).strip()
 
 
 class SchemaWatcher(FileSystemEventHandler):
@@ -228,7 +237,7 @@ def watch(input_dir, output_dir, config_path):
 )
 def validate(config_path):
     """Validate that generated schemas are up-to-date"""
-    click.echo("🔍 Validating schemas...")
+    click.echo("Validating schemas...")
 
     try:
         # Create generation engine
@@ -237,44 +246,90 @@ def validate(config_path):
         # Load schemas
         engine.load_schemas_from_directory()
 
+        # Parse all schemas
+        schemas = engine.parser.parse_all_schemas()
+
         # Check if generated files exist and are up-to-date
         output_path = Path(engine.config.output_dir)
         if not output_path.exists():
-            click.echo("❌ Output directory does not exist!")
-            click.echo("💡 Run 'schema-gen generate' to create generated files.")
-            raise click.Abort()
+            click.echo("Output directory does not exist!")
+            click.echo("Run 'schema-gen generate' to create generated files.")
+            raise SystemExit(1)
 
-        # Generate in memory and compare with existing files
         validation_passed = True
+        files_checked = 0
 
         for target in engine.config.targets:
             target_dir = output_path / target
             if not target_dir.exists():
-                click.echo(f"❌ Target directory {target}/ does not exist!")
+                click.echo(f"FAIL: Target directory {target}/ does not exist!")
                 validation_passed = False
                 continue
 
-            # For each target, we would ideally compare generated content
-            # with existing files, but for now we'll just check if files exist
             generator = engine.generators.get(target)
             if not generator:
-                click.echo(f"❌ No generator found for target: {target}")
+                click.echo(f"FAIL: No generator found for target: {target}")
                 validation_passed = False
                 continue
 
-            click.echo(f"✅ Target {target}/ validation passed")
+            # Build expected files: {relative_filename: expected_content}
+            expected_files = {}
+
+            # Extra files (e.g. _base.py for SQLAlchemy)
+            extra_files = generator.get_extra_files(schemas, target_dir)
+            expected_files.update(extra_files)
+
+            # Per-schema files
+            for schema in schemas:
+                filename = generator.get_schema_filename(schema)
+                content = generator.generate_file(schema)
+                expected_files[filename] = content
+
+            # Index file
+            if generator.generates_index_file:
+                index_content = generator.generate_index(schemas, target_dir)
+                if index_content is not None:
+                    if generator.file_extension == ".ts":
+                        index_filename = "index.ts"
+                    else:
+                        index_filename = "__init__.py"
+                    expected_files[index_filename] = index_content
+
+            # Compare each expected file with actual
+            for filename, expected_content in expected_files.items():
+                files_checked += 1
+                actual_path = target_dir / filename
+
+                if not actual_path.exists():
+                    click.echo(f"  MISSING: {target}/{filename}")
+                    validation_passed = False
+                    continue
+
+                actual_content = actual_path.read_text()
+
+                if _normalize_generated(expected_content) != _normalize_generated(
+                    actual_content
+                ):
+                    click.echo(f"  OUT-OF-DATE: {target}/{filename}")
+                    validation_passed = False
+                else:
+                    click.echo(f"  up-to-date: {target}/{filename}")
 
         if validation_passed:
-            click.echo("✅ All schemas are up-to-date!")
+            click.echo(f"All schemas are up-to-date! ({files_checked} file(s) checked)")
         else:
             click.echo(
-                "❌ Some schemas are out of date. Run 'schema-gen generate' to update."
+                "Some schemas are out of date. Run 'schema-gen generate' to update."
             )
-            raise click.Abort()
+            raise SystemExit(1)
 
+    except SystemExit:
+        raise
+    except click.Abort:
+        raise
     except Exception as e:
-        click.echo(f"❌ Validation failed: {e}")
-        raise click.Abort() from e
+        click.echo(f"Validation failed: {e}")
+        raise SystemExit(1) from e
 
 
 @main.command()
@@ -392,27 +447,11 @@ def install_hooks(install_pre_commit):
     """Install pre-commit hooks for automatic schema generation"""
     click.echo("🔧 Installing schema-gen pre-commit hooks...")
 
-    import shutil
     import subprocess
-    from pathlib import Path
 
-    # Copy pre-commit config from package
-    package_dir = Path(__file__).parent.parent
-    config_source = package_dir.parent / ".pre-commit-config.yaml"
     config_dest = Path(".pre-commit-config.yaml")
 
-    if config_source.exists():
-        if config_dest.exists():
-            click.echo("⚠️  .pre-commit-config.yaml already exists")
-            if click.confirm("Overwrite existing configuration?"):
-                shutil.copy2(config_source, config_dest)
-                click.echo("✅ Pre-commit configuration updated")
-        else:
-            shutil.copy2(config_source, config_dest)
-            click.echo("✅ Pre-commit configuration created")
-    else:
-        # Create minimal config if package config not found
-        minimal_config = """repos:
+    minimal_config = """repos:
   - repo: local
     hooks:
       - id: schema-gen-validate
@@ -421,7 +460,7 @@ def install_hooks(install_pre_commit):
         language: system
         pass_filenames: false
         files: '\\.py$'
-        stages: [commit]
+        stages: [pre-commit]
 
       - id: schema-gen-generate
         name: Generate schemas
@@ -430,9 +469,17 @@ def install_hooks(install_pre_commit):
         pass_filenames: false
         files: '(schemas/.*\\.py|\\.schema-gen\\.config\\.py)$'
 """
+
+    if config_dest.exists():
+        click.echo("  .pre-commit-config.yaml already exists")
+        if click.confirm("Overwrite existing configuration?"):
+            with open(config_dest, "w") as f:
+                f.write(minimal_config)
+            click.echo("  Pre-commit configuration updated")
+    else:
         with open(config_dest, "w") as f:
             f.write(minimal_config)
-        click.echo("✅ Minimal pre-commit configuration created")
+        click.echo("  Pre-commit configuration created")
 
     if install_pre_commit:
         try:

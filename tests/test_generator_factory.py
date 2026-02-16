@@ -3,6 +3,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from schema_gen.core.generator import create_generation_engine
 
 
@@ -44,27 +46,19 @@ config = Config(
         assert engine.config.targets == ["pydantic", "sqlalchemy"]
 
     def test_create_generation_engine_invalid_config(self):
-        """Test creating engine with invalid config file falls back to default"""
-        # Create invalid config file
+        """Test creating engine with invalid config file raises SyntaxError"""
         config_file = self.temp_path / "invalid.config.py"
         config_file.write_text("invalid python syntax !!!!")
 
-        engine = create_generation_engine(str(config_file))
-
-        # Should fall back to default
-        assert engine.config.input_dir == "schemas/"
-        assert engine.config.output_dir == "generated/"
+        with pytest.raises(SyntaxError):
+            create_generation_engine(str(config_file))
 
     def test_create_generation_engine_no_config_var(self):
-        """Test creating engine from file without config variable"""
-        # Create config file without 'config' variable
+        """Test creating engine from file without config variable raises ValueError"""
         config_file = self.temp_path / "no_config.config.py"
         config_file.write_text("""
 some_other_var = "hello"
 """)
 
-        engine = create_generation_engine(str(config_file))
-
-        # Should fall back to default
-        assert engine.config.input_dir == "schemas/"
-        assert engine.config.output_dir == "generated/"
+        with pytest.raises(ValueError, match="must define a 'config' variable"):
+            create_generation_engine(str(config_file))
