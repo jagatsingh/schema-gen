@@ -1,18 +1,62 @@
 """Generator to create Pydantic models from USR schemas"""
 
 from datetime import datetime
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from jinja2 import Template
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class PydanticGenerator:
+class PydanticGenerator(BaseGenerator):
     """Generates Pydantic models from USR schemas"""
 
     def __init__(self):
         self.template = Template(self._get_template())
+
+    @property
+    def file_extension(self) -> str:
+        return ".py"
+
+    @property
+    def generates_index_file(self) -> bool:
+        return True
+
+    def get_schema_filename(self, schema: USRSchema) -> str:
+        return f"{schema.name.lower()}_models.py"
+
+    def generate_index(self, schemas: list[USRSchema], output_dir: Path) -> str | None:
+        """Generate __init__.py content for the pydantic package."""
+        lines = ['"""Generated Pydantic models"""\n']
+
+        for schema in schemas:
+            enum_classes = [e.name for e in schema.enums]
+            base_class = schema.name
+            variant_classes = [
+                self._variant_to_class_name(schema.name, v) for v in schema.variants
+            ]
+            all_classes = enum_classes + [base_class] + variant_classes
+            lines.append(
+                f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
+            )
+
+        lines.append("\n__all__ = [")
+        for schema in schemas:
+            enum_classes = [e.name for e in schema.enums]
+            base_class = schema.name
+            variant_classes = [
+                self._variant_to_class_name(schema.name, v) for v in schema.variants
+            ]
+            all_classes = [
+                f'"{c}"' for c in enum_classes + [base_class] + variant_classes
+            ]
+            lines.append(f"    {', '.join(all_classes)},")
+        lines.append("]")
+
+        return "\n".join(lines) + "\n"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a Pydantic model for a schema variant
@@ -125,9 +169,17 @@ class PydanticGenerator:
             )
             all_models.append(variant_model)
 
+        # Check for self-referencing fields
+        has_self_ref = bool(schema.get_self_referencing_fields())
+
         # Generate complete file
         return self._generate_complete_file(
-            schema.name, all_imports, all_models, pydantic_custom_code
+            schema.name,
+            all_imports,
+            all_models,
+            pydantic_custom_code,
+            schema.enums,
+            self_ref_model=schema.name if has_self_ref else None,
         )
 
     def _variant_to_class_name(self, schema_name: str, variant_name: str) -> str:
@@ -153,7 +205,11 @@ class PydanticGenerator:
 
         # Default value
         if field.default is not None:
-            if isinstance(field.default, str):
+            if isinstance(field.default, Enum):
+                field_params.append(
+                    f"default={field.default.__class__.__name__}.{field.default.name}"
+                )
+            elif isinstance(field.default, str):
                 field_params.append(f'default="{field.default}"')
             else:
                 field_params.append(f"default={field.default}")
@@ -172,7 +228,7 @@ class PydanticGenerator:
         if field.max_value is not None:
             field_params.append(f"le={field.max_value}")  # less or equal
         if field.regex_pattern:
-            field_params.append(f'regex=r"{field.regex_pattern}"')
+            field_params.append(f'pattern=r"{field.regex_pattern}"')
 
         # Description
         if field.description:
@@ -239,16 +295,32 @@ class PydanticGenerator:
             base_type = "Decimal"
 
         elif field.type == FieldType.LIST:
-            imports.add("typing")
             if field.inner_type:
                 inner_type = self._get_pydantic_type(field.inner_type, imports)
-                base_type = f"List[{inner_type}]"
+                base_type = f"list[{inner_type}]"
             else:
-                base_type = "List[Any]"
+                imports.add("typing")
+                base_type = "list[Any]"
+
+        elif field.type == FieldType.SET:
+            if field.inner_type:
+                inner_type = self._get_pydantic_type(field.inner_type, imports)
+                base_type = f"set[{inner_type}]"
+            else:
+                imports.add("typing")
+                base_type = "set[Any]"
+
+        elif field.type == FieldType.FROZENSET:
+            if field.inner_type:
+                inner_type = self._get_pydantic_type(field.inner_type, imports)
+                base_type = f"frozenset[{inner_type}]"
+            else:
+                imports.add("typing")
+                base_type = "frozenset[Any]"
 
         elif field.type == FieldType.DICT:
             imports.add("typing")
-            base_type = "Dict[str, Any]"
+            base_type = "dict[str, Any]"
 
         elif field.type == FieldType.UNION:
             imports.add("typing")
@@ -270,6 +342,18 @@ class PydanticGenerator:
                 base_type = f"Literal[{', '.join(values)}]"
             else:
                 base_type = "str"
+
+        elif field.type == FieldType.TUPLE:
+            if field.union_types:
+                inner_types = [
+                    self._get_pydantic_type(ut, imports) for ut in field.union_types
+                ]
+                base_type = f"tuple[{', '.join(inner_types)}]"
+            else:
+                base_type = "tuple[()]"
+
+        elif field.type == FieldType.ENUM:
+            base_type = field.enum_name or "str"
 
         elif field.type == FieldType.NESTED_SCHEMA:
             # For nested schemas, use forward reference
@@ -342,8 +426,7 @@ class PydanticGenerator:
         # Add config if needed
         if has_config:
             lines.append("")
-            lines.append("    class Config:")
-            lines.append("        from_attributes = True")
+            lines.append("    model_config = ConfigDict(from_attributes=True)")
 
         return "\n".join(lines)
 
@@ -353,10 +436,13 @@ class PydanticGenerator:
         imports: set,
         models: list[str],
         custom_code: dict[str, Any] = None,
+        enums: list = None,
+        self_ref_model: str | None = None,
     ) -> str:
         """Generate complete file with header, imports, and all models"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         custom_code = custom_code or {}
+        enums = enums or []
 
         lines = [
             '"""',
@@ -373,11 +459,15 @@ class PydanticGenerator:
             "",
         ]
 
+        # Add enum import if we have enums
+        if enums:
+            lines.append("from enum import Enum")
+
         # Add custom imports from Meta.imports
         custom_imports = custom_code.get("imports", [])
 
         # Add imports
-        pydantic_imports = ["BaseModel"]
+        pydantic_imports = ["BaseModel", "ConfigDict"]
         if "pydantic.Field" in imports:
             pydantic_imports.append("Field")
         lines.append(f"from pydantic import {', '.join(pydantic_imports)}")
@@ -397,7 +487,7 @@ class PydanticGenerator:
             elif imp.startswith("decimal"):
                 other_imports.append("from decimal import Decimal")
             elif imp == "typing":
-                typing_imports.extend(["Optional", "List", "Dict", "Any", "Union"])
+                typing_imports.extend(["Optional", "Any", "Union"])
             elif imp == "typing.Literal":
                 typing_imports.append("Literal")
 
@@ -414,6 +504,17 @@ class PydanticGenerator:
             lines.append(custom_import)
 
         lines.append("")
+
+        # Generate enum classes before models
+        for enum_def in enums:
+            lines.append("")
+            lines.append(f"class {enum_def.name}(Enum):")
+            for member_name, member_value in enum_def.values:
+                if isinstance(member_value, str):
+                    lines.append(f'    {member_name} = "{member_value}"')
+                else:
+                    lines.append(f"    {member_name} = {member_value}")
+
         lines.append("")
 
         # Add models
@@ -422,6 +523,15 @@ class PydanticGenerator:
                 lines.append("")
                 lines.append("")
             lines.append(model)
+
+        # Add model_rebuild() for self-referential models to resolve forward references
+        if self_ref_model:
+            lines.append("")
+            lines.append("")
+            lines.append(
+                "# Rebuild model to resolve self-referential forward references"
+            )
+            lines.append(f"{self_ref_model}.model_rebuild()")
 
         return "\n".join(lines)
 
@@ -439,7 +549,7 @@ To regenerate this file, run:
 Changes to this file will be overwritten.
 """
 
-from pydantic import BaseModel{% if 'pydantic.Field' in imports %}, Field{% endif %}
+from pydantic import BaseModel, ConfigDict{% if 'pydantic.Field' in imports %}, Field{% endif %}
 {% if 'pydantic.EmailStr' in imports %}from pydantic import EmailStr{% endif %}
 {% for imp in imports %}
 {%- if imp.startswith('datetime') %}
@@ -449,7 +559,7 @@ import uuid
 {%- elif imp.startswith('decimal') %}
 from decimal import Decimal
 {%- elif imp == 'typing' %}
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, Any, Union
 {%- elif imp == 'typing.Literal' %}
 from typing import Literal
 {%- endif %}
@@ -465,6 +575,5 @@ class {{ model_name }}(BaseModel):
 {%- endfor %}
 {%- if has_config %}
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 {%- endif %}'''

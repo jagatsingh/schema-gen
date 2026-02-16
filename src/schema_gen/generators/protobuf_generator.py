@@ -3,10 +3,15 @@
 from datetime import datetime
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class ProtobufGenerator:
+class ProtobufGenerator(BaseGenerator):
     """Generates Protocol Buffers (.proto) definitions from USR schemas"""
+
+    @property
+    def file_extension(self) -> str:
+        return ".proto"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a Protobuf message for a schema variant
@@ -122,15 +127,22 @@ class ProtobufGenerator:
         # Get Protobuf type
         proto_type = self._get_protobuf_type(field)
 
-        # Handle repeated fields (lists)
+        # Handle repeated fields (lists, sets, frozensets)
         field_modifier = ""
-        if field.type == FieldType.LIST:
+        if field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
             field_modifier = "repeated "
             # For repeated fields, get the inner type
             if field.inner_type:
                 proto_type = self._get_protobuf_type(field.inner_type)
             else:
                 proto_type = "string"  # Default
+        elif field.type == FieldType.TUPLE:
+            field_modifier = "repeated "
+            # Use first element type as repeated type (best-effort)
+            if field.union_types:
+                proto_type = self._get_protobuf_type(field.union_types[0])
+            else:
+                proto_type = "string"
         elif field.optional:
             field_modifier = "optional "
 
@@ -180,10 +192,16 @@ class ProtobufGenerator:
         elif field.type == FieldType.DECIMAL:
             return "double"  # or use google.type.Money for currency
 
-        elif field.type == FieldType.LIST:
+        elif field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
             # This should be handled in _generate_field_definition with 'repeated'
             if field.inner_type:
                 return self._get_protobuf_type(field.inner_type)
+            return "string"
+
+        elif field.type == FieldType.TUPLE:
+            # No direct tuple support in protobuf; use repeated as fallback
+            if field.union_types:
+                return self._get_protobuf_type(field.union_types[0])
             return "string"
 
         elif field.type == FieldType.DICT:
@@ -200,6 +218,9 @@ class ProtobufGenerator:
                 enum_name = f"{field.name.capitalize()}Enum"
                 return enum_name
             return "string"
+
+        elif field.type == FieldType.ENUM:
+            return "string"  # Enum values serialized as strings
 
         elif field.type == FieldType.NESTED_SCHEMA:
             return field.nested_schema
@@ -276,7 +297,10 @@ class ProtobufGenerator:
                 imports.append('import "google/type/date.proto";')
             elif field.type == FieldType.UNION:
                 imports.append('import "google/protobuf/any.proto";')
-            elif field.type == FieldType.LIST and field.inner_type:
+            elif (
+                field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET)
+                and field.inner_type
+            ):
                 check_field(field.inner_type)
             elif field.type == FieldType.UNION and field.union_types:
                 for union_type in field.union_types:

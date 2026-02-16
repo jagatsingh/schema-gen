@@ -1,6 +1,7 @@
 """Schema generators for different target formats"""
 
 from .avro_generator import AvroGenerator
+from .base import BaseGenerator
 from .dataclasses_generator import DataclassesGenerator
 from .graphql_generator import GraphQLGenerator
 from .jackson_generator import JacksonGenerator
@@ -14,6 +15,7 @@ from .typeddict_generator import TypedDictGenerator
 from .zod_generator import ZodGenerator
 
 __all__ = [
+    "BaseGenerator",
     "PydanticGenerator",
     "SqlAlchemyGenerator",
     "ZodGenerator",

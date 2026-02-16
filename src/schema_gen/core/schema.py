@@ -179,7 +179,7 @@ def Schema(cls: type) -> type:
     cls._schema_name = cls.__name__
 
     # Extract field information from class annotations and defaults
-    type_hints = get_type_hints(cls)
+    type_hints = get_type_hints(cls, include_extras=True)
 
     for field_name, field_type in type_hints.items():
         # Skip private fields and methods

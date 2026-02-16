@@ -1,17 +1,56 @@
 """Generator to create Pathway schemas from USR schemas"""
 
 from datetime import datetime
+from pathlib import Path
 
 from jinja2 import Template
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class PathwayGenerator:
+class PathwayGenerator(BaseGenerator):
     """Generates Pathway table schemas from USR schemas"""
 
     def __init__(self):
         self.template = Template(self._get_template())
+
+    @property
+    def file_extension(self) -> str:
+        return ".py"
+
+    @property
+    def generates_index_file(self) -> bool:
+        return True
+
+    def get_schema_filename(self, schema: USRSchema) -> str:
+        return f"{schema.name.lower()}_models.py"
+
+    def generate_index(self, schemas: list[USRSchema], output_dir: Path) -> str | None:
+        """Generate __init__.py content for the pathway package."""
+        lines = ['"""Generated Pathway models"""\n']
+
+        for schema in schemas:
+            base_class = schema.name
+            variant_classes = [
+                self._variant_to_class_name(schema.name, v) for v in schema.variants
+            ]
+            all_classes = [base_class] + variant_classes
+            lines.append(
+                f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
+            )
+
+        lines.append("\n__all__ = [")
+        for schema in schemas:
+            base_class = schema.name
+            variant_classes = [
+                self._variant_to_class_name(schema.name, v) for v in schema.variants
+            ]
+            all_classes = [f'"{c}"' for c in [base_class] + variant_classes]
+            lines.append(f"    {', '.join(all_classes)},")
+        lines.append("]")
+
+        return "\n".join(lines) + "\n"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a Pathway table schema for a schema variant
@@ -155,6 +194,23 @@ class PathwayGenerator:
             else:
                 return "list"
 
+        elif field.type == FieldType.SET:
+            if field.inner_type:
+                inner_type = self._get_pathway_type(field.inner_type, imports)
+                return f"set[{inner_type}]"
+            else:
+                return "set"
+
+        elif field.type == FieldType.FROZENSET:
+            if field.inner_type:
+                inner_type = self._get_pathway_type(field.inner_type, imports)
+                return f"frozenset[{inner_type}]"
+            else:
+                return "frozenset"
+
+        elif field.type == FieldType.TUPLE:
+            return "tuple"
+
         elif field.type == FieldType.DICT:
             return "dict"
 
@@ -167,6 +223,9 @@ class PathwayGenerator:
                 return f"typing.Union[{', '.join(union_types)}]"
             else:
                 return "typing.Any"
+
+        elif field.type == FieldType.ENUM:
+            return "str"  # Enum values as strings
 
         elif field.type == FieldType.NESTED_SCHEMA:
             # For nested schemas, use the schema name

@@ -1,7 +1,9 @@
 """Parser to convert schema_gen Schema classes to USR format"""
 
+from enum import Enum
+
 from ..core.schema import SchemaRegistry
-from ..core.usr import TypeMapper, USRSchema
+from ..core.usr import FieldType, TypeMapper, USREnum, USRSchema
 
 
 class SchemaParser:
@@ -34,6 +36,40 @@ class SchemaParser:
             )
             usr_fields.append(usr_field)
 
+        # Discover enum types referenced by fields
+        seen_enums = {}
+        for usr_field in usr_fields:
+            if usr_field.type == FieldType.ENUM and usr_field.enum_name:
+                if usr_field.enum_name not in seen_enums:
+                    seen_enums[usr_field.enum_name] = USREnum(
+                        name=usr_field.enum_name,
+                        values=[
+                            (e.name, e.value)
+                            for e in usr_field.python_type
+                            if isinstance(usr_field.python_type, type)
+                            and issubclass(usr_field.python_type, Enum)
+                        ]
+                        if isinstance(usr_field.python_type, type)
+                        and issubclass(usr_field.python_type, Enum)
+                        else [],
+                    )
+            # Also check inner_type for Optional[Enum]
+            if (
+                usr_field.inner_type
+                and usr_field.inner_type.type == FieldType.ENUM
+                and usr_field.inner_type.enum_name
+            ):
+                en = usr_field.inner_type.enum_name
+                if en not in seen_enums:
+                    pt = usr_field.inner_type.python_type
+                    seen_enums[en] = USREnum(
+                        name=en,
+                        values=[(e.name, e.value) for e in pt]
+                        if isinstance(pt, type) and issubclass(pt, Enum)
+                        else [],
+                    )
+        enums = list(seen_enums.values())
+
         # Extract variants if defined
         variants = {}
         if hasattr(schema_class, "Variants"):
@@ -51,6 +87,7 @@ class SchemaParser:
             name=schema_class.__name__,
             fields=usr_fields,
             description=schema_class.__doc__,
+            enums=enums,
             variants=variants,
             custom_code=custom_code,
             metadata={},

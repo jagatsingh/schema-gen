@@ -17,5 +17,5 @@ Example:
 from .core.config import Config
 from .core.schema import Field, Schema
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["Schema", "Field", "Config", "__version__"]

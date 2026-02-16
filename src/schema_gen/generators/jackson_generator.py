@@ -3,10 +3,21 @@
 from datetime import datetime
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class JacksonGenerator:
+class JacksonGenerator(BaseGenerator):
     """Generates Java classes with Jackson JSON annotations from USR schemas"""
+
+    def __init__(self, default_package: str = "com.example.models"):
+        self.default_package = default_package
+
+    @property
+    def file_extension(self) -> str:
+        return ".java"
+
+    def get_schema_filename(self, schema: USRSchema) -> str:
+        return f"{schema.name}.java"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a single Java class for a schema variant
@@ -62,7 +73,9 @@ class JacksonGenerator:
         )
 
         # Add package declaration
-        package_name = f"com.example.{schema.name.lower()}"
+        package_name = schema.target_config.get("jackson", {}).get(
+            "package", self.default_package
+        )
         lines.append(f"package {package_name};")
         lines.append("")
 
@@ -273,13 +286,26 @@ class JacksonGenerator:
 
         elif field.type == FieldType.LIST:
             if field.inner_type:
-                inner_type = self._get_java_type(field.inner_type)
+                inner_type = self._get_java_boxed_type(field.inner_type)
                 base_type = f"List<{inner_type}>"
             else:
                 base_type = "List<Object>"
 
+        elif field.type in (FieldType.SET, FieldType.FROZENSET):
+            if field.inner_type:
+                inner_type = self._get_java_boxed_type(field.inner_type)
+                base_type = f"Set<{inner_type}>"
+            else:
+                base_type = "Set<Object>"
+
+        elif field.type == FieldType.TUPLE:
+            base_type = "List<Object>"
+
         elif field.type == FieldType.DICT:
             base_type = "Map<String, Object>"
+
+        elif field.type == FieldType.ENUM:
+            base_type = "String"  # Enum values serialized as strings
 
         elif field.type == FieldType.NESTED_SCHEMA:
             base_type = field.nested_schema
@@ -342,6 +368,12 @@ class JacksonGenerator:
                 imports.add("import java.util.List;")
                 if field.inner_type:
                     check_field_imports(field.inner_type)
+            elif field.type in (FieldType.SET, FieldType.FROZENSET):
+                imports.add("import java.util.Set;")
+                if field.inner_type:
+                    check_field_imports(field.inner_type)
+            elif field.type == FieldType.TUPLE:
+                imports.add("import java.util.List;")
             elif field.type == FieldType.DICT:
                 imports.add("import java.util.Map;")
 
@@ -349,6 +381,19 @@ class JacksonGenerator:
             check_field_imports(field)
 
         return sorted(imports)
+
+    _BOXED_TYPES = {
+        "int": "Integer",
+        "double": "Double",
+        "boolean": "Boolean",
+        "float": "Float",
+        "long": "Long",
+    }
+
+    def _get_java_boxed_type(self, field: USRField) -> str:
+        """Get the boxed Java type for use in generics (e.g., Integer instead of int)"""
+        base = self._get_java_type(field)
+        return self._BOXED_TYPES.get(base, base)
 
     def _variant_to_class_name(self, schema_name: str, variant_name: str) -> str:
         """Convert variant name to PascalCase class name"""

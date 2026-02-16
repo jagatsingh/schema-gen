@@ -3,10 +3,15 @@
 from datetime import datetime
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class GraphQLGenerator:
+class GraphQLGenerator(BaseGenerator):
     """Generates GraphQL schema definitions from USR schemas"""
+
+    @property
+    def file_extension(self) -> str:
+        return ".graphql"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a GraphQL type for a schema variant
@@ -159,12 +164,22 @@ class GraphQLGenerator:
         elif field.type == FieldType.DECIMAL:
             return "Decimal"  # Custom scalar
 
-        elif field.type == FieldType.LIST:
+        elif field.type == FieldType.LIST or field.type in (
+            FieldType.SET,
+            FieldType.FROZENSET,
+        ):
             if field.inner_type:
                 inner_type = self._get_graphql_type(field.inner_type)
                 return f"[{inner_type}]"
             else:
                 return "[String]"  # Default to string array
+
+        elif field.type == FieldType.TUPLE:
+            # GraphQL has no native tuple type; fallback to list
+            if field.union_types and len(field.union_types) == 1:
+                inner_type = self._get_graphql_type(field.union_types[0])
+                return f"[{inner_type}]"
+            return "[String]"
 
         elif field.type == FieldType.DICT:
             return "JSON"  # Custom scalar for arbitrary objects
@@ -186,6 +201,9 @@ class GraphQLGenerator:
                 return enum_name
             else:
                 return "String"
+
+        elif field.type == FieldType.ENUM:
+            return "String"  # Enum values as strings
 
         elif field.type == FieldType.NESTED_SCHEMA:
             return field.nested_schema
@@ -293,7 +311,10 @@ class GraphQLGenerator:
                 scalars.add("Decimal")
             elif field.type == FieldType.DICT:
                 scalars.add("JSON")
-            elif field.type == FieldType.LIST and field.inner_type:
+            elif (
+                field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET)
+                and field.inner_type
+            ):
                 check_field(field.inner_type)
             elif field.type == FieldType.UNION and field.union_types:
                 for union_type in field.union_types:

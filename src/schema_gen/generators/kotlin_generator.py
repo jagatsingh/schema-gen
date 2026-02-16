@@ -3,10 +3,21 @@
 from datetime import datetime
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class KotlinGenerator:
+class KotlinGenerator(BaseGenerator):
     """Generates Kotlin data classes from USR schemas"""
+
+    def __init__(self, default_package: str = "com.example.models"):
+        self.default_package = default_package
+
+    @property
+    def file_extension(self) -> str:
+        return ".kt"
+
+    def get_schema_filename(self, schema: USRSchema) -> str:
+        return f"{schema.name}.kt"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a single Kotlin data class for a schema variant
@@ -57,7 +68,9 @@ class KotlinGenerator:
         )
 
         # Add package declaration
-        package_name = f"com.example.{schema.name.lower()}"
+        package_name = schema.target_config.get("kotlin", {}).get(
+            "package", self.default_package
+        )
         lines.extend(["", f"package {package_name}", ""])
 
         # Add imports
@@ -133,8 +146,10 @@ class KotlinGenerator:
         # Build parameter definition
         annotations = []
 
-        # JSON property annotation
-        if field.name != field.name:  # If we need custom JSON name
+        # JSON property annotation - add @SerialName when the Kotlin property name
+        # (camelCase) differs from the original field name (snake_case)
+        kotlin_name = self._to_camel_case(field.name)
+        if kotlin_name != field.name:
             annotations.append(f'@SerialName("{field.name}")')
 
         # Validation annotations
@@ -146,7 +161,11 @@ class KotlinGenerator:
         # Default value
         default_value = ""
         if field.default is not None:
-            if isinstance(field.default, str):
+            from enum import Enum as PyEnum
+
+            if isinstance(field.default, PyEnum):
+                default_value = f' = "{field.default.value}"'
+            elif isinstance(field.default, str):
                 default_value = f' = "{field.default}"'
             elif isinstance(field.default, bool):
                 # Use Kotlin boolean literals
@@ -170,10 +189,14 @@ class KotlinGenerator:
         elif field.type == FieldType.LIST and not field.optional:
             # Non-optional lists should have empty list as default
             default_value = " = emptyList()"
+        elif field.type in (FieldType.SET, FieldType.FROZENSET) and not field.optional:
+            # Non-optional sets should have empty set as default
+            default_value = " = emptySet()"
 
         # Build complete parameter
         annotation_str = " ".join(annotations) + " " if annotations else ""
-        param = f"{annotation_str}val {field.name}: {kotlin_type}{default_value}"
+        prop_name = self._to_camel_case(field.name)
+        param = f"{annotation_str}val {prop_name}: {kotlin_type}{default_value}"
 
         # Add comment if description exists
         if field.description:
@@ -221,6 +244,27 @@ class KotlinGenerator:
             else:
                 base_type = "List<Any>"
 
+        elif field.type in (FieldType.SET, FieldType.FROZENSET):
+            if field.inner_type:
+                inner_type = self._get_kotlin_type(field.inner_type)
+                base_type = f"Set<{inner_type}>"
+            else:
+                base_type = "Set<Any>"
+
+        elif field.type == FieldType.TUPLE:
+            if field.union_types:
+                inner_types = [self._get_kotlin_type(ut) for ut in field.union_types]
+                if len(inner_types) == 2:
+                    base_type = f"Pair<{inner_types[0]}, {inner_types[1]}>"
+                elif len(inner_types) == 3:
+                    base_type = (
+                        f"Triple<{inner_types[0]}, {inner_types[1]}, {inner_types[2]}>"
+                    )
+                else:
+                    base_type = "List<Any>"
+            else:
+                base_type = "List<Any>"
+
         elif field.type == FieldType.DICT:
             base_type = "Map<String, Any>"
 
@@ -243,6 +287,9 @@ class KotlinGenerator:
             else:
                 base_type = "String"
 
+        elif field.type == FieldType.ENUM:
+            base_type = "String"  # Enum values serialized as strings
+
         elif field.type == FieldType.NESTED_SCHEMA:
             base_type = field.nested_schema
 
@@ -261,7 +308,6 @@ class KotlinGenerator:
 
         # Kotlinx serialization
         imports.add("import kotlinx.serialization.Serializable")
-        imports.add("import kotlinx.serialization.SerialName")
 
         def check_field_imports(field: USRField):
             if field.type == FieldType.DATETIME:
@@ -270,13 +316,28 @@ class KotlinGenerator:
                 imports.add("import kotlinx.datetime.LocalDate")
             elif field.type == FieldType.DECIMAL:
                 imports.add("import java.math.BigDecimal")
-            elif field.type == FieldType.LIST and field.inner_type:
+            elif (
+                field.type == FieldType.LIST
+                and field.inner_type
+                or field.type in (FieldType.SET, FieldType.FROZENSET)
+                and field.inner_type
+            ):
                 check_field_imports(field.inner_type)
+            # Add SerialName import if any field needs a camelCase mapping
+            if self._to_camel_case(field.name) != field.name:
+                imports.add("import kotlinx.serialization.SerialName")
 
         for field in schema.fields:
             check_field_imports(field)
 
         return sorted(imports)
+
+    def _to_camel_case(self, snake_str: str) -> str:
+        """Convert snake_case string to camelCase"""
+        parts = snake_str.split("_")
+        if len(parts) == 1:
+            return snake_str
+        return parts[0] + "".join(word.capitalize() for word in parts[1:])
 
     def _variant_to_class_name(self, schema_name: str, variant_name: str) -> str:
         """Convert variant name to PascalCase class name"""

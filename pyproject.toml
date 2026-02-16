@@ -1,6 +1,6 @@
 [project]
 name = "schema-gen"
-version = "0.1.0"
+version = "0.2.0"
 description = "Universal schema converter - define once, generate everywhere"
 readme = "README.md"
 authors = [
@@ -8,8 +8,8 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "click>=8.2.1",
-    "pydantic>=2.11.7",
+    "click>=8.3",
+    "pydantic>=2.12",
     "watchdog>=6.0.0",
     "jinja2>=3.1.6",
     "typing-extensions>=4.15.0",
@@ -33,20 +33,19 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
-    "pre-commit>=3.0.0",
-    "twine>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "pre-commit>=4.0.0",
+    "twine>=6.0.0",
 ]
-sqlalchemy = ["sqlalchemy>=2.0.25"]
+sqlalchemy = ["sqlalchemy>=2.0.40"]
 pathway = ["pathway>=0.8.0"]
 jsonschema = ["jsonschema>=4.17.0"]
 graphql = ["graphql-core>=3.2.0"]
-avro = ["avro>=1.11.0"]
-protobuf = ["protobuf>=4.25.0"]
+avro = ["avro>=1.12.0"]
+protobuf = ["protobuf>=5.29.0"]
 testing = ["pytest-xdist>=3.0.0"]
 schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf]"]
 compatibility = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]

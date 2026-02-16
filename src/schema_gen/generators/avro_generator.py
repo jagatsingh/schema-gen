@@ -5,10 +5,15 @@ from datetime import datetime
 from typing import Any
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class AvroGenerator:
+class AvroGenerator(BaseGenerator):
     """Generates Apache Avro schema definitions from USR schemas"""
+
+    @property
+    def file_extension(self) -> str:
+        return ".avsc"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate an Avro schema for a schema variant
@@ -126,7 +131,14 @@ class AvroGenerator:
 
         # Add default value if present
         if field.default is not None:
-            field_def["default"] = field.default
+            from enum import Enum as PyEnum
+
+            default_val = (
+                field.default.value
+                if isinstance(field.default, PyEnum)
+                else field.default
+            )
+            field_def["default"] = default_val
         elif field.optional:
             # For optional fields without defaults, set default to null
             field_def["default"] = None
@@ -146,12 +158,16 @@ class AvroGenerator:
         # Handle optional fields (union with null)
         if field.optional:
             if isinstance(base_type, list):
-                # Already a union, add null
+                # Already a union, ensure null is present and comes first
                 if "null" not in base_type:
                     return ["null"] + base_type
+                elif base_type[0] != "null":
+                    # null exists but not first — move it to front
+                    reordered = ["null"] + [t for t in base_type if t != "null"]
+                    return reordered
                 return base_type
             else:
-                # Make it a union with null
+                # Make it a union with null first
                 return ["null", base_type]
 
         return base_type
@@ -201,12 +217,30 @@ class AvroGenerator:
                 "scale": scale,
             }
 
-        elif field.type == FieldType.LIST:
+        elif field.type == FieldType.LIST or field.type in (
+            FieldType.SET,
+            FieldType.FROZENSET,
+        ):
             item_type = "string"  # default
             if field.inner_type:
                 item_type = self._get_base_avro_type(field.inner_type)
 
             return {"type": "array", "items": item_type}
+
+        elif field.type == FieldType.TUPLE:
+            # Avro has no tuple type; best-effort array with union of inner types
+            if field.union_types:
+                inner_types = []
+                for ut in field.union_types:
+                    avro_type = self._get_base_avro_type(ut)
+                    if avro_type not in inner_types:
+                        inner_types.append(avro_type)
+                if len(inner_types) == 1:
+                    items_type = inner_types[0]
+                else:
+                    items_type = inner_types
+                return {"type": "array", "items": items_type}
+            return {"type": "array", "items": "string"}
 
         elif field.type == FieldType.DICT:
             return {"type": "map", "values": "string"}  # Could be made configurable
@@ -235,6 +269,15 @@ class AvroGenerator:
                 }
             else:
                 return "string"
+
+        elif field.type == FieldType.ENUM:
+            if field.enum_values:
+                return {
+                    "type": "enum",
+                    "name": field.enum_name or f"{field.name.capitalize()}Enum",
+                    "symbols": [str(v) for v in field.enum_values],
+                }
+            return "string"
 
         elif field.type == FieldType.NESTED_SCHEMA:
             # Reference to another record

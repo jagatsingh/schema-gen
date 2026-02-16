@@ -4,18 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from ..generators.avro_generator import AvroGenerator
-from ..generators.dataclasses_generator import DataclassesGenerator
-from ..generators.graphql_generator import GraphQLGenerator
-from ..generators.jackson_generator import JacksonGenerator
-from ..generators.jsonschema_generator import JsonSchemaGenerator
-from ..generators.kotlin_generator import KotlinGenerator
-from ..generators.pathway_generator import PathwayGenerator
-from ..generators.protobuf_generator import ProtobufGenerator
-from ..generators.pydantic_generator import PydanticGenerator
-from ..generators.sqlalchemy_generator import SqlAlchemyGenerator
-from ..generators.typeddict_generator import TypedDictGenerator
-from ..generators.zod_generator import ZodGenerator
+from ..generators.registry import GENERATOR_REGISTRY
 from ..parsers.schema_parser import SchemaParser
 from .config import Config
 
@@ -27,32 +16,11 @@ class SchemaGenerationEngine:
         self.config = config
         self.parser = SchemaParser()
 
-        # Initialize generators based on config targets
+        # Initialize generators based on config targets using the registry
         self.generators = {}
-        if "pydantic" in config.targets:
-            self.generators["pydantic"] = PydanticGenerator()
-        if "sqlalchemy" in config.targets:
-            self.generators["sqlalchemy"] = SqlAlchemyGenerator()
-        if "zod" in config.targets:
-            self.generators["zod"] = ZodGenerator()
-        if "pathway" in config.targets:
-            self.generators["pathway"] = PathwayGenerator()
-        if "dataclasses" in config.targets:
-            self.generators["dataclasses"] = DataclassesGenerator()
-        if "typeddict" in config.targets:
-            self.generators["typeddict"] = TypedDictGenerator()
-        if "jsonschema" in config.targets:
-            self.generators["jsonschema"] = JsonSchemaGenerator()
-        if "graphql" in config.targets:
-            self.generators["graphql"] = GraphQLGenerator()
-        if "protobuf" in config.targets:
-            self.generators["protobuf"] = ProtobufGenerator()
-        if "avro" in config.targets:
-            self.generators["avro"] = AvroGenerator()
-        if "jackson" in config.targets:
-            self.generators["jackson"] = JacksonGenerator()
-        if "kotlin" in config.targets:
-            self.generators["kotlin"] = KotlinGenerator()
+        for target in config.targets:
+            if target in GENERATOR_REGISTRY:
+                self.generators[target] = GENERATOR_REGISTRY[target]()
 
     def load_schemas_from_directory(self, input_dir: str = None):
         """Load all schema files from input directory
@@ -120,7 +88,11 @@ class SchemaGenerationEngine:
         spec.loader.exec_module(module)
 
     def _generate_target(self, target: str, schemas, output_dir: Path):
-        """Generate files for a specific target
+        """Generate files for a specific target using generator metadata.
+
+        Uses file_extension, generates_index_file, generate_index(),
+        get_schema_filename(), and get_extra_files() from the generator
+        itself to determine file structure, eliminating per-target branching.
 
         Args:
             target: Target generator name (e.g., 'pydantic')
@@ -133,34 +105,45 @@ class SchemaGenerationEngine:
 
         print(f"\nGenerating {target} models...")
 
-        if target == "pydantic":
-            self._generate_pydantic_files(generator, schemas, target_dir)
-        elif target == "sqlalchemy":
-            self._generate_sqlalchemy_files(generator, schemas, target_dir)
-        elif target == "zod":
-            self._generate_zod_files(generator, schemas, target_dir)
-        elif target == "pathway":
-            self._generate_python_files(generator, schemas, target_dir, "pathway")
-        elif target == "dataclasses":
-            self._generate_python_files(generator, schemas, target_dir, "dataclasses")
-        elif target == "typeddict":
-            self._generate_python_files(generator, schemas, target_dir, "typeddict")
-        elif target == "jsonschema":
-            self._generate_json_files(generator, schemas, target_dir)
-        elif target == "graphql":
-            self._generate_graphql_files(generator, schemas, target_dir)
-        elif target == "protobuf":
-            self._generate_protobuf_files(generator, schemas, target_dir)
-        elif target == "avro":
-            self._generate_avro_files(generator, schemas, target_dir)
-        elif target == "jackson":
-            self._generate_jackson_files(generator, schemas, target_dir)
-        elif target == "kotlin":
-            self._generate_kotlin_files(generator, schemas, target_dir)
+        # 1. Write extra files (e.g. _base.py for SQLAlchemy)
+        extra_files = generator.get_extra_files(schemas, target_dir)
+        for filename, content in extra_files.items():
+            extra_path = target_dir / filename
+            with open(extra_path, "w") as f:
+                f.write(content)
+            print(f"  \u2713 {filename}")
 
-    def _generate_pydantic_files(
-        self, generator: PydanticGenerator, schemas, output_dir: Path
-    ):
+        # 2. Write per-schema files
+        for schema in schemas:
+            schema_filename = generator.get_schema_filename(schema)
+            schema_file = target_dir / schema_filename
+
+            file_content = generator.generate_file(schema)
+
+            with open(schema_file, "w") as f:
+                f.write(file_content)
+
+            print(f"  \u2713 {schema_filename}")
+
+        # 3. Write index file if the generator produces one
+        if generator.generates_index_file:
+            index_content = generator.generate_index(schemas, target_dir)
+            if index_content is not None:
+                # Determine index filename based on file extension
+                if generator.file_extension == ".ts":
+                    index_filename = "index.ts"
+                else:
+                    index_filename = "__init__.py"
+
+                index_path = target_dir / index_filename
+                with open(index_path, "w") as f:
+                    f.write(index_content)
+
+                print(f"  \u2713 {index_filename}")
+
+        print(f"  Generated {len(schemas)} schema file(s) in {target_dir}")
+
+    def _generate_pydantic_files(self, generator, schemas, output_dir: Path):
         """Generate Pydantic model files"""
 
         # Create __init__.py for the pydantic package
@@ -180,13 +163,14 @@ class SchemaGenerationEngine:
 
             print(f"  ✓ {schema_file.name}")
 
-            # Collect imports for __init__.py
+            # Collect imports for __init__.py — include enum classes
+            enum_classes = [e.name for e in schema.enums]
             base_class = schema.name
             variant_classes = [
                 generator._variant_to_class_name(schema.name, v)
                 for v in schema.variants
             ]
-            all_classes = [base_class] + variant_classes
+            all_classes = enum_classes + [base_class] + variant_classes
 
             init_imports.append(
                 f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
@@ -199,12 +183,15 @@ class SchemaGenerationEngine:
                 f.write(import_line + "\n")
             f.write("\n__all__ = [\n")
             for schema in schemas:
+                enum_classes = [e.name for e in schema.enums]
                 base_class = schema.name
                 variant_classes = [
                     generator._variant_to_class_name(schema.name, v)
                     for v in schema.variants
                 ]
-                all_classes = [f'"{c}"' for c in [base_class] + variant_classes]
+                all_classes = [
+                    f'"{c}"' for c in enum_classes + [base_class] + variant_classes
+                ]
                 f.write(f"    {', '.join(all_classes)},\n")
             f.write("]\n")
 
@@ -214,9 +201,18 @@ class SchemaGenerationEngine:
     def _generate_sqlalchemy_files(self, generator, schemas, output_dir: Path):
         """Generate SQLAlchemy model files"""
 
+        # Generate shared _base.py
+        base_file = output_dir / "_base.py"
+        with open(base_file, "w") as f:
+            f.write('"""Shared SQLAlchemy Base - AUTO-GENERATED"""\n\n')
+            f.write("from sqlalchemy.orm import DeclarativeBase\n\n\n")
+            f.write("class Base(DeclarativeBase):\n")
+            f.write("    pass\n")
+        print("  ✓ _base.py")
+
         # Create __init__.py for the sqlalchemy package
         init_file = output_dir / "__init__.py"
-        init_imports = []
+        init_imports = ["from ._base import Base"]
 
         for schema in schemas:
             # Create a file for this schema's models
@@ -242,6 +238,7 @@ class SchemaGenerationEngine:
             for import_line in init_imports:
                 f.write(import_line + "\n")
             f.write("\n__all__ = [\n")
+            f.write('    "Base",\n')
             for schema in schemas:
                 f.write(f'    "{schema.name}",\n')
             f.write("]\n")
@@ -269,13 +266,14 @@ class SchemaGenerationEngine:
 
             print(f"  ✓ {schema_file.name}")
 
-            # Collect exports for index.ts
+            # Collect exports for index.ts — include enum schemas
+            enum_exports = [f"{e.name}Schema, {e.name}" for e in schema.enums]
             base_export = f"{schema.name}Schema, {schema.name}"
             variant_exports = [
                 f"{generator._variant_to_schema_name(schema.name, v)}Schema, {generator._variant_to_schema_name(schema.name, v)}"
                 for v in schema.variants
             ]
-            all_exports = [base_export] + variant_exports
+            all_exports = enum_exports + [base_export] + variant_exports
 
             exports.append(
                 f"export {{ {', '.join(all_exports)} }} from './{schema.name.lower()}';"

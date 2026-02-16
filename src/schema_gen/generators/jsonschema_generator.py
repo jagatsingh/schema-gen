@@ -1,14 +1,29 @@
 """Generator to create JSON Schema from USR schemas"""
 
 import json
-from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class JsonSchemaGenerator:
+class JsonSchemaGenerator(BaseGenerator):
     """Generates JSON Schema definitions from USR schemas"""
+
+    def __init__(self, base_url: str = "https://example.com/schemas"):
+        self.base_url = base_url.rstrip("/")
+
+    @property
+    def file_extension(self) -> str:
+        return ".json"
+
+    def _get_base_url(self, schema: USRSchema) -> str:
+        """Get the base URL for $id fields, allowing schema-level override"""
+        override = schema.metadata.get("jsonschema", {}).get("base_url")
+        if override:
+            return override.rstrip("/")
+        return self.base_url
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a JSON Schema for a schema variant
@@ -28,9 +43,10 @@ class JsonSchemaGenerator:
             schema_title = self._variant_to_schema_title(schema.name, variant)
 
         # Build JSON Schema object
+        base_url = self._get_base_url(schema)
         json_schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": f"https://example.com/schemas/{schema_title.lower()}.json",
+            "$id": f"{base_url}/{schema_title.lower()}.json",
             "title": schema_title,
             "type": "object",
             "properties": {},
@@ -64,13 +80,20 @@ class JsonSchemaGenerator:
             Complete JSON Schema file content
         """
         # For JSON Schema, we'll create a definitions-based schema with all variants
+        base_url = self._get_base_url(schema)
         json_schema = {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": f"https://example.com/schemas/{schema.name.lower()}.json",
+            "$id": f"{base_url}/{schema.name.lower()}.json",
             "title": f"{schema.name} Schema Collection",
             "description": f"Auto-generated JSON Schema for {schema.name} and its variants",
             "$defs": {},
         }
+
+        # Add enum definitions to $defs
+        for enum_def in getattr(schema, "enums", []):
+            enum_values = [v for _name, v in enum_def.values]
+            enum_schema = {"type": "string", "enum": enum_values}
+            json_schema["$defs"][enum_def.name] = enum_schema
 
         # Add base schema
         base_fields = schema.fields
@@ -90,15 +113,6 @@ class JsonSchemaGenerator:
 
         # Set the main schema to reference the base schema
         json_schema["$ref"] = f"#/$defs/{schema.name}"
-
-        # Add header comment as a special property (will be formatted in file generation)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        json_schema["_meta"] = {
-            "generator": "schema-gen JSON Schema generator",
-            "generated_from": schema.name,
-            "generated_at": timestamp,
-            "note": "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
-        }
 
         return json.dumps(json_schema, indent=2)
 
@@ -142,7 +156,10 @@ class JsonSchemaGenerator:
 
         # Add default value
         if field.default is not None:
-            field_schema["default"] = field.default
+            default = field.default
+            if isinstance(default, Enum):
+                default = default.value
+            field_schema["default"] = default
 
         # Add validation constraints
         self._add_validation_constraints(field, field_schema)
@@ -189,6 +206,25 @@ class JsonSchemaGenerator:
                 self._add_type_info(field.inner_type, item_schema)
                 field_schema["items"] = item_schema
 
+        elif field.type in (FieldType.SET, FieldType.FROZENSET):
+            field_schema["type"] = "array"
+            field_schema["uniqueItems"] = True
+            if field.inner_type:
+                item_schema = {}
+                self._add_type_info(field.inner_type, item_schema)
+                field_schema["items"] = item_schema
+
+        elif field.type == FieldType.TUPLE:
+            field_schema["type"] = "array"
+            if field.union_types:
+                prefix_items = []
+                for ut in field.union_types:
+                    item_schema = {}
+                    self._add_type_info(ut, item_schema)
+                    prefix_items.append(item_schema)
+                field_schema["prefixItems"] = prefix_items
+                field_schema["items"] = False
+
         elif field.type == FieldType.DICT:
             field_schema["type"] = "object"
             field_schema["additionalProperties"] = True
@@ -212,6 +248,9 @@ class JsonSchemaGenerator:
                     field_schema["type"] = "integer"
                 elif all(isinstance(v, int | float) for v in field.literal_values):
                     field_schema["type"] = "number"
+
+        elif field.type == FieldType.ENUM:
+            field_schema["$ref"] = f"#/$defs/{field.enum_name}"
 
         elif field.type == FieldType.NESTED_SCHEMA:
             field_schema["$ref"] = f"#/$defs/{field.nested_schema}"
@@ -239,7 +278,7 @@ class JsonSchemaGenerator:
             if field.max_value is not None:
                 field_schema["maximum"] = field.max_value
 
-        elif field.type == FieldType.LIST:
+        elif field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
             if field.min_length is not None:
                 field_schema["minItems"] = field.min_length
             if field.max_length is not None:

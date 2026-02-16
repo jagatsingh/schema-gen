@@ -1,17 +1,56 @@
 """Generator to create Python TypedDict from USR schemas"""
 
 from datetime import datetime
+from pathlib import Path
 
 from jinja2 import Template
 
 from ..core.usr import FieldType, USRField, USRSchema
+from .base import BaseGenerator
 
 
-class TypedDictGenerator:
+class TypedDictGenerator(BaseGenerator):
     """Generates Python TypedDict definitions from USR schemas"""
 
     def __init__(self):
         self.template = Template(self._get_template())
+
+    @property
+    def file_extension(self) -> str:
+        return ".py"
+
+    @property
+    def generates_index_file(self) -> bool:
+        return True
+
+    def get_schema_filename(self, schema: USRSchema) -> str:
+        return f"{schema.name.lower()}_models.py"
+
+    def generate_index(self, schemas: list[USRSchema], output_dir: Path) -> str | None:
+        """Generate __init__.py content for the typeddict package."""
+        lines = ['"""Generated Typeddict models"""\n']
+
+        for schema in schemas:
+            base_class = schema.name
+            variant_classes = [
+                self._variant_to_class_name(schema.name, v) for v in schema.variants
+            ]
+            all_classes = [base_class] + variant_classes
+            lines.append(
+                f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
+            )
+
+        lines.append("\n__all__ = [")
+        for schema in schemas:
+            base_class = schema.name
+            variant_classes = [
+                self._variant_to_class_name(schema.name, v) for v in schema.variants
+            ]
+            all_classes = [f'"{c}"' for c in [base_class] + variant_classes]
+            lines.append(f"    {', '.join(all_classes)},")
+        lines.append("]")
+
+        return "\n".join(lines) + "\n"
 
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a TypedDict for a schema variant
@@ -168,16 +207,41 @@ class TypedDictGenerator:
             base_type = "decimal.Decimal"
 
         elif field.type == FieldType.LIST:
-            imports.add("typing")
             if field.inner_type:
                 inner_type = self._get_python_type(field.inner_type, imports)
-                base_type = f"List[{inner_type}]"
+                base_type = f"list[{inner_type}]"
             else:
-                base_type = "List[Any]"
+                imports.add("typing")
+                base_type = "list[Any]"
+
+        elif field.type == FieldType.SET:
+            if field.inner_type:
+                inner_type = self._get_python_type(field.inner_type, imports)
+                base_type = f"set[{inner_type}]"
+            else:
+                imports.add("typing")
+                base_type = "set[Any]"
+
+        elif field.type == FieldType.FROZENSET:
+            if field.inner_type:
+                inner_type = self._get_python_type(field.inner_type, imports)
+                base_type = f"frozenset[{inner_type}]"
+            else:
+                imports.add("typing")
+                base_type = "frozenset[Any]"
+
+        elif field.type == FieldType.TUPLE:
+            if field.union_types:
+                inner_types = [
+                    self._get_python_type(ut, imports) for ut in field.union_types
+                ]
+                base_type = f"tuple[{', '.join(inner_types)}]"
+            else:
+                base_type = "tuple[()]"
 
         elif field.type == FieldType.DICT:
             imports.add("typing")
-            base_type = "Dict[str, Any]"
+            base_type = "dict[str, Any]"
 
         elif field.type == FieldType.UNION:
             imports.add("typing")
@@ -199,6 +263,9 @@ class TypedDictGenerator:
                 base_type = f"Literal[{', '.join(values)}]"
             else:
                 base_type = "str"
+
+        elif field.type == FieldType.ENUM:
+            base_type = "str"  # Enum values as strings
 
         elif field.type == FieldType.NESTED_SCHEMA:
             # For nested schemas, use forward reference
@@ -232,11 +299,8 @@ class TypedDictGenerator:
         """Generate a single TypedDict definition"""
         lines = []
 
-        # TypedDict with total parameter for optional fields
-        if has_optional_fields:
-            lines.append(f"class {class_name}(TypedDict, total=False):")
-        else:
-            lines.append(f"class {class_name}(TypedDict):")
+        # Always use TypedDict without total=False; optional fields use NotRequired[]
+        lines.append(f"class {class_name}(TypedDict):")
 
         if description:
             lines.append('    """')
@@ -340,7 +404,7 @@ from decimal import Decimal
 {% if typing_imports %}from typing import {{ typing_imports|unique|sort|join(', ') }}{% endif %}
 
 
-class {{ class_name }}(TypedDict{% if has_optional_fields %}, total=False{% endif %}):
+class {{ class_name }}(TypedDict):
 {%- if description %}
     """
     {{ description }}
