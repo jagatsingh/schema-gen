@@ -19,17 +19,21 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python
       run: uv python install 3.13
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync --frozen --all-extras --dev
 
     - name: Run quick format validation
       run: |
@@ -135,18 +139,22 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
     - name: Install dependencies
       run: |
-        uv sync --all-extras --dev --python ${{ matrix.python-version }}
+        uv sync --frozen --all-extras --dev --python ${{ matrix.python-version }}
 
     - name: Test format validation on Python ${{ matrix.python-version }}
       run: |
@@ -165,17 +173,21 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python
       run: uv python install 3.13
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync --frozen --all-extras --dev
 
     - name: Performance test - Large schema generation
       run: |
@@ -234,17 +246,21 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python
       run: uv python install 3.12
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync --frozen --all-extras --dev
 
     - name: Test core functionality on ${{ matrix.os }}
       run: |

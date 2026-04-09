@@ -1,0 +1,16 @@
+# UV configuration file
+# See: https://github.com/astral-sh/uv
+#
+# Aligned with tradingutils conventions.
+
+# Configure default resolver
+[default-resolver]
+# Enable resolution of direct URLs and Git references
+enable-direct-references = true
+
+# Configure cache behavior
+[cache]
+# Global cache location for packages and wheels
+dir = "~/.cache/uv"
+# How long to keep downloaded packages and wheels
+ttl = "30d"
