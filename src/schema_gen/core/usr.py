@@ -60,7 +60,17 @@ STRING_LIKE_TYPES = frozenset(
 
 @dataclass
 class USREnum:
-    """Universal representation of an enum type"""
+    """Universal representation of an enum type.
+
+    Enums can carry per-target custom code and per-target configuration
+    overrides in exactly the same way ``USRSchema`` does. ``custom_code``
+    is populated from ``PydanticMeta`` / ``SerdeMeta`` inner classes
+    attached directly to ``Enum`` subclasses and is consumed by the
+    Pydantic and Rust generators to inject domain methods (e.g.
+    ``OrderStatus.is_terminal()``) into the generated enum body.
+    ``target_config`` is reserved for future per-target overrides that
+    need a structured slot (mirrors ``USRSchema.target_config``).
+    """
 
     name: str
     values: list[tuple[str, Any]]  # (member_name, member_value)

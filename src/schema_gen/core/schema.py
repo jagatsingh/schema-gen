@@ -113,6 +113,16 @@ def Field(
         exclude_from: List of variants to exclude from
         include_only: List of variants to include in
         pydantic/sqlalchemy/pathway: Target-specific options
+        rust: Rust-specific overrides. Supports ``{"type": "<rust-type>"}``
+            to pick a specific integer or float width (``u8``/``u16``/
+            ``u32``/``u64``/``i8``/.../``i128``/``isize``/``usize``,
+            ``f32``/``f64``). Invalid values log a warning and fall
+            back to ``i64`` / ``f64``. See ``docs/generators/rust.md``.
+        discriminator: Name of the tag field when the annotated type is
+            ``Annotated[Union[A, B, ...], Field(discriminator=...)]``.
+            Every union member must be a ``@Schema`` with a matching
+            ``Literal["..."]`` field. Lowered to a ``#[serde(tag=...)]``
+            tagged enum by the Rust generator.
         **metadata: Additional metadata
 
     Returns:
