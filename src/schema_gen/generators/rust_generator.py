@@ -643,9 +643,17 @@ class RustGenerator(BaseGenerator):
         json_schema_derive: bool,
         rename_all: str | None = None,
     ) -> str:
+        # Pull SerdeMeta extras attached to the Enum class itself (extra
+        # derives, raw_code impl blocks). Mirrors the per-struct mechanism
+        # so users can attach `is_terminal()` etc. directly on the enum.
+        enum_meta = (enum.custom_code or {}).get("rust", {}) or {}
+
         derives = list(_DEFAULT_ENUM_DERIVES)
         if json_schema_derive:
             derives.append("JsonSchema")
+        for extra in enum_meta.get("derives", []) or []:
+            if extra not in derives:
+                derives.append(extra)
 
         lines = [f"#[derive({', '.join(derives)})]"]
 
@@ -675,6 +683,17 @@ class RustGenerator(BaseGenerator):
                     lines.append(f'    #[serde(rename = "{wire_value}")]')
                 lines.append(f"    {variant},")
         lines.append("}")
+
+        # Append SerdeMeta.raw_code (typically an `impl Enum { ... }` block)
+        # after the enum definition. Imports requested via SerdeMeta.imports
+        # on enums are intentionally NOT handled here — they'd need to be
+        # threaded through the per-file header. Users can put `use ...;`
+        # lines inside raw_code if needed.
+        raw_code = (enum_meta.get("raw_code") or "").strip()
+        if raw_code:
+            lines.append("")
+            lines.append(raw_code)
+
         return "\n".join(lines)
 
     # ------------------------------------------------------------------

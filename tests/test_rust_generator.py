@@ -819,3 +819,128 @@ class TestRustWidthOverride:
         usr = SchemaParser().parse_schema(OptOrder)
         out = RustGenerator().generate_file(usr)
         assert "pub quantity: Option<u32>," in out
+
+
+# ----------------------------------------------------------------------
+# Enum-level SerdeMeta support
+# ----------------------------------------------------------------------
+
+
+# Defined at module scope so the @Schema decorator's get_type_hints can
+# resolve forward references.
+class _OrderStatus(str, Enum):
+    PENDING = "pending"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+
+    class SerdeMeta:
+        raw_code = (
+            "impl _OrderStatus {\n"
+            "    pub fn is_terminal(&self) -> bool {\n"
+            "        matches!(self, Self::Filled | Self::Cancelled)\n"
+            "    }\n"
+            "}"
+        )
+
+
+class _Priority(str, Enum):
+    LOW = "low"
+    HIGH = "high"
+
+    class SerdeMeta:
+        derives = ["Ord", "PartialOrd"]
+
+
+class _PlainColor(str, Enum):
+    RED = "red"
+    BLUE = "blue"
+
+
+class _Mode2(str, Enum):
+    AUTO = "auto"
+    MANUAL = "manual"
+
+    class SerdeMeta:
+        raw_code = (
+            "impl _Mode2 {\n"
+            "    pub fn is_auto(&self) -> bool {\n"
+            "        matches!(self, Self::Auto)\n"
+            "    }\n"
+            "}"
+        )
+
+
+@Schema
+class _OrderEnumHolder:
+    status: _OrderStatus
+
+
+@Schema
+class _PrioHolder:
+    priority: _Priority
+
+
+@Schema
+class _PlainColorHolder:
+    color: _PlainColor
+
+
+@Schema
+class _Mode2Holder:
+    mode: _Mode2
+
+
+class TestRustEnumMeta:
+    """SerdeMeta on Enum classes injects extra derives + raw_code impl
+    blocks into the generated Rust enum."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_enum_serde_meta_raw_code(self):
+        usr = SchemaParser().parse_schema(_OrderEnumHolder)
+        out = RustGenerator().generate_file(usr)
+        assert "impl _OrderStatus {" in out
+        assert "pub fn is_terminal(&self) -> bool" in out
+        assert "matches!(self, Self::Filled | Self::Cancelled)" in out
+
+    def test_enum_serde_meta_extra_derives(self):
+        usr = SchemaParser().parse_schema(_PrioHolder)
+        out = RustGenerator().generate_file(usr)
+        all_derive_lines = [
+            line for line in out.splitlines() if line.startswith("#[derive(")
+        ]
+        # The enum derive line is the first one emitted.
+        enum_derive = all_derive_lines[0]
+        assert "Ord" in enum_derive
+        assert "PartialOrd" in enum_derive
+
+    def test_enum_without_meta_unchanged(self):
+        # Regression: a plain enum with no SerdeMeta still generates
+        # exactly the same output it always has.
+        usr = SchemaParser().parse_schema(_PlainColorHolder)
+        out = RustGenerator().generate_file(usr)
+        assert "pub enum _PlainColor {" in out
+        assert "impl _PlainColor" not in out  # no impl block when no raw_code
+
+    def test_enum_serde_meta_via_common_module(self, tmp_path):
+        """End-to-end via the engine: shared enum lands in common.rs and
+        carries its raw_code impl block."""
+        from schema_gen.core.config import Config
+        from schema_gen.core.generator import SchemaGenerationEngine
+
+        SchemaRegistry._schemas.clear()
+        SchemaRegistry.register(_Mode2Holder)
+
+        out_dir = tmp_path / "out"
+        config = Config(
+            input_dir=str(tmp_path / "schemas"),
+            output_dir=str(out_dir),
+            targets=["rust"],
+        )
+        SchemaGenerationEngine(config).generate_all()
+
+        common_rs = (out_dir / "rust" / "common.rs").read_text()
+        assert "pub enum _Mode2 {" in common_rs
+        assert "impl _Mode2 {" in common_rs
+        assert "pub fn is_auto(&self) -> bool" in common_rs

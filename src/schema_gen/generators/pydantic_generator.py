@@ -574,6 +574,19 @@ class PydanticGenerator(BaseGenerator):
                     lines.append(f'    {member_name} = "{member_value}"')
                 else:
                     lines.append(f"    {member_name} = {member_value}")
+            # Inject PydanticMeta.methods on the enum class body. Users
+            # attach domain methods (is_terminal, has_trailing, ...)
+            # directly on the Python Enum and we preserve them verbatim
+            # in the generated Pydantic enum.
+            enum_meta = (enum_def.custom_code or {}).get("pydantic", {}) or {}
+            methods_src = (enum_meta.get("methods") or "").strip()
+            if methods_src:
+                lines.append("")
+                for method_line in methods_src.splitlines():
+                    if method_line.strip():
+                        lines.append(f"    {method_line}")
+                    else:
+                        lines.append("")
 
         lines.append("")
 

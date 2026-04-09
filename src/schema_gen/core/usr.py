@@ -65,6 +65,13 @@ class USREnum:
     name: str
     values: list[tuple[str, Any]]  # (member_name, member_value)
 
+    # Per-target custom code (raw_code, imports, methods, derives, ...)
+    # extracted from PydanticMeta / SerdeMeta inner classes on the Enum.
+    custom_code: dict[str, dict] = field(default_factory=dict)
+
+    # Per-target configuration overrides (mirrors USRSchema.target_config).
+    target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
+
 
 @dataclass
 class USRField:

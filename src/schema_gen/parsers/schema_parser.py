@@ -4,8 +4,38 @@ import logging
 import warnings
 from enum import Enum
 
-from ..core.schema import SchemaRegistry
+from ..core.schema import SchemaRegistry, _extract_meta_attributes
 from ..core.usr import FieldType, TypeMapper, USREnum, USRField, USRSchema
+
+# Mapping from target name to the inner meta class name on Enum/Schema
+# classes. Mirrors the table in core.schema.Schema().
+_ENUM_META_CLASSES = {
+    "pydantic": "PydanticMeta",
+    "sqlalchemy": "SQLAlchemyMeta",
+    "pathway": "PathwayMeta",
+    "rust": "SerdeMeta",
+}
+
+
+def _build_usr_enum(enum_cls: type) -> USREnum:
+    """Construct a USREnum from a Python Enum class, including any
+    target-specific meta classes (PydanticMeta, SerdeMeta, ...) the user
+    attached as inner classes.
+    """
+    custom_code: dict[str, dict] = {}
+    for target, meta_name in _ENUM_META_CLASSES.items():
+        meta = getattr(enum_cls, meta_name, None)
+        # An Enum subclass exposes inherited attributes via getattr; only
+        # treat the meta as user-supplied when it's a class defined on the
+        # enum itself (or one of its bases that is also an Enum subclass).
+        if meta is not None and isinstance(meta, type):
+            custom_code[target] = _extract_meta_attributes(meta)
+    return USREnum(
+        name=enum_cls.__name__,
+        values=[(e.name, e.value) for e in enum_cls],
+        custom_code=custom_code,
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +104,7 @@ class SchemaParser:
                 # which case we skip and let recursion into ``inner_type``
                 # populate the entry.
                 if isinstance(pt, type) and issubclass(pt, Enum):
-                    seen_enums[f.enum_name] = USREnum(
-                        name=f.enum_name,
-                        values=[(e.name, e.value) for e in pt],
-                    )
+                    seen_enums[f.enum_name] = _build_usr_enum(pt)
             # Recurse through wrappers: Optional[T], list[T], set[T], Union[...].
             if f.inner_type is not None:
                 _collect_enum(f.inner_type)
