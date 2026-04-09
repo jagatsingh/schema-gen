@@ -177,10 +177,13 @@ class TestModel:
         # Generate model
         model = generator.generate_model(schema)
 
-        # Verify relationship handling
-        assert "related_items: List[str]" in model
-        assert "class Config:" in model  # Should have config for relationships
-        assert "from_attributes = True" in model
+        # Verify relationship handling. The Pydantic generator emits modern
+        # PEP 585 lowercase generics (`list[str]`) and Pydantic v2 model
+        # configuration (`model_config = ConfigDict(...)`), not the legacy
+        # `List[str]` / `class Config:` forms.
+        assert "related_items: list[str]" in model
+        assert "model_config = ConfigDict(" in model
+        assert "from_attributes=True" in model
 
     def test_field_constraints_and_formats(self):
         """Test various field constraints and format handling"""
@@ -207,9 +210,10 @@ class TestModel:
         schema = parser.parse_schema(ValidationTest)
         model_code = generator.generate_model(schema)
 
-        # Verify constraint translation
+        # Verify constraint translation. Pydantic v2 renamed the regex
+        # constraint to `pattern`, and the generator emits the v2 form.
         assert "min_length=1, max_length=10" in model_code
-        assert 'regex=r"^[A-Z]+$"' in model_code
+        assert 'pattern=r"^[A-Z]+$"' in model_code
         assert "EmailStr" in model_code
         assert "ge=1" in model_code  # min_value becomes ge (greater or equal)
         assert "ge=0.0, le=100.0" in model_code
