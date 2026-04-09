@@ -5,7 +5,7 @@ import warnings
 from enum import Enum
 
 from ..core.schema import SchemaRegistry
-from ..core.usr import FieldType, TypeMapper, USREnum, USRSchema
+from ..core.usr import FieldType, TypeMapper, USREnum, USRField, USRSchema
 
 logger = logging.getLogger(__name__)
 
@@ -40,38 +40,53 @@ class SchemaParser:
             )
             usr_fields.append(usr_field)
 
-        # Discover enum types referenced by fields
-        seen_enums = {}
-        for usr_field in usr_fields:
-            if usr_field.type == FieldType.ENUM and usr_field.enum_name:
-                if usr_field.enum_name not in seen_enums:
-                    seen_enums[usr_field.enum_name] = USREnum(
-                        name=usr_field.enum_name,
-                        values=[
-                            (e.name, e.value)
-                            for e in usr_field.python_type
-                            if isinstance(usr_field.python_type, type)
-                            and issubclass(usr_field.python_type, Enum)
-                        ]
-                        if isinstance(usr_field.python_type, type)
-                        and issubclass(usr_field.python_type, Enum)
-                        else [],
-                    )
-            # Also check inner_type for Optional[Enum]
+        # Discover enum types referenced by fields.
+        #
+        # Enums can appear at several nesting depths:
+        #   Enum                                          -> top-level
+        #   Optional[Enum] / Enum | None                  -> inner_type
+        #   list[Enum] / set[Enum] / frozenset[Enum]      -> inner_type
+        #   Optional[list[Enum]]                          -> inner_type.inner_type
+        #   Union[Enum, ...]                              -> union_types
+        #   dict[str, Enum]                               -> not currently modeled in USR
+        #
+        # We walk the field tree recursively so that an enum referenced at any
+        # depth contributes its members to ``schema.enums``. Previously the
+        # discovery pass only looked at ``usr_field.python_type`` for top-level
+        # enum fields, and for ``Optional[Enum]`` that attribute is the wrapped
+        # ``Optional[...]`` form rather than the enum class itself, so enum
+        # member extraction silently produced an empty list (issue #15).
+        seen_enums: dict[str, USREnum] = {}
+
+        def _collect_enum(f: USRField) -> None:
+            if f is None:
+                return
             if (
-                usr_field.inner_type
-                and usr_field.inner_type.type == FieldType.ENUM
-                and usr_field.inner_type.enum_name
+                f.type == FieldType.ENUM
+                and f.enum_name
+                and f.enum_name not in seen_enums
             ):
-                en = usr_field.inner_type.enum_name
-                if en not in seen_enums:
-                    pt = usr_field.inner_type.python_type
-                    seen_enums[en] = USREnum(
-                        name=en,
-                        values=[(e.name, e.value) for e in pt]
-                        if isinstance(pt, type) and issubclass(pt, Enum)
-                        else [],
+                pt = f.python_type
+                # ``python_type`` is the unwrapped enum class for top-level
+                # enum fields and for the recursively-created inner_type of an
+                # ``Optional[Enum]`` / ``list[Enum]``. For the *outer* field of
+                # an Optional it is the wrapper (e.g. ``Optional[Enum]``), in
+                # which case we skip and let recursion into ``inner_type``
+                # populate the entry.
+                if isinstance(pt, type) and issubclass(pt, Enum):
+                    seen_enums[f.enum_name] = USREnum(
+                        name=f.enum_name,
+                        values=[(e.name, e.value) for e in pt],
                     )
+            # Recurse through wrappers: Optional[T], list[T], set[T], Union[...].
+            if f.inner_type is not None:
+                _collect_enum(f.inner_type)
+            for ut in f.union_types:
+                _collect_enum(ut)
+
+        for usr_field in usr_fields:
+            _collect_enum(usr_field)
+
         enums = list(seen_enums.values())
 
         # Extract variants if defined
