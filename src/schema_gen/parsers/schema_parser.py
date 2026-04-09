@@ -4,8 +4,38 @@ import logging
 import warnings
 from enum import Enum
 
-from ..core.schema import SchemaRegistry
+from ..core.schema import SchemaRegistry, _extract_meta_attributes
 from ..core.usr import FieldType, TypeMapper, USREnum, USRField, USRSchema
+
+# Mapping from target name to the inner meta class name on Enum/Schema
+# classes. Mirrors the table in core.schema.Schema().
+_ENUM_META_CLASSES = {
+    "pydantic": "PydanticMeta",
+    "sqlalchemy": "SQLAlchemyMeta",
+    "pathway": "PathwayMeta",
+    "rust": "SerdeMeta",
+}
+
+
+def _build_usr_enum(enum_cls: type) -> USREnum:
+    """Construct a USREnum from a Python Enum class, including any
+    target-specific meta classes (PydanticMeta, SerdeMeta, ...) the user
+    attached as inner classes.
+    """
+    custom_code: dict[str, dict] = {}
+    for target, meta_name in _ENUM_META_CLASSES.items():
+        meta = getattr(enum_cls, meta_name, None)
+        # An Enum subclass exposes inherited attributes via getattr; only
+        # treat the meta as user-supplied when it's a class defined on the
+        # enum itself (or one of its bases that is also an Enum subclass).
+        if meta is not None and isinstance(meta, type):
+            custom_code[target] = _extract_meta_attributes(meta)
+    return USREnum(
+        name=enum_cls.__name__,
+        values=[(e.name, e.value) for e in enum_cls],
+        custom_code=custom_code,
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +68,30 @@ class SchemaParser:
                 python_type=field_data["type"],
                 field_info=field_data["field_info"],
             )
+            # Discriminated-union resolution. If the field carries a
+            # discriminator, look up each union member (must be a registered
+            # @Schema class) and pull the Literal[...] value of its
+            # matching tag field. Variants without a Literal tag, or where
+            # the tag has multiple values, are rejected at parse time so
+            # the contract is unambiguous.
+            if usr_field.discriminator and usr_field.union_types:
+                try:
+                    usr_field.union_tag_values = self._resolve_discriminator_tags(
+                        usr_field
+                    )
+                except ValueError as exc:
+                    # Drop the discriminator so the field falls back to
+                    # the plain-Union path with a clear warning. Avoids
+                    # producing broken Rust output.
+                    logger.warning(
+                        "Schema '%s', field '%s': discriminator resolution failed "
+                        "(%s). Falling back to untagged Union (serde_json::Value).",
+                        schema_class.__name__,
+                        field_name,
+                        exc,
+                    )
+                    usr_field.discriminator = None
+                    usr_field.union_tag_values = []
             usr_fields.append(usr_field)
 
         # Discover enum types referenced by fields.
@@ -74,10 +128,7 @@ class SchemaParser:
                 # which case we skip and let recursion into ``inner_type``
                 # populate the entry.
                 if isinstance(pt, type) and issubclass(pt, Enum):
-                    seen_enums[f.enum_name] = USREnum(
-                        name=f.enum_name,
-                        values=[(e.name, e.value) for e in pt],
-                    )
+                    seen_enums[f.enum_name] = _build_usr_enum(pt)
             # Recurse through wrappers: Optional[T], list[T], set[T], Union[...].
             if f.inner_type is not None:
                 _collect_enum(f.inner_type)
@@ -135,6 +186,62 @@ class SchemaParser:
             )
 
         return usr_schema
+
+    def _resolve_discriminator_tags(self, usr_field: USRField) -> list[str]:
+        """For a discriminated-union field, return one Literal[...] tag
+        value per union variant.
+
+        Each union variant must be a registered @Schema class with a
+        Literal field whose name matches ``usr_field.discriminator`` and
+        which has exactly one literal value. Raises ``ValueError`` with a
+        helpful message otherwise.
+        """
+        import typing
+
+        disc = usr_field.discriminator
+        tags: list[str] = []
+        for variant in usr_field.union_types:
+            variant_name = variant.nested_schema or getattr(
+                variant.python_type, "__name__", None
+            )
+            if not variant_name:
+                raise ValueError(
+                    "union variant has no resolvable schema name "
+                    "(only @Schema-decorated classes are supported)"
+                )
+            variant_cls = SchemaRegistry.get_schema(variant_name)
+            if variant_cls is None:
+                raise ValueError(
+                    f"union variant '{variant_name}' is not a registered @Schema class"
+                )
+            sf = getattr(variant_cls, "_schema_fields", {}).get(disc)
+            if sf is None:
+                raise ValueError(
+                    f"variant '{variant_name}' has no discriminator field '{disc}'"
+                )
+            ann = sf["type"]
+            # Strip Annotated wrapper if present.
+            if typing.get_origin(ann) is typing.Annotated:
+                ann = typing.get_args(ann)[0]
+            if typing.get_origin(ann) is not typing.Literal:
+                raise ValueError(
+                    f"variant '{variant_name}' field '{disc}' must be "
+                    f"Literal[...] for discriminated unions, got {ann!r}"
+                )
+            literal_args = typing.get_args(ann)
+            if len(literal_args) != 1:
+                raise ValueError(
+                    f"variant '{variant_name}' field '{disc}' must have "
+                    f"exactly one Literal value, got {literal_args!r}"
+                )
+            tag = literal_args[0]
+            if not isinstance(tag, str):
+                raise ValueError(
+                    f"variant '{variant_name}' field '{disc}' literal value "
+                    f"must be a string, got {tag!r}"
+                )
+            tags.append(tag)
+        return tags
 
     def parse_all_schemas(self) -> list[USRSchema]:
         """Parse all registered schemas to USR format

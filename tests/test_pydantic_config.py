@@ -183,3 +183,59 @@ class TestEngineThreadsConfigEndToEnd:
         ).read_text()
         assert "extra='forbid'" in generated
         assert "validate_assignment=True" in generated
+
+
+from enum import Enum  # noqa: E402
+
+
+class _PyOrderStatus(str, Enum):
+    PENDING = "pending"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+
+    class PydanticMeta:
+        methods = (
+            "def is_terminal(self) -> bool:\n"
+            "    return self in {_PyOrderStatus.FILLED, _PyOrderStatus.CANCELLED}"
+        )
+
+
+class _PyPlainColor(str, Enum):
+    RED = "red"
+    BLUE = "blue"
+
+
+@Schema
+class _PyOrderEvent:
+    status: _PyOrderStatus
+
+
+@Schema
+class _PyPaint:
+    color: _PyPlainColor
+
+
+class TestPydanticEnumMeta:
+    """PydanticMeta on Enum classes injects domain methods into the
+    generated Pydantic enum body."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_enum_pydantic_meta_methods(self):
+        from schema_gen.generators.pydantic_generator import PydanticGenerator
+
+        usr = SchemaParser().parse_schema(_PyOrderEvent)
+        out = PydanticGenerator().generate_file(usr)
+        assert "class _PyOrderStatus(Enum):" in out
+        assert "def is_terminal(self) -> bool:" in out
+        assert "_PyOrderStatus.FILLED" in out
+
+    def test_enum_without_meta_unchanged(self):
+        from schema_gen.generators.pydantic_generator import PydanticGenerator
+
+        usr = SchemaParser().parse_schema(_PyPaint)
+        out = PydanticGenerator().generate_file(usr)
+        assert "class _PyPlainColor(Enum):" in out
+        # No injected methods
+        assert "def is_terminal" not in out

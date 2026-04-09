@@ -45,6 +45,14 @@ class FieldInfo:
     pydantic: dict[str, Any] = field(default_factory=dict)
     sqlalchemy: dict[str, Any] = field(default_factory=dict)
     pathway: dict[str, Any] = field(default_factory=dict)
+    rust: dict[str, Any] = field(default_factory=dict)
+
+    # Discriminated-union tag field name. When set, the field's annotation
+    # must be Annotated[Union[A, B, ...], Field(discriminator="<field>")]
+    # where every union member is a @Schema class with a Literal[...] tag
+    # field matching this name. Generators emit serde tagged enums / Pydantic
+    # discriminated unions / Zod discriminatedUnion accordingly.
+    discriminator: str | None = None
 
     # Additional metadata
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -77,6 +85,8 @@ def Field(
     pydantic: dict[str, Any] | None = None,
     sqlalchemy: dict[str, Any] | None = None,
     pathway: dict[str, Any] | None = None,
+    rust: dict[str, Any] | None = None,
+    discriminator: str | None = None,
     **metadata: Any,
 ) -> FieldInfo:
     """Create a field definition for a schema
@@ -134,6 +144,8 @@ def Field(
         pydantic=pydantic or {},
         sqlalchemy=sqlalchemy or {},
         pathway=pathway or {},
+        rust=rust or {},
+        discriminator=discriminator,
         metadata=metadata,
     )
 

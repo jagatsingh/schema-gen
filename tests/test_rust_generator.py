@@ -734,3 +734,309 @@ def test_engine_cargo_toml_can_be_disabled(tmp_path):
     SchemaGenerationEngine(config).generate_all()
 
     assert not (out_dir / "rust" / "Cargo.toml").exists()
+
+
+# ----------------------------------------------------------------------
+# Per-field integer / float width override (#19)
+# ----------------------------------------------------------------------
+
+
+class TestRustWidthOverride:
+    """Field(rust={"type": "u32"}) controls Rust integer / float widths."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_integer_width_override_u32(self):
+        @Schema
+        class OrderRequest:
+            quantity: int = Field(rust={"type": "u32"})
+
+        usr = SchemaParser().parse_schema(OrderRequest)
+        out = RustGenerator().generate_file(usr)
+        assert "pub quantity: u32," in out
+        assert "pub quantity: i64," not in out
+
+    def test_integer_width_override_u16_leg_index(self):
+        @Schema
+        class Leg:
+            leg_index: int = Field(rust={"type": "u16"})
+
+        usr = SchemaParser().parse_schema(Leg)
+        out = RustGenerator().generate_file(usr)
+        assert "pub leg_index: u16," in out
+
+    def test_integer_width_override_invalid_type(self, caplog):
+        @Schema
+        class Bogus:
+            count: int = Field(rust={"type": "bogus"})
+
+        usr = SchemaParser().parse_schema(Bogus)
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            out = RustGenerator().generate_file(usr)
+        assert "pub count: i64," in out
+        assert any("bogus" in rec.message for rec in caplog.records)
+
+    def test_float_width_override_f32(self):
+        @Schema
+        class Pricing:
+            price: float = Field(rust={"type": "f32"})
+
+        usr = SchemaParser().parse_schema(Pricing)
+        out = RustGenerator().generate_file(usr)
+        assert "pub price: f32," in out
+        assert "pub price: f64," not in out
+
+    def test_float_width_override_invalid_type(self, caplog):
+        @Schema
+        class BadFloat:
+            x: float = Field(rust={"type": "decimal"})
+
+        usr = SchemaParser().parse_schema(BadFloat)
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            out = RustGenerator().generate_file(usr)
+        assert "pub x: f64," in out
+        assert any("decimal" in rec.message for rec in caplog.records)
+
+    def test_integer_default_still_i64(self):
+        @Schema
+        class Plain:
+            count: int
+
+        usr = SchemaParser().parse_schema(Plain)
+        out = RustGenerator().generate_file(usr)
+        assert "pub count: i64," in out
+
+    def test_optional_integer_width_override(self):
+        @Schema
+        class OptOrder:
+            quantity: int | None = Field(default=None, rust={"type": "u32"})
+
+        usr = SchemaParser().parse_schema(OptOrder)
+        out = RustGenerator().generate_file(usr)
+        assert "pub quantity: Option<u32>," in out
+
+
+# ----------------------------------------------------------------------
+# Enum-level SerdeMeta support
+# ----------------------------------------------------------------------
+
+
+# Defined at module scope so the @Schema decorator's get_type_hints can
+# resolve forward references.
+class _OrderStatus(str, Enum):
+    PENDING = "pending"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+
+    class SerdeMeta:
+        raw_code = (
+            "impl _OrderStatus {\n"
+            "    pub fn is_terminal(&self) -> bool {\n"
+            "        matches!(self, Self::Filled | Self::Cancelled)\n"
+            "    }\n"
+            "}"
+        )
+
+
+class _Priority(str, Enum):
+    LOW = "low"
+    HIGH = "high"
+
+    class SerdeMeta:
+        derives = ["Ord", "PartialOrd"]
+
+
+class _PlainColor(str, Enum):
+    RED = "red"
+    BLUE = "blue"
+
+
+class _Mode2(str, Enum):
+    AUTO = "auto"
+    MANUAL = "manual"
+
+    class SerdeMeta:
+        raw_code = (
+            "impl _Mode2 {\n"
+            "    pub fn is_auto(&self) -> bool {\n"
+            "        matches!(self, Self::Auto)\n"
+            "    }\n"
+            "}"
+        )
+
+
+@Schema
+class _OrderEnumHolder:
+    status: _OrderStatus
+
+
+@Schema
+class _PrioHolder:
+    priority: _Priority
+
+
+@Schema
+class _PlainColorHolder:
+    color: _PlainColor
+
+
+@Schema
+class _Mode2Holder:
+    mode: _Mode2
+
+
+class TestRustEnumMeta:
+    """SerdeMeta on Enum classes injects extra derives + raw_code impl
+    blocks into the generated Rust enum."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_enum_serde_meta_raw_code(self):
+        usr = SchemaParser().parse_schema(_OrderEnumHolder)
+        out = RustGenerator().generate_file(usr)
+        assert "impl _OrderStatus {" in out
+        assert "pub fn is_terminal(&self) -> bool" in out
+        assert "matches!(self, Self::Filled | Self::Cancelled)" in out
+
+    def test_enum_serde_meta_extra_derives(self):
+        usr = SchemaParser().parse_schema(_PrioHolder)
+        out = RustGenerator().generate_file(usr)
+        all_derive_lines = [
+            line for line in out.splitlines() if line.startswith("#[derive(")
+        ]
+        # The enum derive line is the first one emitted.
+        enum_derive = all_derive_lines[0]
+        assert "Ord" in enum_derive
+        assert "PartialOrd" in enum_derive
+
+    def test_enum_without_meta_unchanged(self):
+        # Regression: a plain enum with no SerdeMeta still generates
+        # exactly the same output it always has.
+        usr = SchemaParser().parse_schema(_PlainColorHolder)
+        out = RustGenerator().generate_file(usr)
+        assert "pub enum _PlainColor {" in out
+        assert "impl _PlainColor" not in out  # no impl block when no raw_code
+
+    def test_enum_serde_meta_via_common_module(self, tmp_path):
+        """End-to-end via the engine: shared enum lands in common.rs and
+        carries its raw_code impl block."""
+        from schema_gen.core.config import Config
+        from schema_gen.core.generator import SchemaGenerationEngine
+
+        SchemaRegistry._schemas.clear()
+        SchemaRegistry.register(_Mode2Holder)
+
+        out_dir = tmp_path / "out"
+        config = Config(
+            input_dir=str(tmp_path / "schemas"),
+            output_dir=str(out_dir),
+            targets=["rust"],
+        )
+        SchemaGenerationEngine(config).generate_all()
+
+        common_rs = (out_dir / "rust" / "common.rs").read_text()
+        assert "pub enum _Mode2 {" in common_rs
+        assert "impl _Mode2 {" in common_rs
+        assert "pub fn is_auto(&self) -> bool" in common_rs
+
+
+# ----------------------------------------------------------------------
+# Discriminated unions (#18)
+# ----------------------------------------------------------------------
+
+from typing import Annotated, Literal, Union  # noqa: E402
+
+
+@Schema
+class _CeLeg:
+    option_type: Literal["CE"]
+    strike: float
+
+
+@Schema
+class _PeLeg:
+    option_type: Literal["PE"]
+    strike: float
+
+
+@Schema
+class _OtherLeg:
+    option_type: Literal["XX"]
+    strike: float
+
+
+@Schema
+class _DiscriminatedOrder:
+    leg: Annotated[Union[_CeLeg, _PeLeg], Field(discriminator="option_type")]
+
+
+@Schema
+class _DiscriminatedThreeWay:
+    leg: Annotated[Union[_CeLeg, _PeLeg, _OtherLeg], Field(discriminator="option_type")]
+
+
+@Schema
+class _PlainUnionOrder:
+    leg: Union[_CeLeg, _PeLeg]
+
+
+class TestRustDiscriminatedUnion:
+    """Annotated[Union[A, B], Field(discriminator="...")] → serde tagged enum."""
+
+    def setup_method(self):
+        # Other test classes wipe SchemaRegistry in their setup_method, so
+        # re-register the variant @Schema classes the parser needs to look
+        # up to resolve Literal tags.
+        SchemaRegistry._schemas.clear()
+        for cls in (
+            _CeLeg,
+            _PeLeg,
+            _OtherLeg,
+            _DiscriminatedOrder,
+            _DiscriminatedThreeWay,
+            _PlainUnionOrder,
+        ):
+            SchemaRegistry.register(cls)
+
+    def test_discriminated_union_two_variants(self):
+        usr = SchemaParser().parse_schema(_DiscriminatedOrder)
+        out = RustGenerator().generate_file(usr)
+        assert 'tag = "option_type"' in out
+        assert "pub enum _DiscriminatedOrderLeg {" in out
+        assert "Ce(_CeLeg)" in out
+        assert "Pe(_PeLeg)" in out
+        assert "pub leg: _DiscriminatedOrderLeg," in out
+        assert "serde_json::Value" not in out.split("pub leg:")[1].split(",")[0]
+
+    def test_discriminated_union_three_variants(self):
+        usr = SchemaParser().parse_schema(_DiscriminatedThreeWay)
+        out = RustGenerator().generate_file(usr)
+        assert "pub enum _DiscriminatedThreeWayLeg {" in out
+        assert "Ce(_CeLeg)" in out
+        assert "Pe(_PeLeg)" in out
+        assert "Xx(_OtherLeg)" in out
+
+    def test_discriminated_union_uses_literal_tag(self):
+        """Variant identifier comes from the Literal value, with rename
+        if the Pascal-cased identifier differs from the wire tag."""
+        usr = SchemaParser().parse_schema(_DiscriminatedOrder)
+        out = RustGenerator().generate_file(usr)
+        # "CE".capitalize() == "Ce", so a rename is needed to preserve
+        # the wire value "CE".
+        assert '#[serde(rename = "CE")]' in out
+        assert '#[serde(rename = "PE")]' in out
+
+    def test_plain_union_still_falls_back_to_value(self, caplog):
+        import logging
+
+        usr = SchemaParser().parse_schema(_PlainUnionOrder)
+        with caplog.at_level(logging.WARNING):
+            out = RustGenerator().generate_file(usr)
+        assert "pub leg: serde_json::Value," in out
+        assert any("union field 'leg'" in rec.message for rec in caplog.records)
