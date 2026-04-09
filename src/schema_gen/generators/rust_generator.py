@@ -98,6 +98,7 @@ def _rust_field_ident(name: str) -> str:
         return f"r#{name}"
     return name
 
+
 _DEFAULT_STRUCT_DERIVES = [
     "Debug",
     "Clone",
@@ -123,6 +124,15 @@ class RustGenerator(BaseGenerator):
 
     index_filename = "lib.rs"
 
+    def __init__(self, config: Any | None = None) -> None:  # type: ignore[override]
+        super().__init__(config=config)
+        # Enums deduplicated across all generated files into a shared
+        # ``common.rs`` module (POC finding C1). Populated by the first
+        # call to ``get_extra_files`` and consumed by ``generate_file``
+        # so per-schema files skip re-emitting the shared enums.
+        self._common_enum_names: set[str] = set()
+        self._emit_common_module: bool = False
+
     @property
     def file_extension(self) -> str:
         return ".rs"
@@ -138,6 +148,54 @@ class RustGenerator(BaseGenerator):
     # Public API
     # ------------------------------------------------------------------
 
+    def get_extra_files(
+        self, schemas: list[USRSchema], output_dir: Path
+    ) -> dict[str, str]:
+        """Emit ``common.rs`` with all deduplicated enums and a
+        ``Cargo.toml`` if enabled (POC findings C1 + C3).
+        """
+        extras: dict[str, str] = {}
+
+        # Collect unique enums across every schema. First occurrence wins.
+        seen: dict[str, USREnum] = {}
+        for schema in schemas:
+            for enum in schema.enums:
+                if enum.name not in seen:
+                    seen[enum.name] = enum
+        self._common_enum_names = set(seen.keys())
+        self._emit_common_module = bool(seen)
+
+        if seen:
+            json_schema_derive = True
+            lines = [
+                "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
+                "// Generator: schema-gen Rust Serde generator",
+                "// Shared enum definitions referenced by multiple schemas.",
+                "",
+                "use serde::{Deserialize, Serialize};",
+            ]
+            if json_schema_derive:
+                lines.append("use schemars::JsonSchema;")
+            lines.append("")
+            lines.append("")
+            for name in sorted(seen):
+                lines.append(
+                    self._generate_enum(
+                        seen[name], json_schema_derive=json_schema_derive
+                    )
+                )
+                lines.append("")
+            extras["common.rs"] = "\n".join(lines).rstrip() + "\n"
+
+        # Cargo.toml (Fix #C3) — honors Config.rust overrides.
+        rust_cfg: dict[str, Any] = {}
+        if self.config is not None:
+            rust_cfg = getattr(self.config, "rust", None) or {}
+        if rust_cfg.get("emit_cargo_toml", True):
+            extras["Cargo.toml"] = _render_cargo_toml(rust_cfg)
+
+        return extras
+
     def generate_index(
         self, schemas: list[USRSchema], output_dir: Path | None = None
     ) -> str:
@@ -150,12 +208,17 @@ class RustGenerator(BaseGenerator):
 
         module_names = [_snake_case(s.name) for s in schemas]
 
+        # Shared enum module first so downstream modules can `use` it.
+        if self._emit_common_module:
+            lines.append("pub mod common;")
         for module in module_names:
             lines.append(f"pub mod {module};")
 
-        if module_names:
+        if module_names or self._emit_common_module:
             lines.append("")
 
+        if self._emit_common_module:
+            lines.append("pub use common::*;")
         for module in module_names:
             lines.append(f"pub use {module}::*;")
 
@@ -170,6 +233,11 @@ class RustGenerator(BaseGenerator):
         imports: set[str] = set()
         body_parts: list[str] = []
 
+        # Cross-module schema references → ``use super::other::Other;``
+        # (POC finding C2). Collected before struct emission so the header
+        # can render the correct ``use`` lines.
+        external_schema_refs = _collect_external_schema_refs(schema)
+
         # Schema-level rename_all (from SerdeMeta) — if set and valid, it
         # applies uniformly across both the struct and every emitted enum
         # in this schema. Enums fall back to per-variant `rename` attributes
@@ -179,8 +247,14 @@ class RustGenerator(BaseGenerator):
             schema_rename_all if schema_rename_all in _VALID_RENAME_ALL else None
         )
 
-        # Enums (referenced by fields) get emitted before the struct.
+        # Enums: when running under the engine (generate_all), shared
+        # enums live in ``common.rs`` — don't re-emit them here. When the
+        # generator is used standalone (direct generate_file call in a
+        # test), ``_common_enum_names`` is empty and all enums are
+        # emitted inline as before.
         for enum in schema.enums:
+            if enum.name in self._common_enum_names:
+                continue
             body_parts.append(
                 self._generate_enum(
                     enum,
@@ -240,6 +314,7 @@ class RustGenerator(BaseGenerator):
             imports=imports,
             custom_code=custom_code,
             json_schema_derive=json_schema_derive,
+            external_schema_refs=external_schema_refs,
         )
 
         trailing = ""
@@ -288,6 +363,7 @@ class RustGenerator(BaseGenerator):
         imports: set[str],
         custom_code: dict[str, Any],
         json_schema_derive: bool,
+        external_schema_refs: set[str] | None = None,
     ) -> str:
         lines = [
             "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
@@ -311,6 +387,21 @@ class RustGenerator(BaseGenerator):
             # emission, so no extra ``use`` is required here — keep the
             # import set self-documenting.
             pass
+
+        # Shared enum module (POC finding C1 + C2). Pulled in via
+        # ``use super::common::*;`` so enum names resolve without
+        # fully-qualified paths.
+        if self._emit_common_module:
+            lines.append("use super::common::*;")
+
+        # Cross-module schema references (POC finding C2). Emit an
+        # explicit ``use super::<module>::<Type>;`` for every nested
+        # schema name that is NOT this schema itself.
+        for ref_name in sorted(external_schema_refs or ()):
+            if ref_name == schema.name:
+                continue
+            module = _snake_case(ref_name)
+            lines.append(f"use super::{module}::{ref_name};")
 
         # Custom imports from SerdeMeta
         for custom_import in custom_code.get("imports", []) or []:
@@ -622,6 +713,68 @@ def _split_field_blocks(lines: list[str]) -> list[list[str]]:
     if current:
         blocks.append(current)
     return blocks
+
+
+def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
+    """Return the set of NESTED_SCHEMA names referenced by a schema.
+
+    Walks through ``inner_type`` and ``union_types`` so nested containers
+    (lists, unions, tuples) produce imports too. The caller filters out
+    self-references when emitting ``use`` lines.
+    """
+    refs: set[str] = set()
+
+    def _walk(field: USRField) -> None:
+        if field.type == FieldType.NESTED_SCHEMA and field.nested_schema:
+            refs.add(field.nested_schema)
+        if field.inner_type is not None:
+            _walk(field.inner_type)
+        for ut in field.union_types or []:
+            _walk(ut)
+
+    for f in schema.fields:
+        _walk(f)
+    return refs
+
+
+def _render_cargo_toml(rust_cfg: dict[str, Any]) -> str:
+    """Render a minimal ``Cargo.toml`` for the generated crate.
+
+    Honors ``Config.rust`` overrides:
+      - ``crate_name`` (default ``schema-gen-generated-contracts``)
+      - ``crate_version`` (default ``0.0.0``)
+      - ``edition`` (default ``2021``)
+      - ``extra_deps`` (mapping of crate name → version string)
+    """
+    name = rust_cfg.get("crate_name", "schema-gen-generated-contracts")
+    version = rust_cfg.get("crate_version", "0.0.0")
+    edition = rust_cfg.get("edition", "2021")
+    extra_deps: dict[str, Any] = rust_cfg.get("extra_deps", {}) or {}
+
+    lines = [
+        "# AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
+        "# Generator: schema-gen Rust Serde generator",
+        "",
+        "[package]",
+        f'name = "{name}"',
+        f'version = "{version}"',
+        f'edition = "{edition}"',
+        'description = "Auto-generated contract types from schema-gen"',
+        'license = "MIT OR Apache-2.0"',
+        "",
+        "[dependencies]",
+        'serde = { version = "1", features = ["derive"] }',
+        'chrono = { version = "0.4", features = ["serde"] }',
+        'schemars = "0.8"',
+    ]
+    for crate, spec in sorted(extra_deps.items()):
+        if isinstance(spec, str):
+            lines.append(f'{crate} = "{spec}"')
+        else:
+            # Assume a pre-formatted inline table string provided by the user.
+            lines.append(f"{crate} = {spec}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _field_is_optional(field: USRField) -> bool:

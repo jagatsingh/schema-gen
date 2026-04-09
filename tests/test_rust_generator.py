@@ -447,7 +447,9 @@ def test_union_field_emits_clean_rust_type(caplog):
             ),
         ],
     )
-    with caplog.at_level(logging.WARNING, logger="schema_gen.generators.rust_generator"):
+    with caplog.at_level(
+        logging.WARNING, logger="schema_gen.generators.rust_generator"
+    ):
         out = RustGenerator().generate_file(schema)
 
     assert "pub payload: serde_json::Value," in out
@@ -513,7 +515,9 @@ def test_struct_rename_all_invalid_is_ignored_with_warning(caplog):
             rename_all = "nonsense"
 
     schema = SchemaParser().parse_schema(BadStruct)
-    with caplog.at_level(logging.WARNING, logger="schema_gen.generators.rust_generator"):
+    with caplog.at_level(
+        logging.WARNING, logger="schema_gen.generators.rust_generator"
+    ):
         out = RustGenerator().generate_file(schema)
 
     assert 'rename_all = "nonsense"' not in out
@@ -538,6 +542,40 @@ class _EnumRenameHolder:
         rename_all = "lowercase"
 
 
+class _Side(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+@Schema
+class OrderAlphaForC1:
+    side: _Side
+    qty: int
+
+
+@Schema
+class OrderBetaForC1:
+    side: _Side
+    price: float
+
+
+@Schema
+class PositionLegForC2:
+    symbol: str
+    qty: int
+
+
+@Schema
+class PositionForC2:
+    account: str
+    leg: PositionLegForC2
+
+
+@Schema
+class _CargoTest:
+    id: int
+
+
 def test_enum_rename_all_from_schema_meta_overrides_per_variant():
     SchemaRegistry.register(_EnumRenameHolder)
     schema = SchemaParser().parse_schema(_EnumRenameHolder)
@@ -558,3 +596,141 @@ def test_enum_without_rename_all_keeps_per_variant_renames():
     out = RustGenerator().generate_file(schema)
     assert '#[serde(rename = "NSE")]' in out
     assert '#[serde(rename = "BSE")]' in out
+
+
+# ----------------------------------------------------------------------
+# Fix #C1 + #C2 + #C3: common.rs dedup, cross-module use, Cargo.toml
+# ----------------------------------------------------------------------
+
+
+def test_engine_emits_common_rs_and_dedups_enums(tmp_path):
+    """Fix #C1: an enum referenced by multiple schemas should be emitted
+    exactly once, in ``common.rs``."""
+    from schema_gen.core.config import Config
+    from schema_gen.core.generator import SchemaGenerationEngine
+
+    SchemaRegistry._schemas.clear()
+    SchemaRegistry.register(OrderAlphaForC1)
+    SchemaRegistry.register(OrderBetaForC1)
+
+    out_dir = tmp_path / "out"
+    config = Config(
+        input_dir=str(tmp_path / "schemas"),
+        output_dir=str(out_dir),
+        targets=["rust"],
+    )
+    SchemaGenerationEngine(config).generate_all()
+
+    rust_dir = out_dir / "rust"
+    common = (rust_dir / "common.rs").read_text()
+    assert "pub enum _Side" in common
+    assert 'rename = "buy"' in common
+
+    alpha = (rust_dir / "order_alpha_for_c1.rs").read_text()
+    beta = (rust_dir / "order_beta_for_c1.rs").read_text()
+
+    # Enum emitted exactly once — neither per-schema file defines _Side.
+    assert "pub enum _Side" not in alpha
+    assert "pub enum _Side" not in beta
+    # Both files pull the enum in via common.
+    assert "use super::common::*;" in alpha
+    assert "use super::common::*;" in beta
+    # lib.rs exposes common too.
+    lib = (rust_dir / "lib.rs").read_text()
+    assert "pub mod common;" in lib
+    assert "pub use common::*;" in lib
+
+
+def test_engine_emits_cross_module_use_for_nested_schema(tmp_path):
+    """Fix #C2: Schema B referencing Schema A gets
+    ``use super::schema_a::SchemaA;`` at the top of schema_b.rs."""
+    from schema_gen.core.config import Config
+    from schema_gen.core.generator import SchemaGenerationEngine
+
+    SchemaRegistry._schemas.clear()
+    SchemaRegistry.register(PositionLegForC2)
+    SchemaRegistry.register(PositionForC2)
+
+    out_dir = tmp_path / "out"
+    config = Config(
+        input_dir=str(tmp_path / "schemas"),
+        output_dir=str(out_dir),
+        targets=["rust"],
+    )
+    SchemaGenerationEngine(config).generate_all()
+
+    position = (out_dir / "rust" / "position_for_c2.rs").read_text()
+    assert "use super::position_leg_for_c2::PositionLegForC2;" in position
+
+
+def test_engine_emits_cargo_toml(tmp_path):
+    """Fix #C3: ``Cargo.toml`` is written alongside the .rs files."""
+    from schema_gen.core.config import Config
+    from schema_gen.core.generator import SchemaGenerationEngine
+
+    SchemaRegistry._schemas.clear()
+    SchemaRegistry.register(_CargoTest)
+
+    out_dir = tmp_path / "out"
+    config = Config(
+        input_dir=str(tmp_path / "schemas"),
+        output_dir=str(out_dir),
+        targets=["rust"],
+    )
+    SchemaGenerationEngine(config).generate_all()
+
+    cargo = (out_dir / "rust" / "Cargo.toml").read_text()
+    assert "[package]" in cargo
+    assert 'name = "schema-gen-generated-contracts"' in cargo
+    assert "[dependencies]" in cargo
+    assert 'serde = { version = "1"' in cargo
+    assert "chrono = " in cargo
+    assert 'schemars = "0.8"' in cargo
+
+
+def test_engine_cargo_toml_overrides(tmp_path):
+    """Fix #C3: ``Config.rust`` overrides crate metadata + extra deps."""
+    from schema_gen.core.config import Config
+    from schema_gen.core.generator import SchemaGenerationEngine
+
+    SchemaRegistry._schemas.clear()
+    SchemaRegistry.register(_CargoTest)
+
+    out_dir = tmp_path / "out"
+    config = Config(
+        input_dir=str(tmp_path / "schemas"),
+        output_dir=str(out_dir),
+        targets=["rust"],
+        rust={
+            "crate_name": "my-contracts",
+            "crate_version": "1.2.3",
+            "edition": "2024",
+            "extra_deps": {"thiserror": "1.0"},
+        },
+    )
+    SchemaGenerationEngine(config).generate_all()
+
+    cargo = (out_dir / "rust" / "Cargo.toml").read_text()
+    assert 'name = "my-contracts"' in cargo
+    assert 'version = "1.2.3"' in cargo
+    assert 'edition = "2024"' in cargo
+    assert 'thiserror = "1.0"' in cargo
+
+
+def test_engine_cargo_toml_can_be_disabled(tmp_path):
+    from schema_gen.core.config import Config
+    from schema_gen.core.generator import SchemaGenerationEngine
+
+    SchemaRegistry._schemas.clear()
+    SchemaRegistry.register(_CargoTest)
+
+    out_dir = tmp_path / "out"
+    config = Config(
+        input_dir=str(tmp_path / "schemas"),
+        output_dir=str(out_dir),
+        targets=["rust"],
+        rust={"emit_cargo_toml": False},
+    )
+    SchemaGenerationEngine(config).generate_all()
+
+    assert not (out_dir / "rust" / "Cargo.toml").exists()

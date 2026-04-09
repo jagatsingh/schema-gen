@@ -161,9 +161,7 @@ class SchemaGenerationEngine:
             if index_content is not None:
                 # Generator owns its index filename (lib.rs for Rust,
                 # index.ts for Zod, __init__.py for Python targets, ...).
-                index_filename = getattr(
-                    generator, "index_filename", "__init__.py"
-                )
+                index_filename = getattr(generator, "index_filename", "__init__.py")
 
                 index_path = target_dir / index_filename
                 with open(index_path, "w") as f:

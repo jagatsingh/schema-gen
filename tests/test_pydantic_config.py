@@ -146,9 +146,7 @@ class TestPydanticConfigOverrides:
         """Regression for Copilot #14.x: string values must be Python-repr
         encoded so embedded quotes, backslashes, and newlines produce valid
         source code (not a broken f-string with a literal apostrophe)."""
-        gen = PydanticGenerator(
-            config=Config(pydantic={"extra": "forbid"})
-        )
+        gen = PydanticGenerator(config=Config(pydantic={"extra": "forbid"}))
         line = gen._get_model_config_line()
         # repr() of "forbid" is 'forbid' — matches existing assertion style.
         assert "extra='forbid'" in line
