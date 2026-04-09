@@ -1,6 +1,7 @@
 """Core generation engine for schema_gen"""
 
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 
@@ -29,7 +30,23 @@ class SchemaGenerationEngine:
                 f"Unknown target(s): {invalid_targets}. Available targets: {available}"
             )
         for target in config.targets:
-            self.generators[target] = GENERATOR_REGISTRY[target]()
+            generator_cls = GENERATOR_REGISTRY[target]
+            # Pass config only to generators whose __init__ accepts it. Most
+            # generators currently take no constructor args; PydanticGenerator
+            # is the first to honor per-target config (Config.pydantic).
+            try:
+                init_params = inspect.signature(generator_cls.__init__).parameters
+            except (TypeError, ValueError):
+                init_params = {}
+            if "config" in init_params:
+                instance = generator_cls(config=self.config)
+            else:
+                instance = generator_cls()
+                # Still attach config so generators that read self.config
+                # (set by BaseGenerator) work even when their own __init__
+                # doesn't forward it.
+                instance.config = self.config
+            self.generators[target] = instance
 
     def load_schemas_from_directory(self, input_dir: str = None):
         """Load all schema files from input directory

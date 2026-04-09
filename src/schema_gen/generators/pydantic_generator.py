@@ -7,6 +7,7 @@ from typing import Any
 
 from jinja2 import Template
 
+from ..core.config import Config
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
@@ -14,8 +15,39 @@ from .base import BaseGenerator
 class PydanticGenerator(BaseGenerator):
     """Generates Pydantic models from USR schemas"""
 
-    def __init__(self):
+    def __init__(self, config: Config | None = None) -> None:
+        super().__init__(config=config)
         self.template = Template(self._get_template())
+
+    def _get_model_config_line(self) -> str:
+        """Build the ``model_config = ConfigDict(...)`` line.
+
+        Honors keys in ``Config.pydantic`` such as ``extra``,
+        ``validate_assignment``, ``frozen``, ``strict``,
+        ``str_strip_whitespace`` and ``populate_by_name``. When no
+        Pydantic config is supplied, falls back to the historical
+        hardcoded output (``from_attributes=True`` only) so existing
+        callers see no change.
+        """
+        cfg_items: list[str] = ["from_attributes=True"]
+        pyd_cfg: dict[str, Any] = {}
+        if self.config is not None and getattr(self.config, "pydantic", None):
+            pyd_cfg = self.config.pydantic
+        for key in (
+            "extra",
+            "validate_assignment",
+            "frozen",
+            "strict",
+            "str_strip_whitespace",
+            "populate_by_name",
+        ):
+            if key in pyd_cfg:
+                val = pyd_cfg[key]
+                if isinstance(val, str):
+                    cfg_items.append(f"{key}='{val}'")
+                else:
+                    cfg_items.append(f"{key}={val}")
+        return f"    model_config = ConfigDict({', '.join(cfg_items)})"
 
     @property
     def file_extension(self) -> str:
@@ -92,6 +124,7 @@ class PydanticGenerator(BaseGenerator):
             imports=sorted(imports),
             fields=field_definitions,
             has_config=self._needs_config(fields),
+            model_config_line=self._get_model_config_line(),
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
@@ -366,9 +399,19 @@ class PydanticGenerator(BaseGenerator):
         return base_type
 
     def _needs_config(self, fields: list[USRField]) -> bool:
-        """Check if the model needs a Config class"""
-        # Check if any field has database relationships
-        return any(field.relationship is not None for field in fields)
+        """Check if the model needs a ``model_config`` block.
+
+        Emits a ``model_config = ConfigDict(...)`` block when either:
+
+        1. Any field has a database relationship (the historical reason
+           ``from_attributes=True`` was needed), OR
+        2. The user supplied per-target Pydantic options via
+           ``Config.pydantic`` (e.g. ``extra='forbid'``) — in which case
+           we must always emit the block so those options take effect.
+        """
+        if any(field.relationship is not None for field in fields):
+            return True
+        return bool(self.config is not None and getattr(self.config, "pydantic", None))
 
     def _generate_single_model(
         self,
@@ -426,7 +469,7 @@ class PydanticGenerator(BaseGenerator):
         # Add config if needed
         if has_config:
             lines.append("")
-            lines.append("    model_config = ConfigDict(from_attributes=True)")
+            lines.append(self._get_model_config_line())
 
         return "\n".join(lines)
 
@@ -575,5 +618,5 @@ class {{ model_name }}(BaseModel):
 {%- endfor %}
 {%- if has_config %}
 
-    model_config = ConfigDict(from_attributes=True)
+{{ model_config_line }}
 {%- endif %}'''
