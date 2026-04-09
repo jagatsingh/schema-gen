@@ -91,6 +91,27 @@ _VALID_RENAME_ALL = frozenset(
     }
 )
 
+# Rust built-in integer types accepted by Field(rust={"type": "..."}).
+_VALID_RUST_INT_TYPES = frozenset(
+    {
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "i128",
+        "isize",
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "u128",
+        "usize",
+    }
+)
+
+# Rust built-in float types accepted by Field(rust={"type": "..."}).
+_VALID_RUST_FLOAT_TYPES = frozenset({"f32", "f64"})
+
 
 def _rust_field_ident(name: str) -> str:
     """Return the Rust identifier for a field name, escaping reserved words."""
@@ -523,11 +544,37 @@ class RustGenerator(BaseGenerator):
         # so here we just resolve the base type.
         ftype = field.type
 
+        # Per-field Rust-specific overrides via Field(rust={"type": "u32"}).
+        # Validated against Rust's built-in integer/float type whitelists;
+        # invalid values log a warning and fall back to the default.
+        rust_override = (field.target_config or {}).get("rust", {}) or {}
+        override_type = rust_override.get("type")
+
         if ftype == FieldType.STRING:
             return "String"
         if ftype == FieldType.INTEGER:
+            if override_type:
+                if override_type in _VALID_RUST_INT_TYPES:
+                    return override_type
+                logger.warning(
+                    "Rust generator: ignoring invalid Field(rust={'type': %r}) "
+                    "on integer field '%s' (valid: %s). Falling back to i64.",
+                    override_type,
+                    field.name,
+                    sorted(_VALID_RUST_INT_TYPES),
+                )
             return "i64"
         if ftype == FieldType.FLOAT:
+            if override_type:
+                if override_type in _VALID_RUST_FLOAT_TYPES:
+                    return override_type
+                logger.warning(
+                    "Rust generator: ignoring invalid Field(rust={'type': %r}) "
+                    "on float field '%s' (valid: %s). Falling back to f64.",
+                    override_type,
+                    field.name,
+                    sorted(_VALID_RUST_FLOAT_TYPES),
+                )
             return "f64"
         if ftype == FieldType.BOOLEAN:
             return "bool"

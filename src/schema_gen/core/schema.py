@@ -45,6 +45,7 @@ class FieldInfo:
     pydantic: dict[str, Any] = field(default_factory=dict)
     sqlalchemy: dict[str, Any] = field(default_factory=dict)
     pathway: dict[str, Any] = field(default_factory=dict)
+    rust: dict[str, Any] = field(default_factory=dict)
 
     # Additional metadata
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -77,6 +78,7 @@ def Field(
     pydantic: dict[str, Any] | None = None,
     sqlalchemy: dict[str, Any] | None = None,
     pathway: dict[str, Any] | None = None,
+    rust: dict[str, Any] | None = None,
     **metadata: Any,
 ) -> FieldInfo:
     """Create a field definition for a schema
@@ -134,6 +136,7 @@ def Field(
         pydantic=pydantic or {},
         sqlalchemy=sqlalchemy or {},
         pathway=pathway or {},
+        rust=rust or {},
         metadata=metadata,
     )
 

@@ -521,6 +521,7 @@ class TypeMapper:
                 "pydantic": getattr(field_info, "pydantic", {}),
                 "sqlalchemy": getattr(field_info, "sqlalchemy", {}),
                 "pathway": getattr(field_info, "pathway", {}),
+                "rust": getattr(field_info, "rust", {}),
             },
             description=getattr(field_info, "description", None),
             metadata=getattr(field_info, "metadata", {}),
