@@ -46,6 +46,12 @@ class BaseGenerator(ABC):
         """
         return False
 
+    #: Filename used for the index/init file when ``generates_index_file``
+    #: is True. Subclasses override this for non-Python targets — e.g. the
+    #: Rust generator uses ``lib.rs`` and the Zod generator uses
+    #: ``index.ts``. Defaults to ``__init__.py`` for Python targets.
+    index_filename: str = "__init__.py"
+
     def get_schema_filename(self, schema: USRSchema) -> str:
         """Return the output filename for a given schema.
 

@@ -13,6 +13,8 @@ from .base import BaseGenerator
 class ZodGenerator(BaseGenerator):
     """Generates Zod schemas (TypeScript/JavaScript) from USR schemas"""
 
+    index_filename = "index.ts"
+
     def __init__(self):
         self.template = Template(self._get_template())
         self._self_ref_schema_names: set[str] = set()

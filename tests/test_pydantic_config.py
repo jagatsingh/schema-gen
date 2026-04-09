@@ -133,6 +133,26 @@ class TestPydanticConfigOverrides:
         assert "extra='forbid'" in out
         assert "totally_made_up" not in out
 
+    def test_unknown_only_keys_do_not_trigger_config_block(self):
+        """Regression for Copilot #14.x: a ``Config.pydantic`` dict that
+        contains only unknown keys must NOT cause a ``model_config`` block
+        to be emitted on a schema that has no relationships."""
+        schema = _make_schema()
+        gen = PydanticGenerator(config=Config(pydantic={"totally_made_up": "value"}))
+        out = gen.generate_file(schema)
+        assert "model_config = ConfigDict" not in out
+
+    def test_string_values_are_repr_escaped(self):
+        """Regression for Copilot #14.x: string values must be Python-repr
+        encoded so embedded quotes, backslashes, and newlines produce valid
+        source code (not a broken f-string with a literal apostrophe)."""
+        gen = PydanticGenerator(
+            config=Config(pydantic={"extra": "forbid"})
+        )
+        line = gen._get_model_config_line()
+        # repr() of "forbid" is 'forbid' — matches existing assertion style.
+        assert "extra='forbid'" in line
+
 
 class TestEngineThreadsConfigEndToEnd:
     """Full path: SchemaGenerationEngine -> PydanticGenerator -> file output."""

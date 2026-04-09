@@ -91,6 +91,13 @@ _VALID_RENAME_ALL = frozenset(
     }
 )
 
+
+def _rust_field_ident(name: str) -> str:
+    """Return the Rust identifier for a field name, escaping reserved words."""
+    if name in _RUST_RESERVED_WORDS:
+        return f"r#{name}"
+    return name
+
 _DEFAULT_STRUCT_DERIVES = [
     "Debug",
     "Clone",
@@ -113,6 +120,8 @@ _DEFAULT_ENUM_DERIVES = [
 
 class RustGenerator(BaseGenerator):
     """Generates Rust structs and enums with serde derives from USR schemas."""
+
+    index_filename = "lib.rs"
 
     @property
     def file_extension(self) -> str:
@@ -161,10 +170,23 @@ class RustGenerator(BaseGenerator):
         imports: set[str] = set()
         body_parts: list[str] = []
 
+        # Schema-level rename_all (from SerdeMeta) — if set and valid, it
+        # applies uniformly across both the struct and every emitted enum
+        # in this schema. Enums fall back to per-variant `rename` attributes
+        # (preserving the Python enum value) when no rename_all is given.
+        schema_rename_all = custom_code.get("rename_all")
+        enum_rename_all = (
+            schema_rename_all if schema_rename_all in _VALID_RENAME_ALL else None
+        )
+
         # Enums (referenced by fields) get emitted before the struct.
         for enum in schema.enums:
             body_parts.append(
-                self._generate_enum(enum, json_schema_derive=json_schema_derive)
+                self._generate_enum(
+                    enum,
+                    json_schema_derive=json_schema_derive,
+                    rename_all=enum_rename_all,
+                )
             )
 
         # Base struct
@@ -328,8 +350,26 @@ class RustGenerator(BaseGenerator):
         deny_unknown = True
         if is_base and "deny_unknown_fields" in (custom_code or {}):
             deny_unknown = bool(custom_code["deny_unknown_fields"])
+
+        serde_struct_attrs: list[str] = []
         if deny_unknown:
-            lines.append("#[serde(deny_unknown_fields)]")
+            serde_struct_attrs.append("deny_unknown_fields")
+
+        rename_all = (custom_code or {}).get("rename_all") if is_base else None
+        if rename_all is not None:
+            if rename_all in _VALID_RENAME_ALL:
+                serde_struct_attrs.append(f'rename_all = "{rename_all}"')
+            else:
+                logger.warning(
+                    "Rust generator: ignoring invalid SerdeMeta.rename_all=%r "
+                    "on struct %s (valid: %s).",
+                    rename_all,
+                    struct_name,
+                    sorted(_VALID_RENAME_ALL),
+                )
+
+        if serde_struct_attrs:
+            lines.append(f"#[serde({', '.join(serde_struct_attrs)})]")
 
         lines.append(f"pub struct {struct_name} {{")
 
@@ -362,10 +402,9 @@ class RustGenerator(BaseGenerator):
 
         serde_attrs: list[str] = []
         name = field.name
-        emitted_name = name
+        emitted_name = _rust_field_ident(name)
 
         if name in _RUST_RESERVED_WORDS:
-            emitted_name = f"r#{name}"
             serde_attrs.append(f'rename = "{name}"')
 
         if is_optional:
@@ -440,7 +479,11 @@ class RustGenerator(BaseGenerator):
                 "(tagged unions are out of scope for v1).",
                 field.name,
             )
-            return "serde_json::Value  // TODO: union not supported in v1"
+            # Return a bare type so the struct emission stays valid Rust.
+            # Inline comments embedded in a type position produce syntax
+            # errors in generated structs — the warning above is the only
+            # user-facing signal.
+            return "serde_json::Value"
 
         if ftype == FieldType.LITERAL:
             # Treat as a string-valued enum at the type level; v1 keeps it
@@ -456,30 +499,43 @@ class RustGenerator(BaseGenerator):
 
         return "serde_json::Value"
 
-    def _generate_enum(self, enum: USREnum, json_schema_derive: bool) -> str:
+    def _generate_enum(
+        self,
+        enum: USREnum,
+        json_schema_derive: bool,
+        rename_all: str | None = None,
+    ) -> str:
         derives = list(_DEFAULT_ENUM_DERIVES)
         if json_schema_derive:
             derives.append("JsonSchema")
 
-        # Emit per-variant `#[serde(rename = "<value>")]` using the actual
-        # enum value from the IR. This is the only correct behavior when the
-        # source Python enum mixes wire-format casings (e.g. `NSE = "NSE"` +
-        # `BUY = "buy"` + `MIS = "MIS"`). A single `rename_all` on the enum
-        # cannot express that mix, and silently dropping the value — as an
-        # earlier draft did — breaks wire format compatibility with any
-        # downstream consumer that uses the Python enum's string value.
-        lines = [
-            f"#[derive({', '.join(derives)})]",
-            f"pub enum {enum.name} {{",
-        ]
-        for member_name, member_value in enum.values:
-            variant = _to_pascal_case(member_name)
-            wire_value = (
-                member_value if isinstance(member_value, str) else member_name
-            )
-            if wire_value != variant:
-                lines.append(f'    #[serde(rename = "{wire_value}")]')
-            lines.append(f"    {variant},")
+        lines = [f"#[derive({', '.join(derives)})]"]
+
+        # Per-variant `#[serde(rename = "<value>")]` using the actual enum
+        # value from the IR is the correct default: it's the only way to
+        # preserve mixed wire-format casings (e.g. NSE="NSE" + buy="buy")
+        # without silently losing the Python enum value.
+        #
+        # Users who want a uniform transform instead (e.g. all lowercase)
+        # can set SerdeMeta.rename_all on the schema; in that case we
+        # delegate to serde's `rename_all` at the enum level and skip the
+        # per-variant renames entirely.
+        if rename_all is not None:
+            lines.append(f'#[serde(rename_all = "{rename_all}")]')
+            lines.append(f"pub enum {enum.name} {{")
+            for member_name, _member_value in enum.values:
+                variant = _to_pascal_case(member_name)
+                lines.append(f"    {variant},")
+        else:
+            lines.append(f"pub enum {enum.name} {{")
+            for member_name, member_value in enum.values:
+                variant = _to_pascal_case(member_name)
+                wire_value = (
+                    member_value if isinstance(member_value, str) else member_name
+                )
+                if wire_value != variant:
+                    lines.append(f'    #[serde(rename = "{wire_value}")]')
+                lines.append(f"    {variant},")
         lines.append("}")
         return "\n".join(lines)
 
@@ -498,11 +554,11 @@ class RustGenerator(BaseGenerator):
         source_fields: list[USRField],
         target_fields: list[USRField],
     ) -> str:
-        """Emit a ``From<Source> for Target`` impl filling missing fields with ``Default::default()``.
+        """Emit a ``From<Source> for Target`` impl filling missing fields.
 
-        Only emitted when the source is a strict field-name subset of the
-        target AND every field missing on the source side is either
-        ``Option<T>`` (None) or otherwise filled via ``Default::default()``.
+        Only called after ``_variant_is_from_eligible`` has verified every
+        field missing on the source side is either ``Option<T>`` (None) or
+        has an explicit default (``Default::default()``).
         """
         source_names = {f.name for f in source_fields}
         lines = [
@@ -511,13 +567,14 @@ class RustGenerator(BaseGenerator):
             "        Self {",
         ]
         for tf in target_fields:
+            ident = _rust_field_ident(tf.name)
             if tf.name in source_names:
-                lines.append(f"            {tf.name}: value.{tf.name},")
+                lines.append(f"            {ident}: value.{ident},")
             else:
-                if tf.optional or tf.type == FieldType.OPTIONAL:
-                    lines.append(f"            {tf.name}: None,")
+                if _field_is_optional(tf):
+                    lines.append(f"            {ident}: None,")
                 else:
-                    lines.append(f"            {tf.name}: Default::default(),")
+                    lines.append(f"            {ident}: Default::default(),")
         lines.append("        }")
         lines.append("    }")
         lines.append("}")
@@ -567,10 +624,53 @@ def _split_field_blocks(lines: list[str]) -> list[list[str]]:
     return blocks
 
 
+def _field_is_optional(field: USRField) -> bool:
+    """Return True if a field is optional (None is a valid value)."""
+    if field.type == FieldType.OPTIONAL:
+        return True
+    return bool(getattr(field, "optional", False))
+
+
+def _field_has_explicit_default(field: USRField) -> bool:
+    """Return True if the field has an explicit, usable default value.
+
+    We treat any of ``default``, ``default_factory``, ``default_value``,
+    ``has_default``, or ``schema_default`` being set as evidence of an
+    explicit default. USRField populates ``default=None`` by convention,
+    so we also look at ``default_factory`` which is the more reliable
+    marker for "user supplied a default" across parsers.
+    """
+    if getattr(field, "default_factory", None) is not None:
+        return True
+    if getattr(field, "has_default", False):
+        return True
+    for attr in ("default_value", "schema_default"):
+        if getattr(field, attr, None) is not None:
+            return True
+    default = getattr(field, "default", None)
+    return default is not None
+
+
 def _variant_is_from_eligible(
     base_fields: list[USRField], variant_fields: list[USRField]
 ) -> bool:
-    """Only emit ``From`` impls for variants that are strict subsets."""
+    """Decide whether to emit a ``From<Variant> for Full`` impl.
+
+    The variant must be a strict field-name subset of the base, AND every
+    field missing on the variant side must either be optional (None) or
+    have an explicit default. Otherwise the ``From`` impl would emit
+    ``missing: Default::default()`` for a type that doesn't implement
+    ``Default``, which fails to compile.
+    """
     variant_names = {f.name for f in variant_fields}
     base_names = {f.name for f in base_fields}
-    return variant_names.issubset(base_names) and variant_names != base_names
+    if not variant_names.issubset(base_names) or variant_names == base_names:
+        return False
+    missing = [f for f in base_fields if f.name not in variant_names]
+    for f in missing:
+        if _field_is_optional(f):
+            continue
+        if _field_has_explicit_default(f):
+            continue
+        return False
+    return True

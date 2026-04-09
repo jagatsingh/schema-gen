@@ -159,11 +159,11 @@ class SchemaGenerationEngine:
         if generator.generates_index_file:
             index_content = generator.generate_index(schemas, target_dir)
             if index_content is not None:
-                # Determine index filename based on file extension
-                if generator.file_extension == ".ts":
-                    index_filename = "index.ts"
-                else:
-                    index_filename = "__init__.py"
+                # Generator owns its index filename (lib.rs for Rust,
+                # index.ts for Zod, __init__.py for Python targets, ...).
+                index_filename = getattr(
+                    generator, "index_filename", "__init__.py"
+                )
 
                 index_path = target_dir / index_filename
                 with open(index_path, "w") as f:

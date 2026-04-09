@@ -11,6 +11,21 @@ from ..core.config import Config
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
+#: Pydantic ``ConfigDict`` keys honored by ``Config.pydantic``. Any other
+#: keys are ignored (and must NOT cause ``_needs_config`` to return True,
+#: otherwise an unrelated schema would grow a spurious ``model_config``
+#: block).
+_SUPPORTED_PYDANTIC_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        "extra",
+        "validate_assignment",
+        "frozen",
+        "strict",
+        "str_strip_whitespace",
+        "populate_by_name",
+    }
+)
+
 
 class PydanticGenerator(BaseGenerator):
     """Generates Pydantic models from USR schemas"""
@@ -33,18 +48,13 @@ class PydanticGenerator(BaseGenerator):
         pyd_cfg: dict[str, Any] = {}
         if self.config is not None and getattr(self.config, "pydantic", None):
             pyd_cfg = self.config.pydantic
-        for key in (
-            "extra",
-            "validate_assignment",
-            "frozen",
-            "strict",
-            "str_strip_whitespace",
-            "populate_by_name",
-        ):
+        for key in _SUPPORTED_PYDANTIC_CONFIG_KEYS:
             if key in pyd_cfg:
                 val = pyd_cfg[key]
                 if isinstance(val, str):
-                    cfg_items.append(f"{key}='{val}'")
+                    # Use Python repr so embedded quotes, backslashes, and
+                    # newlines round-trip as valid source code.
+                    cfg_items.append(f"{key}={val!r}")
                 else:
                     cfg_items.append(f"{key}={val}")
         return f"    model_config = ConfigDict({', '.join(cfg_items)})"
@@ -405,13 +415,20 @@ class PydanticGenerator(BaseGenerator):
 
         1. Any field has a database relationship (the historical reason
            ``from_attributes=True`` was needed), OR
-        2. The user supplied per-target Pydantic options via
-           ``Config.pydantic`` (e.g. ``extra='forbid'``) — in which case
-           we must always emit the block so those options take effect.
+        2. ``Config.pydantic`` contains at least one key that this
+           generator actually honors (see ``_SUPPORTED_PYDANTIC_CONFIG_KEYS``).
+
+        A dict containing only unknown keys must NOT trigger emission —
+        otherwise the resulting ``model_config`` block would only contain
+        ``from_attributes=True`` for no reason, surprising users who
+        passed an unrelated setting.
         """
         if any(field.relationship is not None for field in fields):
             return True
-        return bool(self.config is not None and getattr(self.config, "pydantic", None))
+        if self.config is None:
+            return False
+        pyd_cfg = getattr(self.config, "pydantic", None) or {}
+        return any(key in pyd_cfg for key in _SUPPORTED_PYDANTIC_CONFIG_KEYS)
 
     def _generate_single_model(
         self,

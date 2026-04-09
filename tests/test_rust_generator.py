@@ -224,7 +224,13 @@ class TestRustGenerator:
     # 6. Variants
     # ------------------------------------------------------------------
 
-    def test_variants_emit_separate_struct_and_from_impl(self):
+    def test_variants_emit_separate_structs(self):
+        """A variant that drops a required non-optional field without an
+        explicit default must still emit both structs, but the ``From`` impl
+        is skipped because ``Default::default()`` wouldn't compile for the
+        missing ``id: i64`` field in the general case.
+        """
+
         @Schema
         class Product:
             id: int = Field(primary_key=True)
@@ -240,12 +246,33 @@ class TestRustGenerator:
 
         assert "pub struct Product {" in out
         assert "pub struct ProductCreateRequest {" in out
-        assert "impl From<ProductCreateRequest> for Product {" in out
+        # Missing required field without explicit default → no From impl.
+        assert "impl From<ProductCreateRequest> for Product {" not in out
+
+    def test_variant_from_impl_emitted_when_missing_fields_are_optional(self):
+        """If every missing field is optional, the ``From`` impl is safe
+        to emit because all gaps are filled with ``None``."""
+
+        @Schema
+        class Profile:
+            name: str
+            bio: str | None = Field(default=None)
+            avatar_url: str | None = Field(default=None)
+
+            class Variants:
+                minimal = ["name"]
+
+        schema = SchemaParser().parse_schema(Profile)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub struct Profile {" in out
+        assert "pub struct ProfileMinimal {" in out
+        assert "impl From<ProfileMinimal> for Profile {" in out
         assert "name: value.name," in out
-        assert "price: value.price," in out
-        # Missing Option field → None; missing required → Default::default()
-        assert "description: None," in out
-        assert "id: Default::default()," in out
+        assert "bio: None," in out
+        assert "avatar_url: None," in out
+        # And definitely no Default::default() sneaking in for non-Default types.
+        assert "Default::default()" not in out
 
     # ------------------------------------------------------------------
     # 7. Collection / stdlib types
@@ -351,3 +378,183 @@ def test_rust_generator_registered_in_registry():
 
     assert "rust" in GENERATOR_REGISTRY
     assert GENERATOR_REGISTRY["rust"] is RustGenerator
+
+
+# ----------------------------------------------------------------------
+# Engine integration — Fix #A1 / #A7: lib.rs, Cargo.toml, imports
+# ----------------------------------------------------------------------
+
+
+def test_engine_writes_lib_rs_not_init_py(tmp_path):
+    """Regression for Copilot #13.1: Rust index file must be ``lib.rs``."""
+    from schema_gen.core.config import Config
+    from schema_gen.core.generator import SchemaGenerationEngine
+
+    SchemaRegistry._schemas.clear()
+
+    @Schema
+    class EngineFixOrder:
+        id: int
+        price: float
+
+    @Schema
+    class EngineFixFill:
+        id: int
+
+    out_dir = tmp_path / "out"
+    config = Config(
+        input_dir=str(tmp_path / "schemas"),
+        output_dir=str(out_dir),
+        targets=["rust"],
+    )
+    engine = SchemaGenerationEngine(config)
+    engine.generate_all()
+
+    rust_dir = out_dir / "rust"
+    lib_rs = rust_dir / "lib.rs"
+    assert lib_rs.exists(), "Rust generator must write lib.rs as the index file"
+    assert not (rust_dir / "__init__.py").exists()
+
+    content = lib_rs.read_text()
+    assert "pub mod engine_fix_order;" in content
+    assert "pub mod engine_fix_fill;" in content
+    assert "pub use engine_fix_order::*;" in content
+
+    # And the per-schema .rs files exist too.
+    assert (rust_dir / "engine_fix_order.rs").exists()
+    assert (rust_dir / "engine_fix_fill.rs").exists()
+
+
+# ----------------------------------------------------------------------
+# Fix #A3: union type returns clean Rust (no inline comment)
+# ----------------------------------------------------------------------
+
+
+def test_union_field_emits_clean_rust_type(caplog):
+    import logging
+
+    schema = USRSchema(
+        name="WithUnion",
+        fields=[
+            USRField(
+                name="payload",
+                type=FieldType.UNION,
+                python_type=object,
+                union_types=[
+                    USRField(name="_", type=FieldType.INTEGER, python_type=int),
+                    USRField(name="_", type=FieldType.STRING, python_type=str),
+                ],
+            ),
+        ],
+    )
+    with caplog.at_level(logging.WARNING, logger="schema_gen.generators.rust_generator"):
+        out = RustGenerator().generate_file(schema)
+
+    assert "pub payload: serde_json::Value," in out
+    # No inline comment corrupting the struct body.
+    assert "//" not in out.split("pub payload:")[1].split("\n")[0]
+    # Warning was logged.
+    assert any("union" in rec.message for rec in caplog.records)
+
+
+# ----------------------------------------------------------------------
+# Fix #A4: reserved-word escaping in From<Variant> impl
+# ----------------------------------------------------------------------
+
+
+def test_reserved_word_preserved_in_from_impl():
+    @Schema
+    class _ReservedMsg:
+        type: str = Field(default="info")
+        body: str
+        priority: int = Field(default=0)
+
+        class Variants:
+            minimal = ["body"]
+
+    schema = SchemaParser().parse_schema(_ReservedMsg)
+    out = RustGenerator().generate_file(schema)
+
+    # From impl exists (type and priority both have explicit defaults).
+    assert "impl From<_ReservedMsgMinimal> for _ReservedMsg {" in out
+    # Reserved-word field is escaped on BOTH sides of the struct literal.
+    # Since the variant omits `type`, we hit the Default::default() branch,
+    # but the LHS identifier must still be r#type.
+    assert "r#type: Default::default()" in out
+
+
+# ----------------------------------------------------------------------
+# Fix #A5: struct-level rename_all
+# ----------------------------------------------------------------------
+
+
+def test_struct_rename_all_valid():
+    @Schema
+    class CamelStruct:
+        first_name: str
+        last_name: str
+
+        class SerdeMeta:
+            rename_all = "camelCase"
+
+    schema = SchemaParser().parse_schema(CamelStruct)
+    out = RustGenerator().generate_file(schema)
+    assert 'rename_all = "camelCase"' in out
+
+
+def test_struct_rename_all_invalid_is_ignored_with_warning(caplog):
+    import logging
+
+    @Schema
+    class BadStruct:
+        x: int
+
+        class SerdeMeta:
+            rename_all = "nonsense"
+
+    schema = SchemaParser().parse_schema(BadStruct)
+    with caplog.at_level(logging.WARNING, logger="schema_gen.generators.rust_generator"):
+        out = RustGenerator().generate_file(schema)
+
+    assert 'rename_all = "nonsense"' not in out
+    assert any("rename_all" in rec.message for rec in caplog.records)
+
+
+# ----------------------------------------------------------------------
+# Fix #A6: enum-level rename_all override
+# ----------------------------------------------------------------------
+
+
+class _EnumRenameStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+
+
+@Schema
+class _EnumRenameHolder:
+    status: _EnumRenameStatus
+
+    class SerdeMeta:
+        rename_all = "lowercase"
+
+
+def test_enum_rename_all_from_schema_meta_overrides_per_variant():
+    SchemaRegistry.register(_EnumRenameHolder)
+    schema = SchemaParser().parse_schema(_EnumRenameHolder)
+    out = RustGenerator().generate_file(schema)
+
+    # Enum itself picks up rename_all and skips per-variant renames.
+    assert 'rename_all = "lowercase"' in out
+    assert '#[serde(rename = "ACTIVE")]' not in out
+    assert '#[serde(rename = "PAUSED")]' not in out
+    assert "Active," in out
+    assert "Paused," in out
+
+
+def test_enum_without_rename_all_keeps_per_variant_renames():
+    # _ExchangeHolder (module-level) has no SerdeMeta, so per-variant
+    # renames are preserved — this is the default/current behavior.
+    schema = SchemaParser().parse_schema(_ExchangeHolder)
+    out = RustGenerator().generate_file(schema)
+    assert '#[serde(rename = "NSE")]' in out
+    assert '#[serde(rename = "BSE")]' in out
