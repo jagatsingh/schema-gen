@@ -461,13 +461,24 @@ class RustGenerator(BaseGenerator):
         if json_schema_derive:
             derives.append("JsonSchema")
 
+        # Emit per-variant `#[serde(rename = "<value>")]` using the actual
+        # enum value from the IR. This is the only correct behavior when the
+        # source Python enum mixes wire-format casings (e.g. `NSE = "NSE"` +
+        # `BUY = "buy"` + `MIS = "MIS"`). A single `rename_all` on the enum
+        # cannot express that mix, and silently dropping the value — as an
+        # earlier draft did — breaks wire format compatibility with any
+        # downstream consumer that uses the Python enum's string value.
         lines = [
             f"#[derive({', '.join(derives)})]",
-            '#[serde(rename_all = "snake_case")]',
             f"pub enum {enum.name} {{",
         ]
-        for member_name, _member_value in enum.values:
+        for member_name, member_value in enum.values:
             variant = _to_pascal_case(member_name)
+            wire_value = (
+                member_value if isinstance(member_value, str) else member_name
+            )
+            if wire_value != variant:
+                lines.append(f'    #[serde(rename = "{wire_value}")]')
             lines.append(f"    {variant},")
         lines.append("}")
         return "\n".join(lines)

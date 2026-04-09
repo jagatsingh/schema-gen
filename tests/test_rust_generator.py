@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from enum import StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -23,6 +23,30 @@ class _Status(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     DELETED = "deleted"
+
+
+class _Exchange(str, Enum):
+    """Uppercase wire values — must not be silently lowercased."""
+
+    NSE = "NSE"
+    BSE = "BSE"
+
+
+class _Mode(str, Enum):
+    """PascalCase values matching variant names — no rename needed."""
+
+    Active = "Active"
+    Paused = "Paused"
+
+
+@Schema
+class _ExchangeHolder:
+    exchange: _Exchange
+
+
+@Schema
+class _ModeHolder:
+    mode: _Mode
 
 
 @Schema
@@ -92,9 +116,37 @@ class TestRustGenerator:
         assert "Active," in out
         assert "Suspended," in out
         assert "Deleted," in out
-        assert '#[serde(rename_all = "snake_case")]' in out
+        # Per-variant renames preserve the actual Python enum value on the
+        # wire; see _generate_enum for the rationale.
+        assert '#[serde(rename = "active")]' in out
+        assert '#[serde(rename = "suspended")]' in out
+        assert '#[serde(rename = "deleted")]' in out
         assert "Debug, Clone, Copy, PartialEq, Eq, Hash" in out
         assert "pub status: _Status," in out
+
+    def test_enum_preserves_uppercase_wire_format(self):
+        """Enums whose Python values use uppercase must keep that casing
+        in the Rust wire format — no silent snake_case transform."""
+        schema = SchemaParser().parse_schema(_ExchangeHolder)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub enum _Exchange {" in out
+        assert '#[serde(rename = "NSE")]' in out
+        assert '#[serde(rename = "BSE")]' in out
+        # Must NOT have a default rename_all that would lowercase these.
+        assert 'rename_all = "snake_case"' not in out
+
+    def test_enum_omits_rename_when_variant_matches_value(self):
+        """If the PascalCase variant name already equals the wire value,
+        no redundant #[serde(rename)] attribute is emitted."""
+        schema = SchemaParser().parse_schema(_ModeHolder)
+        out = RustGenerator().generate_file(schema)
+
+        # Variant present, no redundant rename.
+        assert "Active," in out
+        assert "Paused," in out
+        assert '#[serde(rename = "Active")]' not in out
+        assert '#[serde(rename = "Paused")]' not in out
 
     # ------------------------------------------------------------------
     # 3. Nested struct reference
