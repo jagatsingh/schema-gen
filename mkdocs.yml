@@ -10,6 +10,9 @@ nav:
   - Schema Format: schema-format.md
   - CLI Reference: cli-reference.md
   - Configuration: configuration.md
+  - Generators:
+      - Pydantic: generators/pydantic.md
+      - Rust (Serde): generators/rust.md
   - Examples: examples.md
   - API Reference: api-reference.md
 
