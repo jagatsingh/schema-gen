@@ -207,6 +207,7 @@ def Schema(cls: type) -> type:
         "pydantic": "PydanticMeta",
         "sqlalchemy": "SQLAlchemyMeta",
         "pathway": "PathwayMeta",
+        "rust": "SerdeMeta",
     }
 
     # Extract target-specific meta classes
@@ -234,6 +235,11 @@ def _extract_meta_attributes(meta_class) -> dict:
         # Pathway specific
         "table_properties",
         "transformations",
+        # Rust / Serde specific
+        "derives",
+        "deny_unknown_fields",
+        "rename_all",
+        "json_schema_derive",
         # Future extensibility - any other attributes
     ]
 
