@@ -153,6 +153,11 @@ class RustGenerator(BaseGenerator):
         # so per-schema files skip re-emitting the shared enums.
         self._common_enum_names: set[str] = set()
         self._emit_common_module: bool = False
+        # Per-call map of {field_name: helper_enum_name} for discriminated
+        # unions. Set in generate_file before struct emission so
+        # _rust_type_for can substitute the helper enum name in place of
+        # the original Union type. Cleared afterwards.
+        self._du_helper_names: dict[str, str] = {}
 
     @property
     def file_extension(self) -> str:
@@ -284,6 +289,31 @@ class RustGenerator(BaseGenerator):
                 )
             )
 
+        # Discriminated-union helper enums (#18). For each field on the
+        # base struct that carries a discriminator + resolved tag values,
+        # emit a serde-tagged enum so the field can reference it by name.
+        # The struct itself replaces the field's type with the helper
+        # enum name during _rust_type_for via the helper-name lookup.
+        du_helper_names: dict[str, str] = {}
+        for f in schema.fields:
+            if f.discriminator and f.union_types and f.union_tag_values:
+                helper_name = self._discriminated_union_helper_name(schema.name, f.name)
+                du_helper_names[f.name] = helper_name
+                body_parts.append(
+                    self._generate_discriminated_union_enum(
+                        helper_name=helper_name,
+                        discriminator=f.discriminator,
+                        variants=f.union_types,
+                        tag_values=f.union_tag_values,
+                        json_schema_derive=json_schema_derive,
+                        imports=imports,
+                    )
+                )
+        # Hand the helper-name map down via a struct attribute so
+        # _rust_type_for can read it without changing every signature.
+        # Cleared after struct emission to avoid leaking across calls.
+        self._du_helper_names = du_helper_names
+
         # Base struct
         body_parts.append(
             self._generate_struct(
@@ -296,6 +326,7 @@ class RustGenerator(BaseGenerator):
                 is_base=True,
             )
         )
+        self._du_helper_names = {}
 
         # Variant structs
         base_field_names = {f.name for f in schema.fields}
@@ -612,9 +643,15 @@ class RustGenerator(BaseGenerator):
             return "Vec<serde_json::Value>"
 
         if ftype == FieldType.UNION:
+            # Discriminated union (#18): substitute the per-struct helper
+            # enum name. The helper is emitted earlier in generate_file.
+            helper = self._du_helper_names.get(field.name)
+            if helper:
+                return helper
             logger.warning(
-                "Rust generator: union field '%s' emitted as serde_json::Value "
-                "(tagged unions are out of scope for v1).",
+                "Rust generator: union field '%s' emitted as serde_json::Value. "
+                "Use Field(discriminator='<tag>') with Annotated[Union[...]] to "
+                "emit a serde-tagged enum instead. See schema-gen#18.",
                 field.name,
             )
             # Return a bare type so the struct emission stays valid Rust.
@@ -694,6 +731,61 @@ class RustGenerator(BaseGenerator):
             lines.append("")
             lines.append(raw_code)
 
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Discriminated unions (#18)
+    # ------------------------------------------------------------------
+
+    def _discriminated_union_helper_name(
+        self, schema_name: str, field_name: str
+    ) -> str:
+        """Build the helper enum name for a discriminated-union field.
+
+        Convention: ``<StructName><CamelFieldName>`` — matches the user
+        spec example (Order + leg → OrderLeg). Field-name conflicts with
+        existing types are the user's responsibility for v1.
+        """
+        return schema_name + _to_pascal_case(field_name)
+
+    def _generate_discriminated_union_enum(
+        self,
+        helper_name: str,
+        discriminator: str,
+        variants: list[USRField],
+        tag_values: list[str],
+        json_schema_derive: bool,
+        imports: set[str],
+    ) -> str:
+        """Emit a serde internally-tagged enum for a discriminated union.
+
+        Each variant becomes ``VariantName(VariantStruct)`` with
+        ``#[serde(rename = "<literal>")]`` if the wire tag differs from
+        the variant identifier. The struct field referencing this enum
+        will resolve through ``_du_helper_names`` in ``_rust_type_for``.
+        """
+        # Trim the JsonSchema derive separately because schemars 0.8 supports
+        # it on tagged enums but a few older toolchains balk; we keep it
+        # consistent with regular enums for now.
+        derives = ["Debug", "Clone", "PartialEq", "Serialize", "Deserialize"]
+        if json_schema_derive:
+            derives.append("JsonSchema")
+
+        lines = [
+            f"#[derive({', '.join(derives)})]",
+            f'#[serde(tag = "{discriminator}")]',
+            f"pub enum {helper_name} {{",
+        ]
+        for variant, tag in zip(variants, tag_values, strict=True):
+            variant_struct = variant.nested_schema or "serde_json::Value"
+            variant_ident = _to_pascal_case(tag) if tag else variant_struct
+            # Ensure the variant struct is importable from this file. The
+            # existing _collect_external_schema_refs covers it because the
+            # union member is itself a NESTED_SCHEMA reference.
+            if variant_ident != tag:
+                lines.append(f'    #[serde(rename = "{tag}")]')
+            lines.append(f"    {variant_ident}({variant_struct}),")
+        lines.append("}")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------

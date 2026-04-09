@@ -124,6 +124,17 @@ class USRField:
     # Target-specific configuration
     target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    # Discriminator field name for tagged unions. When set on a field
+    # with type=UNION, generators emit serde-tagged enums (Rust),
+    # discriminated unions (Pydantic v2 / Zod). Each entry in
+    # ``union_types`` is expected to be a NESTED_SCHEMA referencing a
+    # @Schema class with a Literal[...] tag field whose name matches.
+    discriminator: str | None = None
+    # Parallel array to ``union_types``: the literal wire value of the
+    # discriminator field on each variant (e.g. ["CE", "PE"]). Populated
+    # by the parser when ``discriminator`` is set and validated.
+    union_tag_values: list[str] = field(default_factory=list)
+
     # Metadata
     description: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -530,6 +541,7 @@ class TypeMapper:
                 "pathway": getattr(field_info, "pathway", {}),
                 "rust": getattr(field_info, "rust", {}),
             },
+            discriminator=getattr(field_info, "discriminator", None),
             description=getattr(field_info, "description", None),
             metadata=getattr(field_info, "metadata", {}),
         )
@@ -563,5 +575,10 @@ class TypeMapper:
                         val = getattr(item, attr_name, None)
                         if val is not None and getattr(usr_field, field_attr) is None:
                             setattr(usr_field, field_attr, val)
+                    # Discriminator declared inside the Annotated[] form:
+                    # ``Annotated[Union[A, B], Field(discriminator="kind")]``.
+                    disc = getattr(item, "discriminator", None)
+                    if disc and usr_field.discriminator is None:
+                        usr_field.discriminator = disc
 
         return usr_field

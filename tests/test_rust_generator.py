@@ -944,3 +944,99 @@ class TestRustEnumMeta:
         assert "pub enum _Mode2 {" in common_rs
         assert "impl _Mode2 {" in common_rs
         assert "pub fn is_auto(&self) -> bool" in common_rs
+
+
+# ----------------------------------------------------------------------
+# Discriminated unions (#18)
+# ----------------------------------------------------------------------
+
+from typing import Annotated, Literal, Union  # noqa: E402
+
+
+@Schema
+class _CeLeg:
+    option_type: Literal["CE"]
+    strike: float
+
+
+@Schema
+class _PeLeg:
+    option_type: Literal["PE"]
+    strike: float
+
+
+@Schema
+class _OtherLeg:
+    option_type: Literal["XX"]
+    strike: float
+
+
+@Schema
+class _DiscriminatedOrder:
+    leg: Annotated[Union[_CeLeg, _PeLeg], Field(discriminator="option_type")]
+
+
+@Schema
+class _DiscriminatedThreeWay:
+    leg: Annotated[Union[_CeLeg, _PeLeg, _OtherLeg], Field(discriminator="option_type")]
+
+
+@Schema
+class _PlainUnionOrder:
+    leg: Union[_CeLeg, _PeLeg]
+
+
+class TestRustDiscriminatedUnion:
+    """Annotated[Union[A, B], Field(discriminator="...")] → serde tagged enum."""
+
+    def setup_method(self):
+        # Other test classes wipe SchemaRegistry in their setup_method, so
+        # re-register the variant @Schema classes the parser needs to look
+        # up to resolve Literal tags.
+        SchemaRegistry._schemas.clear()
+        for cls in (
+            _CeLeg,
+            _PeLeg,
+            _OtherLeg,
+            _DiscriminatedOrder,
+            _DiscriminatedThreeWay,
+            _PlainUnionOrder,
+        ):
+            SchemaRegistry.register(cls)
+
+    def test_discriminated_union_two_variants(self):
+        usr = SchemaParser().parse_schema(_DiscriminatedOrder)
+        out = RustGenerator().generate_file(usr)
+        assert 'tag = "option_type"' in out
+        assert "pub enum _DiscriminatedOrderLeg {" in out
+        assert "Ce(_CeLeg)" in out
+        assert "Pe(_PeLeg)" in out
+        assert "pub leg: _DiscriminatedOrderLeg," in out
+        assert "serde_json::Value" not in out.split("pub leg:")[1].split(",")[0]
+
+    def test_discriminated_union_three_variants(self):
+        usr = SchemaParser().parse_schema(_DiscriminatedThreeWay)
+        out = RustGenerator().generate_file(usr)
+        assert "pub enum _DiscriminatedThreeWayLeg {" in out
+        assert "Ce(_CeLeg)" in out
+        assert "Pe(_PeLeg)" in out
+        assert "Xx(_OtherLeg)" in out
+
+    def test_discriminated_union_uses_literal_tag(self):
+        """Variant identifier comes from the Literal value, with rename
+        if the Pascal-cased identifier differs from the wire tag."""
+        usr = SchemaParser().parse_schema(_DiscriminatedOrder)
+        out = RustGenerator().generate_file(usr)
+        # "CE".capitalize() == "Ce", so a rename is needed to preserve
+        # the wire value "CE".
+        assert '#[serde(rename = "CE")]' in out
+        assert '#[serde(rename = "PE")]' in out
+
+    def test_plain_union_still_falls_back_to_value(self, caplog):
+        import logging
+
+        usr = SchemaParser().parse_schema(_PlainUnionOrder)
+        with caplog.at_level(logging.WARNING):
+            out = RustGenerator().generate_file(usr)
+        assert "pub leg: serde_json::Value," in out
+        assert any("union field 'leg'" in rec.message for rec in caplog.records)
