@@ -38,6 +38,7 @@ class Config:
     avro: dict[str, Any] = field(default_factory=dict)
     jackson: dict[str, Any] = field(default_factory=dict)
     kotlin: dict[str, Any] = field(default_factory=dict)
+    rust: dict[str, Any] = field(default_factory=dict)
 
     # Generation settings
     overwrite: bool = True
