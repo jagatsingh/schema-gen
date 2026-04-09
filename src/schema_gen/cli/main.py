@@ -243,6 +243,17 @@ def validate(config_path):
         # Create generation engine
         engine = create_generation_engine(config_path)
 
+        # Gracefully skip when there is no schemas/ directory. This makes the
+        # `schema-gen-validate` pre-commit hook safe to enable in repos that
+        # don't yet have any @Schema-decorated files (or temporarily have
+        # none) without forcing contributors to use --no-verify.
+        schema_dir = Path(engine.config.input_dir)
+        if not schema_dir.exists():
+            click.echo(
+                f"No schemas directory found at '{schema_dir}', skipping validation."
+            )
+            return
+
         # Load schemas
         engine.load_schemas_from_directory()
 

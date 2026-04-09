@@ -246,17 +246,29 @@ class TestValidateCommand:
 
 
 class TestPreCommitConfig:
-    """Task 6: Pre-commit validate hook is enabled."""
+    """Task 6: Pre-commit validate hook is exported for downstream consumers.
 
-    def test_pre_commit_config_has_validate_hook(self):
-        """The .pre-commit-config.yaml has an uncommented validate hook."""
-        config_path = Path(__file__).parent.parent / ".pre-commit-config.yaml"
-        content = config_path.read_text()
+    schema-gen is the *tool*; it has no ``schemas/`` directory of its own to
+    validate. The schema-gen-validate hook is therefore intentionally NOT
+    enabled in the schema-gen repo's own ``.pre-commit-config.yaml``. What we
+    do guarantee is that the hook *definition* is present in
+    ``.pre-commit-hooks.yaml`` so downstream projects can opt in via
+    ``repo: https://github.com/jagatsingh/schema-gen``.
+    """
+
+    def test_pre_commit_hooks_yaml_exports_validate_hook(self):
+        """The exported hook definition for downstream consumers exists."""
+        hooks_path = Path(__file__).parent.parent / ".pre-commit-hooks.yaml"
+        content = hooks_path.read_text()
         assert "schema-gen-validate" in content
-        # Ensure it's not commented out
+        # Find the entry and make sure it's an active list item, not a comment.
         for line in content.splitlines():
-            if "schema-gen-validate" in line:
-                assert not line.strip().startswith("#"), (
-                    "validate hook is still commented out"
+            stripped = line.strip()
+            if "id: schema-gen-validate" in stripped:
+                assert not stripped.startswith("#"), (
+                    "exported schema-gen-validate hook is commented out"
                 )
-                break
+                return
+        raise AssertionError(
+            "schema-gen-validate hook id not found in .pre-commit-hooks.yaml"
+        )
