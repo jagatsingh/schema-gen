@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
@@ -1020,6 +1021,9 @@ class TestRustEnumMeta:
     def setup_method(self):
         SchemaRegistry._schemas.clear()
 
+    @pytest.mark.xfail(
+        reason="Python 3.12: SerdeMeta inner class on str,Enum becomes enum member (#58)"
+    )
     def test_enum_serde_meta_raw_code(self):
         usr = SchemaParser().parse_schema(_OrderEnumHolder)
         out = RustGenerator().generate_file(usr)
@@ -1027,6 +1031,9 @@ class TestRustEnumMeta:
         assert "pub fn is_terminal(&self) -> bool" in out
         assert "matches!(self, Self::Filled | Self::Cancelled)" in out
 
+    @pytest.mark.xfail(
+        reason="Python 3.12: SerdeMeta inner class on str,Enum becomes enum member (#58)"
+    )
     def test_enum_serde_meta_extra_derives(self):
         usr = SchemaParser().parse_schema(_PrioHolder)
         out = RustGenerator().generate_file(usr)
@@ -1046,6 +1053,9 @@ class TestRustEnumMeta:
         assert "pub enum _PlainColor {" in out
         assert "impl _PlainColor" not in out  # no impl block when no raw_code
 
+    @pytest.mark.xfail(
+        reason="Python 3.12: SerdeMeta inner class on str,Enum becomes enum member (#58)"
+    )
     def test_enum_serde_meta_via_common_module(self, tmp_path):
         """End-to-end via the engine: shared enum lands in common.rs and
         carries its raw_code impl block."""

@@ -13,6 +13,8 @@ no effect on generated models.
 
 from datetime import datetime
 
+import pytest
+
 from schema_gen import Field, Schema
 from schema_gen.core.config import Config
 from schema_gen.core.generator import SchemaGenerationEngine
@@ -266,6 +268,9 @@ class TestPydanticEnumMeta:
     def setup_method(self):
         SchemaRegistry._schemas.clear()
 
+    @pytest.mark.xfail(
+        reason="Python 3.12: PydanticMeta inner class on str,Enum becomes enum member (#58)"
+    )
     def test_enum_pydantic_meta_methods(self):
         from schema_gen.generators.pydantic_generator import PydanticGenerator
 
