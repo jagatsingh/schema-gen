@@ -18,29 +18,17 @@ _ENUM_META_CLASSES = {
 
 
 def _detect_enum_value_type(enum_cls: type) -> type | None:
-    """Return the mixin base type (``str``, ``int``, …) of an Enum class.
+    """Return the value type of an Enum class when it is ``str``- or
+    ``int``-backed.
 
     Detects both explicit mixin forms (``class Foo(str, Enum)``) and
-    stdlib convenience classes (``StrEnum``, ``IntEnum``).  Returns
-    ``None`` for a plain ``Enum`` with no mixin.
+    stdlib convenience classes (``StrEnum``, ``IntEnum``). Returns
+    ``None`` for plain ``Enum`` classes or enums backed by other types.
     """
-    import enum as _enum_mod
-
-    # StrEnum / IntEnum are subclasses of str / int respectively.
-    # Check these first so that ``class Foo(StrEnum)`` is handled.
     if issubclass(enum_cls, str):
         return str
     if issubclass(enum_cls, int):
         return int
-
-    # Fallback: walk the MRO for any non-Enum builtin mixin.
-    for base in enum_cls.__mro__:
-        if base in (object, Enum, _enum_mod.Enum):
-            continue
-        if base is str:
-            return str
-        if base is int:
-            return int
     return None
 
 
