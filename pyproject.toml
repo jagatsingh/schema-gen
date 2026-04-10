@@ -1,6 +1,6 @@
 [project]
 name = "schema-gen"
-version = "0.3.0"
+version = "0.3.2"
 description = "Universal schema converter - define once, generate everywhere"
 readme = "README.md"
 authors = [

@@ -6,13 +6,27 @@ set -e
 
 echo "== schema-gen build & publish =="
 
+# --- Auto-bump patch version ---
+PYPROJECT="pyproject.toml"
+INIT_PY="src/schema_gen/__init__.py"
+
+current_version=$(grep -oP '^version\s*=\s*"\K[^"]+' "$PYPROJECT")
+IFS='.' read -r major minor patch <<< "$current_version"
+new_version="${major}.${minor}.$((patch + 1))"
+
+sed -i "s/^version = \"${current_version}\"/version = \"${new_version}\"/" "$PYPROJECT"
+sed -i "s/__version__ = \"${current_version}\"/__version__ = \"${new_version}\"/" "$INIT_PY"
+
+echo "Version bumped: ${current_version} -> ${new_version}"
+echo ""
+
 # Run pre-commit checks before building
 echo "Running pre-commit checks..."
 pre-commit run --all-files
 echo ""
 
 # Clean build artifacts and cache
-find . -type d -name "__pycache__" -exec rm -rf {} +
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 rm -rf build/ dist/ *.egg-info/
 
 # Check if uv is installed
