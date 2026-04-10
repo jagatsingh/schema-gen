@@ -45,6 +45,14 @@ class FieldInfo:
     pydantic: dict[str, Any] = field(default_factory=dict)
     sqlalchemy: dict[str, Any] = field(default_factory=dict)
     pathway: dict[str, Any] = field(default_factory=dict)
+    rust: dict[str, Any] = field(default_factory=dict)
+
+    # Discriminated-union tag field name. When set, the field's annotation
+    # must be Annotated[Union[A, B, ...], Field(discriminator="<field>")]
+    # where every union member is a @Schema class with a Literal[...] tag
+    # field matching this name. Generators emit serde tagged enums / Pydantic
+    # discriminated unions / Zod discriminatedUnion accordingly.
+    discriminator: str | None = None
 
     # Additional metadata
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -77,6 +85,8 @@ def Field(
     pydantic: dict[str, Any] | None = None,
     sqlalchemy: dict[str, Any] | None = None,
     pathway: dict[str, Any] | None = None,
+    rust: dict[str, Any] | None = None,
+    discriminator: str | None = None,
     **metadata: Any,
 ) -> FieldInfo:
     """Create a field definition for a schema
@@ -103,6 +113,16 @@ def Field(
         exclude_from: List of variants to exclude from
         include_only: List of variants to include in
         pydantic/sqlalchemy/pathway: Target-specific options
+        rust: Rust-specific overrides. Supports ``{"type": "<rust-type>"}``
+            to pick a specific integer or float width (``u8``/``u16``/
+            ``u32``/``u64``/``i8``/.../``i128``/``isize``/``usize``,
+            ``f32``/``f64``). Invalid values log a warning and fall
+            back to ``i64`` / ``f64``. See ``docs/generators/rust.md``.
+        discriminator: Name of the tag field when the annotated type is
+            ``Annotated[Union[A, B, ...], Field(discriminator=...)]``.
+            Every union member must be a ``@Schema`` with a matching
+            ``Literal["..."]`` field. Lowered to a ``#[serde(tag=...)]``
+            tagged enum by the Rust generator.
         **metadata: Additional metadata
 
     Returns:
@@ -134,6 +154,8 @@ def Field(
         pydantic=pydantic or {},
         sqlalchemy=sqlalchemy or {},
         pathway=pathway or {},
+        rust=rust or {},
+        discriminator=discriminator,
         metadata=metadata,
     )
 
@@ -207,6 +229,7 @@ def Schema(cls: type) -> type:
         "pydantic": "PydanticMeta",
         "sqlalchemy": "SQLAlchemyMeta",
         "pathway": "PathwayMeta",
+        "rust": "SerdeMeta",
     }
 
     # Extract target-specific meta classes
@@ -234,6 +257,11 @@ def _extract_meta_attributes(meta_class) -> dict:
         # Pathway specific
         "table_properties",
         "transformations",
+        # Rust / Serde specific
+        "derives",
+        "deny_unknown_fields",
+        "rename_all",
+        "json_schema_derive",
         # Future extensibility - any other attributes
     ]
 

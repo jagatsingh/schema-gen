@@ -7,15 +7,55 @@ from typing import Any
 
 from jinja2 import Template
 
+from ..core.config import Config
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
+
+#: Pydantic ``ConfigDict`` keys honored by ``Config.pydantic``. Any other
+#: keys are ignored (and must NOT cause ``_needs_config`` to return True,
+#: otherwise an unrelated schema would grow a spurious ``model_config``
+#: block).
+_SUPPORTED_PYDANTIC_CONFIG_KEYS: tuple[str, ...] = (
+    "extra",
+    "validate_assignment",
+    "frozen",
+    "strict",
+    "str_strip_whitespace",
+    "populate_by_name",
+)
 
 
 class PydanticGenerator(BaseGenerator):
     """Generates Pydantic models from USR schemas"""
 
-    def __init__(self):
+    def __init__(self, config: Config | None = None) -> None:
+        super().__init__(config=config)
         self.template = Template(self._get_template())
+
+    def _get_model_config_line(self) -> str:
+        """Build the ``model_config = ConfigDict(...)`` line.
+
+        Honors keys in ``Config.pydantic`` such as ``extra``,
+        ``validate_assignment``, ``frozen``, ``strict``,
+        ``str_strip_whitespace`` and ``populate_by_name``. When no
+        Pydantic config is supplied, falls back to the historical
+        hardcoded output (``from_attributes=True`` only) so existing
+        callers see no change.
+        """
+        cfg_items: list[str] = ["from_attributes=True"]
+        pyd_cfg: dict[str, Any] = {}
+        if self.config is not None and getattr(self.config, "pydantic", None):
+            pyd_cfg = self.config.pydantic
+        for key in _SUPPORTED_PYDANTIC_CONFIG_KEYS:
+            if key in pyd_cfg:
+                val = pyd_cfg[key]
+                if isinstance(val, str):
+                    # Use Python repr so embedded quotes, backslashes, and
+                    # newlines round-trip as valid source code.
+                    cfg_items.append(f"{key}={val!r}")
+                else:
+                    cfg_items.append(f"{key}={val}")
+        return f"    model_config = ConfigDict({', '.join(cfg_items)})"
 
     @property
     def file_extension(self) -> str:
@@ -92,6 +132,7 @@ class PydanticGenerator(BaseGenerator):
             imports=sorted(imports),
             fields=field_definitions,
             has_config=self._needs_config(fields),
+            model_config_line=self._get_model_config_line(),
             timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
@@ -199,6 +240,20 @@ class PydanticGenerator(BaseGenerator):
 
         # Generate type annotation
         type_annotation = self._get_pydantic_type(field, imports)
+
+        # Discriminated union: wrap in Annotated[Union[...], Field(discriminator="...")]
+        # so Pydantic v2 can deserialize tagged payloads correctly.
+        if field.discriminator and field.union_types:
+            union_types = [
+                self._get_pydantic_type(ut, imports) for ut in field.union_types
+            ]
+            imports.add("typing")
+            imports.add("typing.Annotated")
+            imports.add("pydantic.Field")
+            type_annotation = (
+                f"Annotated[Union[{', '.join(union_types)}], "
+                f'Field(discriminator="{field.discriminator}")]'
+            )
 
         # Generate Field() definition
         field_params = []
@@ -366,9 +421,26 @@ class PydanticGenerator(BaseGenerator):
         return base_type
 
     def _needs_config(self, fields: list[USRField]) -> bool:
-        """Check if the model needs a Config class"""
-        # Check if any field has database relationships
-        return any(field.relationship is not None for field in fields)
+        """Check if the model needs a ``model_config`` block.
+
+        Emits a ``model_config = ConfigDict(...)`` block when either:
+
+        1. Any field has a database relationship (the historical reason
+           ``from_attributes=True`` was needed), OR
+        2. ``Config.pydantic`` contains at least one key that this
+           generator actually honors (see ``_SUPPORTED_PYDANTIC_CONFIG_KEYS``).
+
+        A dict containing only unknown keys must NOT trigger emission —
+        otherwise the resulting ``model_config`` block would only contain
+        ``from_attributes=True`` for no reason, surprising users who
+        passed an unrelated setting.
+        """
+        if any(field.relationship is not None for field in fields):
+            return True
+        if self.config is None:
+            return False
+        pyd_cfg = getattr(self.config, "pydantic", None) or {}
+        return any(key in pyd_cfg for key in _SUPPORTED_PYDANTIC_CONFIG_KEYS)
 
     def _generate_single_model(
         self,
@@ -426,7 +498,7 @@ class PydanticGenerator(BaseGenerator):
         # Add config if needed
         if has_config:
             lines.append("")
-            lines.append("    model_config = ConfigDict(from_attributes=True)")
+            lines.append(self._get_model_config_line())
 
         return "\n".join(lines)
 
@@ -490,6 +562,8 @@ class PydanticGenerator(BaseGenerator):
                 typing_imports.extend(["Optional", "Any", "Union"])
             elif imp == "typing.Literal":
                 typing_imports.append("Literal")
+            elif imp == "typing.Annotated":
+                typing_imports.append("Annotated")
 
         # Add typing import if needed
         if typing_imports:
@@ -514,6 +588,19 @@ class PydanticGenerator(BaseGenerator):
                     lines.append(f'    {member_name} = "{member_value}"')
                 else:
                     lines.append(f"    {member_name} = {member_value}")
+            # Inject PydanticMeta.methods on the enum class body. Users
+            # attach domain methods (is_terminal, has_trailing, ...)
+            # directly on the Python Enum and we preserve them verbatim
+            # in the generated Pydantic enum.
+            enum_meta = (enum_def.custom_code or {}).get("pydantic", {}) or {}
+            methods_src = (enum_meta.get("methods") or "").strip()
+            if methods_src:
+                lines.append("")
+                for method_line in methods_src.splitlines():
+                    if method_line.strip():
+                        lines.append(f"    {method_line}")
+                    else:
+                        lines.append("")
 
         lines.append("")
 
@@ -575,5 +662,5 @@ class {{ model_name }}(BaseModel):
 {%- endfor %}
 {%- if has_config %}
 
-    model_config = ConfigDict(from_attributes=True)
+{{ model_config_line }}
 {%- endif %}'''

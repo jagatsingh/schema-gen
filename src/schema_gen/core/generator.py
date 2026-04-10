@@ -1,6 +1,7 @@
 """Core generation engine for schema_gen"""
 
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 
@@ -29,7 +30,23 @@ class SchemaGenerationEngine:
                 f"Unknown target(s): {invalid_targets}. Available targets: {available}"
             )
         for target in config.targets:
-            self.generators[target] = GENERATOR_REGISTRY[target]()
+            generator_cls = GENERATOR_REGISTRY[target]
+            # Pass config only to generators whose __init__ accepts it. Most
+            # generators currently take no constructor args; PydanticGenerator
+            # is the first to honor per-target config (Config.pydantic).
+            try:
+                init_params = inspect.signature(generator_cls.__init__).parameters
+            except (TypeError, ValueError):
+                init_params = {}
+            if "config" in init_params:
+                instance = generator_cls(config=self.config)
+            else:
+                instance = generator_cls()
+                # Still attach config so generators that read self.config
+                # (set by BaseGenerator) work even when their own __init__
+                # doesn't forward it.
+                instance.config = self.config
+            self.generators[target] = instance
 
     def load_schemas_from_directory(self, input_dir: str = None):
         """Load all schema files from input directory
@@ -142,11 +159,9 @@ class SchemaGenerationEngine:
         if generator.generates_index_file:
             index_content = generator.generate_index(schemas, target_dir)
             if index_content is not None:
-                # Determine index filename based on file extension
-                if generator.file_extension == ".ts":
-                    index_filename = "index.ts"
-                else:
-                    index_filename = "__init__.py"
+                # Generator owns its index filename (lib.rs for Rust,
+                # index.ts for Zod, __init__.py for Python targets, ...).
+                index_filename = getattr(generator, "index_filename", "__init__.py")
 
                 index_path = target_dir / index_filename
                 with open(index_path, "w") as f:
@@ -155,315 +170,6 @@ class SchemaGenerationEngine:
                 print(f"  \u2713 {index_filename}")
 
         print(f"  Generated {len(schemas)} schema file(s) in {target_dir}")
-
-    def _generate_pydantic_files(self, generator, schemas, output_dir: Path):
-        """Generate Pydantic model files"""
-
-        # Create __init__.py for the pydantic package
-        init_file = output_dir / "__init__.py"
-        init_imports = []
-
-        for schema in schemas:
-            # Create a file for this schema's models
-            schema_file = output_dir / f"{schema.name.lower()}_models.py"
-
-            # Generate complete file with all variants
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-            # Collect imports for __init__.py — include enum classes
-            enum_classes = [e.name for e in schema.enums]
-            base_class = schema.name
-            variant_classes = [
-                generator._variant_to_class_name(schema.name, v)
-                for v in schema.variants
-            ]
-            all_classes = enum_classes + [base_class] + variant_classes
-
-            init_imports.append(
-                f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
-            )
-
-        # Write __init__.py
-        with open(init_file, "w") as f:
-            f.write('"""Generated Pydantic models"""\n\n')
-            for import_line in init_imports:
-                f.write(import_line + "\n")
-            f.write("\n__all__ = [\n")
-            for schema in schemas:
-                enum_classes = [e.name for e in schema.enums]
-                base_class = schema.name
-                variant_classes = [
-                    generator._variant_to_class_name(schema.name, v)
-                    for v in schema.variants
-                ]
-                all_classes = [
-                    f'"{c}"' for c in enum_classes + [base_class] + variant_classes
-                ]
-                f.write(f"    {', '.join(all_classes)},\n")
-            f.write("]\n")
-
-        print("  ✓ __init__.py")
-        print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
-
-    def _generate_sqlalchemy_files(self, generator, schemas, output_dir: Path):
-        """Generate SQLAlchemy model files"""
-
-        # Generate shared _base.py
-        base_file = output_dir / "_base.py"
-        with open(base_file, "w") as f:
-            f.write('"""Shared SQLAlchemy Base - AUTO-GENERATED"""\n\n')
-            f.write("from sqlalchemy.orm import DeclarativeBase\n\n\n")
-            f.write("class Base(DeclarativeBase):\n")
-            f.write("    pass\n")
-        print("  ✓ _base.py")
-
-        # Create __init__.py for the sqlalchemy package
-        init_file = output_dir / "__init__.py"
-        init_imports = ["from ._base import Base"]
-
-        for schema in schemas:
-            # Create a file for this schema's models
-            schema_file = output_dir / f"{schema.name.lower()}_models.py"
-
-            # Generate complete file
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-            # Collect imports for __init__.py
-            init_imports.append(
-                f"from .{schema.name.lower()}_models import {schema.name}"
-            )
-
-        # Write __init__.py
-        with open(init_file, "w") as f:
-            f.write('"""Generated SQLAlchemy models"""\n\n')
-            for import_line in init_imports:
-                f.write(import_line + "\n")
-            f.write("\n__all__ = [\n")
-            f.write('    "Base",\n')
-            for schema in schemas:
-                f.write(f'    "{schema.name}",\n')
-            f.write("]\n")
-
-        print("  ✓ __init__.py")
-        print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
-
-    def _generate_zod_files(self, generator, schemas, output_dir: Path):
-        """Generate Zod schema files (TypeScript)"""
-
-        # Create index.ts for the zod package
-        index_file = output_dir / "index.ts"
-        exports = []
-
-        for schema in schemas:
-            # Create a TypeScript file for this schema's models
-            schema_file = output_dir / f"{schema.name.lower()}.ts"
-
-            # Generate complete file with all variants
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-            # Collect exports for index.ts — include enum schemas
-            enum_exports = [f"{e.name}Schema, {e.name}" for e in schema.enums]
-            base_export = f"{schema.name}Schema, {schema.name}"
-            variant_exports = [
-                f"{generator._variant_to_schema_name(schema.name, v)}Schema, {generator._variant_to_schema_name(schema.name, v)}"
-                for v in schema.variants
-            ]
-            all_exports = enum_exports + [base_export] + variant_exports
-
-            exports.append(
-                f"export {{ {', '.join(all_exports)} }} from './{schema.name.lower()}';"
-            )
-
-        # Write index.ts
-        with open(index_file, "w") as f:
-            f.write("/**\n")
-            f.write(" * Generated Zod schemas\n")
-            f.write(" * Auto-generated by schema-gen\n")
-            f.write(" */\n\n")
-            for export_line in exports:
-                f.write(export_line + "\n")
-
-        print("  ✓ index.ts")
-        print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
-
-    def _generate_python_files(
-        self, generator, schemas, output_dir: Path, target_name: str
-    ):
-        """Generate Python files for dataclasses, typeddict, or pathway"""
-
-        # Create __init__.py
-        init_file = output_dir / "__init__.py"
-        init_imports = []
-
-        for schema in schemas:
-            # Create a file for this schema
-            schema_file = output_dir / f"{schema.name.lower()}_models.py"
-
-            # Generate complete file
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-            # Collect imports for __init__.py
-            base_class = schema.name
-            variant_classes = [
-                generator._variant_to_class_name(schema.name, v)
-                for v in schema.variants
-            ]
-            all_classes = [base_class] + variant_classes
-
-            init_imports.append(
-                f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
-            )
-
-        # Write __init__.py
-        with open(init_file, "w") as f:
-            f.write(f'"""Generated {target_name.title()} models"""\n\n')
-            for import_line in init_imports:
-                f.write(import_line + "\n")
-            f.write("\n__all__ = [\n")
-            for schema in schemas:
-                base_class = schema.name
-                variant_classes = [
-                    generator._variant_to_class_name(schema.name, v)
-                    for v in schema.variants
-                ]
-                all_classes = [f'"{c}"' for c in [base_class] + variant_classes]
-                f.write(f"    {', '.join(all_classes)},\n")
-            f.write("]\n")
-
-        print("  ✓ __init__.py")
-        print(f"  Generated {len(schemas)} schema file(s) in {output_dir}")
-
-    def _generate_json_files(self, generator, schemas, output_dir: Path):
-        """Generate JSON Schema files"""
-
-        for schema in schemas:
-            # Create a JSON file for this schema
-            schema_file = output_dir / f"{schema.name.lower()}.json"
-
-            # Generate complete JSON schema
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-        print(f"  Generated {len(schemas)} JSON schema file(s) in {output_dir}")
-
-    def _generate_graphql_files(self, generator, schemas, output_dir: Path):
-        """Generate GraphQL schema files"""
-
-        for schema in schemas:
-            # Create a GraphQL file for this schema
-            schema_file = output_dir / f"{schema.name.lower()}.graphql"
-
-            # Generate complete GraphQL schema
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-        print(f"  Generated {len(schemas)} GraphQL schema file(s) in {output_dir}")
-
-    def _generate_protobuf_files(self, generator, schemas, output_dir: Path):
-        """Generate Protobuf schema files"""
-
-        for schema in schemas:
-            # Create a .proto file for this schema
-            schema_file = output_dir / f"{schema.name.lower()}.proto"
-
-            # Generate complete Protobuf schema
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-        print(f"  Generated {len(schemas)} Protobuf schema file(s) in {output_dir}")
-
-    def _generate_avro_files(self, generator, schemas, output_dir: Path):
-        """Generate Avro schema files"""
-
-        for schema in schemas:
-            # Create an .avsc file for this schema
-            schema_file = output_dir / f"{schema.name.lower()}.avsc"
-
-            # Generate complete Avro schema
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-        print(f"  Generated {len(schemas)} Avro schema file(s) in {output_dir}")
-
-    def _generate_jackson_files(self, generator, schemas, output_dir: Path):
-        """Generate Jackson Java class files"""
-
-        for schema in schemas:
-            # Create a .java file for this schema
-            schema_file = output_dir / f"{schema.name}.java"
-
-            # Generate complete Java class with Jackson annotations
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-        print(f"  Generated {len(schemas)} Jackson Java file(s) in {output_dir}")
-
-    def _generate_kotlin_files(self, generator, schemas, output_dir: Path):
-        """Generate Kotlin data class files"""
-
-        for schema in schemas:
-            # Create a .kt file for this schema
-            schema_file = output_dir / f"{schema.name}.kt"
-
-            # Generate complete Kotlin data classes
-            file_content = generator.generate_file(schema)
-
-            # Write to file
-            with open(schema_file, "w") as f:
-                f.write(file_content)
-
-            print(f"  ✓ {schema_file.name}")
-
-        print(f"  Generated {len(schemas)} Kotlin data class file(s) in {output_dir}")
 
 
 def create_generation_engine(

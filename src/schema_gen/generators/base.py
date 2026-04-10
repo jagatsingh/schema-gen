@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from ..core.config import Config
 from ..core.usr import USRSchema
 
 
@@ -16,6 +17,17 @@ class BaseGenerator(ABC):
     and optionally override generate_index() to move file-structure
     knowledge out of the core engine.
     """
+
+    def __init__(self, config: Config | None = None) -> None:
+        """Initialize the generator with optional configuration.
+
+        Args:
+            config: Optional Config instance giving generators access to
+                per-target settings (e.g. ``config.pydantic``). When omitted,
+                generators fall back to their previous hardcoded behavior so
+                this parameter remains backwards-compatible.
+        """
+        self.config = config
 
     @property
     @abstractmethod
@@ -33,6 +45,12 @@ class BaseGenerator(ABC):
         Defaults to False. Override in subclasses that need index files.
         """
         return False
+
+    #: Filename used for the index/init file when ``generates_index_file``
+    #: is True. Subclasses override this for non-Python targets — e.g. the
+    #: Rust generator uses ``lib.rs`` and the Zod generator uses
+    #: ``index.ts``. Defaults to ``__init__.py`` for Python targets.
+    index_filename: str = "__init__.py"
 
     def get_schema_filename(self, schema: USRSchema) -> str:
         """Return the output filename for a given schema.

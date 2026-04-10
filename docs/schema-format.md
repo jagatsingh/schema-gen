@@ -178,12 +178,51 @@ Field(
         "column_type": "pw.Column[str]",  # Explicit column type
         "optional": False,  # Override optional setting
     },
+    # Rust-specific options
+    rust={
+        "type": "u32",  # Pick a specific int/float width.
+        # Valid ints: i8, i16, i32, i64, i128, isize, u8..u128, usize.
+        # Valid floats: f32, f64. Invalid values log a warning and
+        # fall back to i64 / f64. See docs/generators/rust.md.
+    },
     # Additional metadata
     custom_metadata={
         "ui_component": "textarea",  # Custom metadata for other tools
         "validation_group": "user",  # Grouping for validation
     },
 )
+```
+
+### Discriminated Unions
+
+Use `Annotated[Union[...], Field(discriminator="<tag>")]` to mark a
+field as a discriminated union. Every union member must be a `@Schema`
+class with a `Literal["..."]` tag field matching the discriminator name.
+The Rust generator lowers this to a `#[serde(tag = "...")]` tagged enum.
+Pydantic and Zod discriminated-union lowering is planned — see
+[docs/generators/rust.md](generators/rust.md#discriminated-unions).
+
+```python
+from typing import Annotated, Literal, Union
+from schema_gen import Schema, Field
+
+
+@Schema
+class MarketLeg:
+    type: Literal["market"]
+    qty: int
+
+
+@Schema
+class LimitLeg:
+    type: Literal["limit"]
+    qty: int
+    price: float
+
+
+@Schema
+class Order:
+    leg: Annotated[Union[MarketLeg, LimitLeg], Field(discriminator="type")]
 ```
 
 ## Complete Field Examples
@@ -489,8 +528,16 @@ Schema Gen supports different meta classes for different code generation targets
 | Meta Class | Target | Description |
 |------------|--------|-------------|
 | `PydanticMeta` | Pydantic | Custom validators, methods, and imports for Pydantic models |
+| `SerdeMeta` | Rust | Extra derives, imports, `rename_all`, `deny_unknown_fields`, `json_schema_derive`, and raw `impl` blocks. See [docs/generators/rust.md](generators/rust.md#serdemeta-inner-class). |
 | `SQLAlchemyMeta` | SQLAlchemy | Custom constraints, methods, and table configuration |
 | `PathwayMeta` | Pathway | Custom transformations and table properties |
+
+Meta classes can be attached to both `@Schema` classes **and** `Enum`
+subclasses. Attaching `PydanticMeta` / `SerdeMeta` to an `Enum` lets you
+inject domain methods (e.g. `OrderStatus.is_terminal()`) into the
+generated enum body on either side. See
+[docs/generators/pydantic.md](generators/pydantic.md#pydanticmeta-on-enums)
+and [docs/generators/rust.md](generators/rust.md#enum-level-serdemeta).
 
 ### PydanticMeta Options
 

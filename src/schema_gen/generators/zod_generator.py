@@ -10,8 +10,33 @@ from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
 
+def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
+    """Walk a USR schema and return the set of NESTED_SCHEMA names it
+    references that are NOT the schema itself (those are self-refs and
+    handled via z.lazy()). Looks through ``inner_type`` (list / set /
+    frozenset) and ``union_types`` (tuple / union) so nested container
+    types produce imports too.
+    """
+    refs: set[str] = set()
+
+    def _walk(field: USRField) -> None:
+        if field.type == FieldType.NESTED_SCHEMA and field.nested_schema:
+            if field.nested_schema != schema.name:
+                refs.add(field.nested_schema)
+        if field.inner_type is not None:
+            _walk(field.inner_type)
+        for ut in field.union_types or []:
+            _walk(ut)
+
+    for f in schema.fields:
+        _walk(f)
+    return refs
+
+
 class ZodGenerator(BaseGenerator):
     """Generates Zod schemas (TypeScript/JavaScript) from USR schemas"""
+
+    index_filename = "index.ts"
 
     def __init__(self):
         self.template = Template(self._get_template())
@@ -29,7 +54,13 @@ class ZodGenerator(BaseGenerator):
         return f"{schema.name.lower()}.ts"
 
     def generate_index(self, schemas: list[USRSchema], output_dir: Path) -> str | None:
-        """Generate index.ts content for the zod package."""
+        """Generate index.ts content for the zod package.
+
+        Schemas are runtime values (re-exported as values); the inferred
+        types are re-exported via ``export type`` so that projects using
+        ``verbatimModuleSyntax`` don't trip TS1205 on the type-only names
+        (POC finding C5).
+        """
         lines = [
             "/**",
             " * Generated Zod schemas",
@@ -39,16 +70,24 @@ class ZodGenerator(BaseGenerator):
         ]
 
         for schema in schemas:
-            enum_exports = [f"{e.name}Schema, {e.name}" for e in schema.enums]
-            base_export = f"{schema.name}Schema, {schema.name}"
-            variant_exports = [
-                f"{self._variant_to_schema_name(schema.name, v)}Schema, {self._variant_to_schema_name(schema.name, v)}"
+            module = f"./{schema.name.lower()}"
+            # Collect runtime (value) names — schemas themselves.
+            value_names = [f"{e.name}Schema" for e in schema.enums]
+            value_names.append(f"{schema.name}Schema")
+            value_names.extend(
+                f"{self._variant_to_schema_name(schema.name, v)}Schema"
                 for v in schema.variants
-            ]
-            all_exports = enum_exports + [base_export] + variant_exports
-            lines.append(
-                f"export {{ {', '.join(all_exports)} }} from './{schema.name.lower()}';"
             )
+
+            # Collect type-only names — inferred TS types.
+            type_names = [e.name for e in schema.enums]
+            type_names.append(schema.name)
+            type_names.extend(
+                self._variant_to_schema_name(schema.name, v) for v in schema.variants
+            )
+
+            lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
+            lines.append(f"export type {{ {', '.join(type_names)} }} from '{module}';")
 
         return "\n".join(lines) + "\n"
 
@@ -119,6 +158,11 @@ class ZodGenerator(BaseGenerator):
             {schema.name} if schema.get_self_referencing_fields() else set()
         )
 
+        # Collect cross-schema references so we can emit the right
+        # ``import { OtherSchema } from './other';`` lines at the top of
+        # the generated file (Copilot POC finding C4).
+        external_refs = _collect_external_schema_refs(schema)
+
         all_schemas = []
         all_types = []
 
@@ -167,7 +211,11 @@ class ZodGenerator(BaseGenerator):
 
         # Generate complete file
         return self._generate_complete_file(
-            schema.name, all_schemas, all_types, schema.enums
+            schema.name,
+            all_schemas,
+            all_types,
+            schema.enums,
+            external_refs=external_refs,
         )
 
     def _generate_field_definition(self, field: USRField) -> str:
@@ -218,9 +266,12 @@ class ZodGenerator(BaseGenerator):
             else:
                 field_def += f".default({str(field.default).lower() if isinstance(field.default, bool) else field.default})"
 
+        # Add trailing comma (required for valid JS/TS in z.object)
+        field_def += ","
+
         # Add description as comment
         if field.description:
-            field_def += f", // {field.description}"
+            field_def += f" // {field.description}"
 
         return field_def
 
@@ -393,11 +444,17 @@ class ZodGenerator(BaseGenerator):
             return "any"
 
     def _generate_complete_file(
-        self, schema_name: str, schemas: list[str], types: list[str], enums: list = None
+        self,
+        schema_name: str,
+        schemas: list[str],
+        types: list[str],
+        enums: list = None,
+        external_refs: set[str] | None = None,
     ) -> str:
         """Generate complete TypeScript file with header, imports, and all schemas"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         enums = enums or []
+        external_refs = external_refs or set()
 
         lines = [
             "/**",
@@ -413,8 +470,19 @@ class ZodGenerator(BaseGenerator):
             " */",
             "",
             "import { z } from 'zod';",
-            "",
         ]
+
+        # Cross-file imports for nested schema references (POC finding C4).
+        # We import both the runtime schema (value) and the inferred type.
+        # `import type` avoids TS1205 in projects with verbatimModuleSyntax.
+        for ref in sorted(external_refs):
+            if ref == schema_name:
+                continue  # self-ref is handled via z.lazy()
+            module = ref.lower()
+            lines.append(f"import {{ {ref}Schema }} from './{module}';")
+            lines.append(f"import type {{ {ref} }} from './{module}';")
+
+        lines.append("")
 
         # Add enum definitions before schemas
         for enum_def in enums:

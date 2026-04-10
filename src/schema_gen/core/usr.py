@@ -60,10 +60,27 @@ STRING_LIKE_TYPES = frozenset(
 
 @dataclass
 class USREnum:
-    """Universal representation of an enum type"""
+    """Universal representation of an enum type.
+
+    Enums can carry per-target custom code and per-target configuration
+    overrides in exactly the same way ``USRSchema`` does. ``custom_code``
+    is populated from ``PydanticMeta`` / ``SerdeMeta`` inner classes
+    attached directly to ``Enum`` subclasses and is consumed by the
+    Pydantic and Rust generators to inject domain methods (e.g.
+    ``OrderStatus.is_terminal()``) into the generated enum body.
+    ``target_config`` is reserved for future per-target overrides that
+    need a structured slot (mirrors ``USRSchema.target_config``).
+    """
 
     name: str
     values: list[tuple[str, Any]]  # (member_name, member_value)
+
+    # Per-target custom code (raw_code, imports, methods, derives, ...)
+    # extracted from PydanticMeta / SerdeMeta inner classes on the Enum.
+    custom_code: dict[str, dict] = field(default_factory=dict)
+
+    # Per-target configuration overrides (mirrors USRSchema.target_config).
+    target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -116,6 +133,17 @@ class USRField:
 
     # Target-specific configuration
     target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Discriminator field name for tagged unions. When set on a field
+    # with type=UNION, generators emit serde-tagged enums (Rust),
+    # discriminated unions (Pydantic v2 / Zod). Each entry in
+    # ``union_types`` is expected to be a NESTED_SCHEMA referencing a
+    # @Schema class with a Literal[...] tag field whose name matches.
+    discriminator: str | None = None
+    # Parallel array to ``union_types``: the literal wire value of the
+    # discriminator field on each variant (e.g. ["CE", "PE"]). Populated
+    # by the parser when ``discriminator`` is set and validated.
+    union_tag_values: list[str] = field(default_factory=list)
 
     # Metadata
     description: str | None = None
@@ -336,7 +364,7 @@ class TypeMapper:
         # Handle typing module types
         origin = typing.get_origin(python_type)
 
-        if origin is Union:
+        if origin is Union or isinstance(python_type, types.UnionType):
             args = typing.get_args(python_type)
             # Check if it's Optional (Union with None)
             if len(args) == 2 and type(None) in args:
@@ -521,7 +549,9 @@ class TypeMapper:
                 "pydantic": getattr(field_info, "pydantic", {}),
                 "sqlalchemy": getattr(field_info, "sqlalchemy", {}),
                 "pathway": getattr(field_info, "pathway", {}),
+                "rust": getattr(field_info, "rust", {}),
             },
+            discriminator=getattr(field_info, "discriminator", None),
             description=getattr(field_info, "description", None),
             metadata=getattr(field_info, "metadata", {}),
         )
@@ -555,5 +585,10 @@ class TypeMapper:
                         val = getattr(item, attr_name, None)
                         if val is not None and getattr(usr_field, field_attr) is None:
                             setattr(usr_field, field_attr, val)
+                    # Discriminator declared inside the Annotated[] form:
+                    # ``Annotated[Union[A, B], Field(discriminator="kind")]``.
+                    disc = getattr(item, "discriminator", None)
+                    if disc and usr_field.discriminator is None:
+                        usr_field.discriminator = disc
 
         return usr_field

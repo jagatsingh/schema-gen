@@ -515,9 +515,12 @@ Base = declarative_base()
         sqlalchemy_gen = SqlAlchemyGenerator()
         sqlalchemy_code = sqlalchemy_gen.generate_model(test_schema)
 
-        # Should contain SQLAlchemy-specific constraints
+        # Should contain SQLAlchemy-specific constraints. The 2.0 generator
+        # uses ``Mapped[int]`` annotations and lets SQLAlchemy infer the
+        # column type from the annotation, so we no longer expect a literal
+        # ``Integer`` import — ``Mapped[int]`` is the source of truth.
         assert "String(" in sqlalchemy_code
-        assert "Integer" in sqlalchemy_code
+        assert "Mapped[int]" in sqlalchemy_code
         assert "primary_key=True" in sqlalchemy_code
 
     @pytest.mark.integration
@@ -760,10 +763,17 @@ class TestVersionRequirements:
         schema = parser.parse_schema(TestModel)
         model_code = pydantic_gen.generate_model(schema)
 
-        # Should use Pydantic v2 syntax
-        assert "from pydantic import BaseModel, Field" in model_code
-        # Should not use deprecated v1 syntax
-        assert "Config" not in model_code or "model_config" in model_code
+        # Should use Pydantic v2 syntax. The generator imports BaseModel,
+        # ConfigDict and Field on a single line; check for the presence of
+        # each symbol independently rather than the exact import order.
+        assert "from pydantic import" in model_code
+        assert "BaseModel" in model_code
+        assert "Field" in model_code
+        # Should not use deprecated Pydantic v1 ``class Config:`` block.
+        # (The literal substring "Config" may still appear via ``ConfigDict``
+        # in the import line, which is the v2 form, so we check for the
+        # specific v1 pattern instead.)
+        assert "class Config:" not in model_code
 
     def test_version_detection(self):
         """Test that we can detect and adapt to different library versions"""

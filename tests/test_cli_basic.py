@@ -58,9 +58,17 @@ class TestCLIBasic:
             assert "✅ Project initialized!" in result.output
 
     @patch("schema_gen.cli.main.create_generation_engine")
-    def test_validate_command_no_output_dir(self, mock_create_engine):
+    def test_validate_command_no_output_dir(self, mock_create_engine, tmp_path):
         """Test validate command when output dir doesn't exist"""
+        # Create an empty schemas directory so the early "no schemas, skip"
+        # branch is not triggered — we want to exercise the missing-output-dir
+        # error path.
+        schemas_dir = tmp_path / "schemas"
+        schemas_dir.mkdir()
+        (schemas_dir / "dummy.py").write_text("# placeholder\n")
+
         mock_engine = MagicMock()
+        mock_engine.config.input_dir = str(schemas_dir)
         mock_engine.config.output_dir = "/nonexistent/path"
         mock_create_engine.return_value = mock_engine
 
@@ -68,3 +76,19 @@ class TestCLIBasic:
 
         assert result.exit_code != 0
         assert "Output directory does not exist!" in result.output
+
+    @patch("schema_gen.cli.main.create_generation_engine")
+    def test_validate_command_no_schemas_dir_skips(self, mock_create_engine):
+        """Validate exits 0 with a skip message when there's no schemas/ dir.
+
+        This makes the schema-gen-validate pre-commit hook safe to enable in
+        repos that don't yet have any @Schema files.
+        """
+        mock_engine = MagicMock()
+        mock_engine.config.input_dir = "/definitely/does/not/exist/schemas"
+        mock_create_engine.return_value = mock_engine
+
+        result = self.runner.invoke(main, ["validate"])
+
+        assert result.exit_code == 0
+        assert "skipping validation" in result.output

@@ -8,13 +8,13 @@
 
 **Universal schema converter - define once, generate everywhere.**
 
-Schema Gen eliminates schema duplication across multiple programming languages and frameworks by providing a single source of truth for your data models. Define your schemas once using Python type annotations, then automatically generate code for 12+ different targets.
+Schema Gen eliminates schema duplication across multiple programming languages and frameworks by providing a single source of truth for your data models. Define your schemas once using Python type annotations, then automatically generate code for 13+ different targets — Python, TypeScript, Java, Kotlin, **Rust**, and multiple schema formats.
 
 This is early `Beta` version and just early implementation of my current thoughts. Please try it out and provide feedback!
 
 See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-examples/)
 
-## 🎯 Supported Generators (12)
+## 🎯 Supported Generators (13)
 
 ### Python Ecosystem
 - **Pydantic** - Python models with validation
@@ -25,6 +25,9 @@ See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-ex
 
 ### TypeScript/JavaScript
 - **Zod** - TypeScript runtime validation
+
+### Systems Languages
+- **Rust (Serde)** - Rust structs + enums with `serde`, `schemars`, `chrono`, `uuid`, `rust_decimal`. Supports `SerdeMeta`, per-field integer width overrides, discriminated unions, shared `common.rs`, and auto-generated `Cargo.toml`. See [docs/generators/rust.md](docs/generators/rust.md).
 
 ### Schema Formats
 - **JSON Schema** - Standard JSON schema validation
@@ -93,6 +96,23 @@ Create `schemas/user.py`:
 from schema_gen import Schema, Field
 from typing import Optional
 from datetime import datetime
+from enum import Enum
+
+
+class OrderStatus(str, Enum):
+    PENDING = "pending"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+
+    class SerdeMeta:
+        # Domain methods injected into the generated Rust enum body.
+        raw_code = """
+impl OrderStatus {
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, OrderStatus::Filled | OrderStatus::Cancelled)
+    }
+}
+"""
 
 
 @Schema
@@ -117,16 +137,23 @@ class User:
         default=None, min_value=13, max_value=120, description="User age"
     )
 
+    # Per-field Rust type override — generator emits `pub quantity: u32`
+    # instead of the default `i64`. Valid values: u8/u16/u32/u64/i8..i128,
+    # isize/usize, f32/f64. See docs/generators/rust.md.
+    quantity: int = Field(default=0, rust={"type": "u32"}, description="Order quantity")
+
+    status: OrderStatus = Field(default=OrderStatus.PENDING, description="Order status")
+
     created_at: datetime = Field(
         auto_now_add=True, description="Account creation timestamp"
     )
 
     class Variants:
         # Different model variants for different use cases
-        create_request = ["username", "email", "age"]
+        create_request = ["username", "email", "age", "quantity"]
         update_request = ["email", "age"]
         public_response = ["id", "username", "age", "created_at"]
-        admin_response = ["id", "username", "email", "age", "created_at"]
+        admin_response = ["id", "username", "email", "age", "quantity", "created_at"]
 ```
 
 ### Generate Your Models
@@ -138,7 +165,8 @@ schema-gen generate
 This generates code for all configured targets:
 - `generated/pydantic/user_models.py` - Python Pydantic models
 - `generated/sqlalchemy/user_models.py` - SQLAlchemy ORM models
-- `generated/zod/user.ts` - TypeScript Zod schemas
+- `generated/zod/user.ts` + `generated/zod/index.ts` - TypeScript Zod schemas
+- `generated/rust/user.rs` + `generated/rust/common.rs` + `generated/rust/lib.rs` + `generated/rust/Cargo.toml` - Rust Serde structs and enums
 - `generated/jackson/User.java` - Java classes with Jackson annotations
 - `generated/kotlin/User.kt` - Kotlin data classes
 - `generated/protobuf/user.proto` - Protocol Buffer definitions
@@ -321,6 +349,8 @@ config = Config(
         "pathway",
         # TypeScript/JavaScript
         "zod",
+        # Systems languages
+        "rust",
         # Schema formats
         "jsonschema",
         "graphql",
@@ -332,11 +362,19 @@ config = Config(
     ],
     # Target-specific settings
     pydantic={
-        "use_enum": True,
+        # See docs/generators/pydantic.md for the full list of supported keys.
         "extra": "forbid",
         "validate_assignment": True,
+        "frozen": False,
     },
     sqlalchemy={"use_declarative": True, "naming_convention": "snake_case"},
+    # See docs/generators/rust.md for the full list of supported keys.
+    rust={
+        "json_schema_derive": True,
+        "deny_unknown_fields": True,
+        "crate_name": "my-generated-contracts",
+        "emit_cargo_toml": True,
+    },
 )
 ```
 
@@ -408,7 +446,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - 📝 **OpenAPI/Swagger** - Complete REST API specifications
 - 📊 **Great Expectations** - Data quality validation schemas
 - 🏗️ **Terraform** - Infrastructure as Code schema validation
-- 🦀 **Rust Serde** - High-performance Rust serialization
 - 🔷 **C# Records** - .NET ecosystem data models
 - 🐹 **Go Structs** - Go language struct generation
 - 🎯 **Custom Generators** - Plugin system for any format
