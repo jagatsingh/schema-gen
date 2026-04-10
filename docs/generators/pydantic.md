@@ -83,19 +83,30 @@ directly into the generated Python enum class body. This keeps Python
 and Rust side-by-side in sync when you use enum-level `SerdeMeta` for
 the Rust target.
 
+> **Python 3.12+**: Inner classes inside `str, Enum` or `StrEnum` are
+> treated as enum members, which causes errors. Wrap with
+> `enum.nonmember()` to prevent this.
+
 ```python
-from enum import Enum
+from enum import Enum, nonmember
 
 class OrderStatus(str, Enum):
     PENDING = "pending"
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class PydanticMeta:
-        methods = """
+    PydanticMeta = nonmember(
+        type(
+            "PydanticMeta",
+            (),
+            {
+                "methods": """
     def is_terminal(self) -> bool:
         return self in (OrderStatus.FILLED, OrderStatus.CANCELLED)
 """
+            },
+        )
+    )
 ```
 
 Generated:

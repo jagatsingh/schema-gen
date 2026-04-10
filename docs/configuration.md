@@ -193,11 +193,8 @@ Configure Zod schema generation for TypeScript:
 config = Config(
     targets=["zod"],
     zod={
-        "generate_types": True,  # Generate TypeScript types
-        "strict_mode": True,  # Use strict validation
-        "export_schemas": True,  # Export schema objects
-        "file_extension": ".ts",  # File extension (.ts or .js)
-        "import_style": "named",  # Import style ("named" or "default")
+        "strict": True,   # Append .strict() to z.object() schemas
+        "coerce": False,   # Use z.coerce.date() instead of z.string().date()
     },
 )
 ```
@@ -206,11 +203,25 @@ config = Config(
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `generate_types` | `bool` | `True` | Generate TypeScript type definitions |
-| `strict_mode` | `bool` | `True` | Use strict validation rules |
-| `export_schemas` | `bool` | `True` | Export Zod schema objects |
-| `file_extension` | `str` | `".ts"` | Generated file extension |
-| `import_style` | `str` | `"named"` | Import style for Zod library |
+| `strict` | `bool` | `False` | Append `.strict()` to `z.object()` schemas (rejects unknown keys) |
+| `coerce` | `bool` | `False` | Use `z.coerce.date()` / `z.coerce.string()` for date/datetime fields instead of `z.string().date()` |
+
+**Type mapping highlights:**
+
+| Python Type | Zod Output |
+|-------------|------------|
+| `str` | `z.string()` |
+| `int` | `z.number().int()` |
+| `float` | `z.number()` |
+| `bool` | `z.boolean()` |
+| `datetime` | `z.string().datetime()` |
+| `list[T]` | `z.array(<zod_type>)` |
+| `dict[str, T]` | `z.record(<zod_type>)` |
+| `dict[str, Any]` | `z.record(z.any())` |
+| `Optional[T]` | `<zod_type>.optional()` |
+| `Literal["a"]` | `z.literal("a")` |
+| Nested `@Schema` | `SchemaNameSchema` (cross-file import) |
+| `Enum` subclass | `z.enum([...])` (inline) |
 
 ### Pathway Settings (Planned)
 
