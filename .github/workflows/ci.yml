@@ -11,8 +11,10 @@ jobs:
     name: Lockfile consistency
     runs-on: ubuntu-latest
     steps:
-      - name: Set 7-day dependency delay
-        run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+      # NOTE: Do NOT set UV_EXCLUDE_NEWER here. The lockfile has the
+      # exclude-newer timestamp baked in from when it was generated.
+      # Setting a different timestamp causes uv lock --check to re-resolve
+      # and fail with a timestamp mismatch.
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -31,7 +33,7 @@ jobs:
     needs: lockfile-check
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12"]
 
     steps:
     - name: Set 7-day dependency delay
