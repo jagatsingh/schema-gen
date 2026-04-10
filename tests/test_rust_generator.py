@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import pytest
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+
+import pytest
 
 from schema_gen import Field, Schema
 from schema_gen.core.schema import SchemaRegistry
