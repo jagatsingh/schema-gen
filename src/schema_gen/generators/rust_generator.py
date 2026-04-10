@@ -141,7 +141,17 @@ _DEFAULT_ENUM_DERIVES = [
 
 
 class RustGenerator(BaseGenerator):
-    """Generates Rust structs and enums with serde derives from USR schemas."""
+    """Generates Rust structs and enums with serde derives from USR schemas.
+
+    Emits one ``.rs`` file per ``@Schema`` plus a shared ``common.rs``
+    for deduplicated enums, a ``lib.rs`` index with ``pub mod`` /
+    ``pub use`` re-exports, and (by default) a minimal ``Cargo.toml``.
+    Supports ``SerdeMeta`` on both schemas and enums, per-field
+    integer/float width overrides via ``Field(rust={"type": ...})``,
+    discriminated unions via ``Annotated[Union[...], Field(
+    discriminator=...)]``, and ``Config.rust`` for crate-level
+    settings. See ``docs/generators/rust.md`` for the full guide.
+    """
 
     index_filename = "lib.rs"
 
