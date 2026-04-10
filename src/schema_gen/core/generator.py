@@ -2,11 +2,13 @@
 
 import importlib.util
 import inspect
+import json
 import sys
 from pathlib import Path
 
 from ..generators.registry import GENERATOR_REGISTRY
 from ..parsers.schema_parser import SchemaParser
+from ..registry.index import build_registry_index
 from .config import Config
 
 
@@ -107,6 +109,10 @@ class SchemaGenerationEngine:
 
             self._generate_target(target, schemas, output_dir)
 
+        # Auto-generate registry index after all targets are done.
+        if self.config.registry.get("enabled", True):
+            self._generate_registry_index(schemas, output_dir)
+
     def _import_schema_file(self, schema_file: Path):
         """Import a Python schema file to register its schemas"""
         module_name = schema_file.stem
@@ -170,6 +176,15 @@ class SchemaGenerationEngine:
                 print(f"  \u2713 {index_filename}")
 
         print(f"  Generated {len(schemas)} schema file(s) in {target_dir}")
+
+    def _generate_registry_index(self, schemas, output_dir: Path):
+        """Auto-generate registry.json in the output directory."""
+        index = build_registry_index(schemas, self.config)
+        registry_path = output_dir / "registry.json"
+        with open(registry_path, "w") as f:
+            json.dump(index, f, indent=2, sort_keys=False)
+            f.write("\n")
+        print("\n  \u2713 registry.json")
 
 
 def create_generation_engine(

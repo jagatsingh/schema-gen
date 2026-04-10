@@ -615,5 +615,434 @@ def diff(against, level, fmt, ignore_rules, config_path):
         raise SystemExit(2) from exc
 
 
+@main.group()
+def registry():
+    """Contract registry: query, validate, and inspect generated schemas."""
+    pass
+
+
+def _load_registry_index(config_path: str) -> dict:
+    """Load the registry.json from the configured output directory."""
+    import json
+
+    engine = create_generation_engine(config_path)
+    output_dir = Path(engine.config.output_dir)
+    registry_path = output_dir / "registry.json"
+
+    if not registry_path.exists():
+        click.echo(
+            "Registry index not found. Run 'schema-gen generate' first "
+            "or 'schema-gen registry index' to build it."
+        )
+        raise SystemExit(1)
+
+    return json.loads(registry_path.read_text())
+
+
+@registry.command("index")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_index(config_path):
+    """Force rebuild the registry index."""
+    import json
+
+    from ..registry.index import build_registry_index
+
+    try:
+        engine = create_generation_engine(config_path)
+        engine.load_schemas_from_directory()
+        schemas = engine.parser.parse_all_schemas()
+
+        if not schemas:
+            click.echo("No schemas found.")
+            raise SystemExit(1)
+
+        index = build_registry_index(schemas, engine.config)
+        output_dir = Path(engine.config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        registry_path = output_dir / "registry.json"
+
+        with open(registry_path, "w") as f:
+            json.dump(index, f, indent=2, sort_keys=False)
+            f.write("\n")
+
+        type_count = len(index.get("types", {}))
+        enum_count = len(index.get("enums", {}))
+        click.echo(
+            f"Registry index built: {type_count} type(s), "
+            f"{enum_count} enum(s) -> {registry_path}"
+        )
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(1) from e
+
+
+@registry.command("list")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_list(config_path):
+    """List all types in the registry index."""
+    try:
+        index = _load_registry_index(config_path)
+        types = index.get("types", {})
+
+        if not types:
+            click.echo("No types found in registry.")
+            return
+
+        # Table header
+        click.echo(f"{'Name':<30} {'Domain':<15} {'Fields':<8} {'Description'}")
+        click.echo("-" * 80)
+
+        for name in sorted(types):
+            entry = types[name]
+            domain = entry.get("domain") or "-"
+            fields_count = len(entry.get("fields", {}))
+            desc = entry.get("description", "")
+            if len(desc) > 40:
+                desc = desc[:37] + "..."
+            click.echo(f"{name:<30} {domain:<15} {fields_count:<8} {desc}")
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(1) from e
+
+
+@registry.command("show")
+@click.argument("type_name")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_show(type_name, config_path):
+    """Show full type information for TYPE_NAME."""
+    try:
+        index = _load_registry_index(config_path)
+        types = index.get("types", {})
+        enums = index.get("enums", {})
+
+        if type_name not in types:
+            # Check enums
+            if type_name in enums:
+                _show_enum(type_name, enums[type_name])
+                return
+            click.echo(f"Type '{type_name}' not found in registry.")
+            raise SystemExit(1)
+
+        entry = types[type_name]
+        click.echo(f"Type: {type_name}")
+        click.echo(f"Domain: {entry.get('domain') or '-'}")
+        click.echo(f"Kind: {entry.get('kind', 'struct')}")
+        click.echo(f"Description: {entry.get('description', '')}")
+        click.echo()
+
+        # Fields table
+        fields = entry.get("fields", {})
+        if fields:
+            click.echo("Fields:")
+            click.echo(f"  {'Name':<25} {'Type':<25} {'Required':<10} {'Description'}")
+            click.echo("  " + "-" * 75)
+            for fname in sorted(fields):
+                finfo = fields[fname]
+                req = "yes" if finfo.get("required") else "no"
+                desc = finfo.get("description", "")
+                click.echo(
+                    f"  {fname:<25} {finfo.get('type', ''):<25} {req:<10} {desc}"
+                )
+            click.echo()
+
+        # Enums referenced
+        erefs = entry.get("enums_referenced", [])
+        if erefs:
+            click.echo(f"Enums referenced: {', '.join(erefs)}")
+
+        # Nested types
+        nrefs = entry.get("nested_types", [])
+        if nrefs:
+            click.echo(f"Nested types: {', '.join(nrefs)}")
+
+        # Variants
+        variants = entry.get("variants", [])
+        if variants:
+            click.echo(f"Variants: {', '.join(variants)}")
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(1) from e
+
+
+def _show_enum(name: str, entry: dict):
+    """Display enum details."""
+    click.echo(f"Enum: {name}")
+    values = entry.get("values", [])
+    if values:
+        click.echo("Values:")
+        for v in values:
+            click.echo(f"  {v['name']} = {v['value']}")
+    used_by = entry.get("used_by", [])
+    if used_by:
+        click.echo(f"Used by: {', '.join(used_by)}")
+
+
+@registry.command("refs")
+@click.argument("type_name")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_refs(type_name, config_path):
+    """Show which types reference TYPE_NAME."""
+    try:
+        index = _load_registry_index(config_path)
+        types = index.get("types", {})
+        enums = index.get("enums", {})
+        referencing: list[str] = []
+
+        # Check if it's an enum — look at used_by
+        if type_name in enums:
+            used_by = enums[type_name].get("used_by", [])
+            if used_by:
+                click.echo(f"Types referencing enum '{type_name}':")
+                for t in used_by:
+                    click.echo(f"  {t}")
+            else:
+                click.echo(f"No types reference enum '{type_name}'.")
+            return
+
+        # For struct types, scan all other types' enums_referenced and nested_types
+        for tname, tentry in sorted(types.items()):
+            if tname == type_name:
+                continue
+            enums_ref = tentry.get("enums_referenced", [])
+            nested_ref = tentry.get("nested_types", [])
+            if type_name in enums_ref or type_name in nested_ref:
+                referencing.append(tname)
+
+        if referencing:
+            click.echo(f"Types referencing '{type_name}':")
+            for t in sorted(referencing):
+                click.echo(f"  {t}")
+        else:
+            click.echo(f"No types reference '{type_name}'.")
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(1) from e
+
+
+@registry.command("search")
+@click.argument("query")
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_search(query, config_path):
+    """Search types and fields matching QUERY."""
+    try:
+        index = _load_registry_index(config_path)
+        types = index.get("types", {})
+        enums = index.get("enums", {})
+        query_lower = query.lower()
+        found = False
+
+        # Search type names and descriptions
+        for tname, tentry in sorted(types.items()):
+            if (
+                query_lower in tname.lower()
+                or query_lower in (tentry.get("description", "") or "").lower()
+            ):
+                click.echo(f"[type] {tname}: {tentry.get('description', '')}")
+                found = True
+
+            # Search field names and descriptions
+            for fname, finfo in sorted(tentry.get("fields", {}).items()):
+                if (
+                    query_lower in fname.lower()
+                    or query_lower in (finfo.get("description", "") or "").lower()
+                ):
+                    click.echo(
+                        f"  [field] {tname}.{fname} "
+                        f"({finfo.get('type', '')}): "
+                        f"{finfo.get('description', '')}"
+                    )
+                    found = True
+
+        # Search enum names
+        for ename in sorted(enums):
+            if query_lower in ename.lower():
+                click.echo(f"[enum] {ename}")
+                found = True
+
+        if not found:
+            click.echo(f"No results for '{query}'.")
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(1) from e
+
+
+@registry.command("validate")
+@click.argument("file", type=click.Path(exists=True))
+@click.option(
+    "--type", "-t", "type_name", required=True, help="Type name to validate against"
+)
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_validate(file, type_name, config_path):
+    """Validate a JSON file against a type's JSON Schema."""
+    import json
+
+    try:
+        import jsonschema as jsonschema_lib
+    except ImportError as exc:
+        click.echo("jsonschema package is required. Install it: pip install jsonschema")
+        raise SystemExit(1) from exc
+
+    try:
+        engine = create_generation_engine(config_path)
+        output_dir = Path(engine.config.output_dir)
+
+        # Load the JSON Schema for the type
+        schema_filename = type_name.lower() + ".json"
+        schema_path = output_dir / "jsonschema" / schema_filename
+        if not schema_path.exists():
+            click.echo(
+                f"JSON Schema file not found: {schema_path}\n"
+                "Ensure 'jsonschema' is in your targets and run 'schema-gen generate'."
+            )
+            raise SystemExit(1)
+
+        json_schema = json.loads(schema_path.read_text())
+
+        # Build a validation schema that references the type via $defs.
+        defs = json_schema.get("$defs", {})
+        if type_name in defs:
+            # Create a top-level schema that $ref's the type within $defs.
+            type_schema = {
+                "$ref": f"#/$defs/{type_name}",
+                "$defs": defs,
+            }
+        else:
+            click.echo(
+                f"Type '{type_name}' not found in $defs of {schema_path}.\n"
+                f"Available types: {', '.join(sorted(defs)) or '(none)'}"
+            )
+            raise SystemExit(1)
+
+        # Load the data file
+        data = json.loads(Path(file).read_text())
+
+        # Validate
+        jsonschema_lib.validate(instance=data, schema=type_schema)
+        click.echo(f"Validation passed: '{file}' conforms to '{type_name}'.")
+
+    except jsonschema_lib.ValidationError as e:
+        click.echo(f"Validation failed: {e.message}")
+        if e.absolute_path:
+            click.echo(f"  Path: {'.'.join(str(p) for p in e.absolute_path)}")
+        raise SystemExit(1) from e
+    except json.JSONDecodeError as e:
+        click.echo(f"Invalid JSON in '{file}': {e}")
+        raise SystemExit(1) from e
+    except SystemExit:
+        raise
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(1) from e
+
+
+@registry.command("compat")
+@click.option("--type", "-t", "type_name", required=True, help="Type name to check")
+@click.option(
+    "--against",
+    required=True,
+    help="Baseline reference (e.g. .git#branch=main)",
+)
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def registry_compat(type_name, against, config_path):
+    """Check compatibility of a type against a baseline."""
+    try:
+        engine = create_generation_engine(config_path)
+        output_dir = Path(engine.config.output_dir)
+
+        old_schemas = load_baseline(against, output_dir)
+        new_schemas = load_current(output_dir)
+
+        # Filter to the specific type's file
+        type_filename = type_name.lower() + ".json"
+        old_filtered = {k: v for k, v in old_schemas.items() if k == type_filename}
+        new_filtered = {k: v for k, v in new_schemas.items() if k == type_filename}
+
+        if not old_filtered and not new_filtered:
+            click.echo(
+                f"No JSON Schema file '{type_filename}' found in baseline or current."
+            )
+            raise SystemExit(1)
+
+        violations = compare_schemas(old_filtered, new_filtered)
+
+        if violations:
+            click.echo(f"Compatibility issues for '{type_name}':")
+            for v in violations:
+                field_str = f".{v.field_name}" if v.field_name else ""
+                click.echo(
+                    f"  [{v.level}] {v.rule_id.value}: "
+                    f"{v.schema_name}{field_str} - {v.message}"
+                )
+            raise SystemExit(1)
+        else:
+            click.echo(f"No compatibility issues for '{type_name}'.")
+
+    except SystemExit:
+        raise
+    except BaselineError as e:
+        click.echo(f"Baseline error: {e}")
+        raise SystemExit(2) from e
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        raise SystemExit(2) from e
+
+
 if __name__ == "__main__":
     main()
