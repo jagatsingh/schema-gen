@@ -759,6 +759,8 @@ def test_engine_emits_cargo_toml(tmp_path):
     cargo = (out_dir / "rust" / "Cargo.toml").read_text()
     assert "[package]" in cargo
     assert 'name = "schema-gen-generated-contracts"' in cargo
+    assert "[lib]" in cargo
+    assert 'path = "lib.rs"' in cargo
     assert "[dependencies]" in cargo
     assert 'serde = { version = "1"' in cargo
     assert "chrono = " in cargo

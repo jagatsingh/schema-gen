@@ -354,7 +354,7 @@ class TypeMapper:
         # Handle typing module types
         origin = typing.get_origin(python_type)
 
-        if origin is Union:
+        if origin is Union or isinstance(python_type, types.UnionType):
             args = typing.get_args(python_type)
             # Check if it's Optional (Union with None)
             if len(args) == 2 and type(None) in args:

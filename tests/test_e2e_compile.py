@@ -181,14 +181,9 @@ class TestE2ECompile:
         lib_content += "pub mod e2e_tree_node;\npub use e2e_tree_node::*;\n"
         lib_rs.write_text(lib_content)
 
-        # Cargo expects lib.rs in src/ or a [lib] section. Add [lib]
-        # pointing to the flat output directory.
+        # Add missing dependencies the generated code may reference.
         cargo_toml = rust_dir / "Cargo.toml"
         cargo_content = cargo_toml.read_text()
-        if "[lib]" not in cargo_content:
-            cargo_content += '\n[lib]\npath = "lib.rs"\n'
-
-        # Add missing dependencies the generated code may reference.
         for dep_line in [
             'serde_json = "1"',
             'uuid = { version = "1", features = ["serde"] }',
@@ -239,10 +234,6 @@ class TestE2ECompile:
     # Zod/TypeScript: tsc --noEmit --strict
     # ------------------------------------------------------------------
 
-    @pytest.mark.skip(
-        reason="Zod generator has a pre-existing bug: missing commas between "
-        "z.object() fields. Fix the generator first, then unskip this test."
-    )
     @pytest.mark.skipif(not shutil.which("npx"), reason="npx not installed")
     def test_zod_tsc_check(self):
         self._generate_targets(["zod"])
@@ -253,7 +244,7 @@ class TestE2ECompile:
             "compilerOptions": {
                 "strict": True,
                 "noEmit": True,
-                "moduleResolution": "node",
+                "moduleResolution": "bundler",
                 "target": "ES2020",
                 "module": "ES2020",
                 "skipLibCheck": True,
