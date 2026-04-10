@@ -41,16 +41,16 @@ jobs:
     - name: Test all generators compatibility
       run: |
         # Test all generators with currently installed versions
-        uv run python scripts/check_compatibility.py --library all-generators
+        uv run --frozen python scripts/check_compatibility.py --library all-generators
 
     - name: Run version compatibility test suite
       run: |
         # Run the comprehensive compatibility test suite
-        uv run pytest tests/test_version_compatibility.py -v
+        uv run --frozen pytest tests/test_version_compatibility.py -v
 
     - name: Validate version matrix configuration
       run: |
-        uv run python -c "
+        uv run --frozen python -c "
         import yaml
         with open('tests/test-matrix.yml', 'r') as f:
             matrix = yaml.safe_load(f)

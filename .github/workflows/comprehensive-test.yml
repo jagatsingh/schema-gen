@@ -35,14 +35,14 @@ jobs:
     - name: Run quick format validation
       run: |
         # Python syntax validation (fast)
-        uv run pytest tests/test_format_validation.py::TestFormatValidation -v
+        uv run --frozen pytest tests/test_format_validation.py::TestFormatValidation -v
 
         # Comprehensive format validation (no external compilers)
-        uv run python scripts/validate_all_formats.py --verbose
+        uv run --frozen python scripts/validate_all_formats.py --verbose
 
     - name: Run unit tests with coverage
       run: |
-        uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-report=term
+        uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       if: success()
@@ -108,19 +108,19 @@ jobs:
 
           # Test TypeScript/Zod compilation
           echo 'Testing TypeScript compilation...'
-          uv run python scripts/validate_all_formats.py --format zod --verbose
+          uv run --frozen python scripts/validate_all_formats.py --format zod --verbose
 
           # Test Java/Jackson compilation
           echo 'Testing Java compilation...'
-          uv run python scripts/validate_all_formats.py --format jackson --verbose
+          uv run --frozen python scripts/validate_all_formats.py --format jackson --verbose
 
           # Test Kotlin compilation
           echo 'Testing Kotlin compilation...'
-          uv run python scripts/validate_all_formats.py --format kotlin --verbose
+          uv run --frozen python scripts/validate_all_formats.py --format kotlin --verbose
 
           # Test Protocol Buffers compilation
           echo 'Testing Protocol Buffers compilation...'
-          uv run python scripts/validate_all_formats.py --format protobuf --verbose
+          uv run --frozen python scripts/validate_all_formats.py --format protobuf --verbose
         "
 
   # Test across different Python versions
@@ -153,10 +153,10 @@ jobs:
     - name: Test format validation on Python ${{ matrix.python-version }}
       run: |
         # Run format validation tests
-        uv run pytest tests/test_format_validation.py -v
+        uv run --frozen pytest tests/test_format_validation.py -v
 
         # Test Python code generation and execution
-        uv run pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
+        uv run --frozen pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
 
   # Performance and stress testing
   performance-validation:
@@ -210,14 +210,14 @@ jobs:
 
         # Time the generation process
         echo "Testing generation performance..."
-        time uv run schema-gen generate \
+        time uv run --frozen schema-gen generate \
           --input perf_test/schemas \
           --output perf_test/generated \
           --target pydantic
 
         # Validate generated files
         echo "Validating large generated files..."
-        uv run python -c "
+        uv run --frozen python -c "
         import sys
         sys.path.append('perf_test/generated/pydantic')
         import largetestschema_models
@@ -253,14 +253,14 @@ jobs:
     - name: Test core functionality on ${{ matrix.os }}
       run: |
         # Basic CLI functionality
-        uv run schema-gen --version
-        uv run schema-gen --help
+        uv run --frozen schema-gen --version
+        uv run --frozen schema-gen --help
 
         # Format validation (no external compilers on Windows/Mac)
-        uv run pytest tests/test_format_validation.py::TestFormatValidation -v
+        uv run --frozen pytest tests/test_format_validation.py::TestFormatValidation -v
 
         # Python code generation and execution
-        uv run pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
+        uv run --frozen pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
 
   # Summary job that depends on all validation jobs
   validation-summary:

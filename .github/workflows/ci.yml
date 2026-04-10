@@ -57,42 +57,42 @@ jobs:
 
     - name: Run linting
       run: |
-        uv run ruff check src/ tests/
-        uv run ruff format --check src/ tests/
+        uv run --frozen ruff check src/ tests/
+        uv run --frozen ruff format --check src/ tests/
 
     - name: Run tests
-      run: uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml
+      run: uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml
 
     - name: Run version compatibility tests
       run: |
         # Run basic compatibility tests with current versions
-        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_pydantic_version_compatibility -v
-        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_generated_code_syntax_validation -v
-        uv run pytest tests/test_version_compatibility.py::TestVersionRequirements::test_minimum_version_requirements -v
+        uv run --frozen pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_pydantic_version_compatibility -v
+        uv run --frozen pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_generated_code_syntax_validation -v
+        uv run --frozen pytest tests/test_version_compatibility.py::TestVersionRequirements::test_minimum_version_requirements -v
 
         # Test all generators compatibility
-        uv run pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_python_generators -v
-        uv run pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_schema_generators -v
-        uv run pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_language_generators -v
+        uv run --frozen pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_python_generators -v
+        uv run --frozen pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_schema_generators -v
+        uv run --frozen pytest tests/test_version_compatibility.py::TestAllGeneratorCompatibility::test_all_language_generators -v
 
         # Test schema library compatibility (if installed)
-        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_jsonschema_version_compatibility -v || echo "jsonschema not installed"
-        uv run pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_graphql_version_compatibility -v || echo "graphql-core not installed"
+        uv run --frozen pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_jsonschema_version_compatibility -v || echo "jsonschema not installed"
+        uv run --frozen pytest tests/test_version_compatibility.py::TestVersionCompatibility::test_current_graphql_version_compatibility -v || echo "graphql-core not installed"
 
     - name: Test CLI functionality
       run: |
         # Test basic CLI commands
-        uv run schema-gen --help
+        uv run --frozen schema-gen --help
 
         # Test project initialization
         mkdir test_project && cd test_project
-        uv run schema-gen init
+        uv run --frozen schema-gen init
 
         # Test generation
-        uv run schema-gen generate
+        uv run --frozen schema-gen generate
 
         # Test validation
-        uv run schema-gen validate
+        uv run --frozen schema-gen validate
 
         # Verify generated files exist
         ls -la generated/pydantic/
@@ -152,13 +152,13 @@ jobs:
         EOF
 
         # Generate schemas
-        uv run schema-gen generate
+        uv run --frozen schema-gen generate
 
         # Validate schemas are up-to-date
-        uv run schema-gen validate
+        uv run --frozen schema-gen validate
 
         # Verify generated content is valid Python
-        uv run python -c "
+        uv run --frozen python -c "
         import sys
         sys.path.append('test_generated/pydantic')
         from testmodel_models import TestModel, TestModelCreate, TestModelResponse
@@ -166,7 +166,7 @@ jobs:
         "
 
         # Test all generators using the compatibility checker
-        uv run python scripts/check_compatibility.py --library all-generators
+        uv run --frozen python scripts/check_compatibility.py --library all-generators
 
   docs:
     runs-on: ubuntu-latest
@@ -191,7 +191,7 @@ jobs:
       run: uv sync --frozen --group dev
 
     - name: Build documentation
-      run: uv run mkdocs build --strict
+      run: uv run --frozen mkdocs build --strict
 
     - name: Test documentation links
-      run: uv run mkdocs build --strict --verbose
+      run: uv run --frozen mkdocs build --strict --verbose

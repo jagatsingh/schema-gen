@@ -66,16 +66,16 @@ jobs:
     - name: Run comprehensive tests
       run: |
         # Run full test suite with coverage
-        uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-fail-under=65
+        uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-fail-under=65
 
         # Run format validation tests (syntax and execution validation)
-        uv run pytest tests/test_format_validation.py -v
+        uv run --frozen pytest tests/test_format_validation.py -v
 
         # Test all generators
-        uv run python scripts/check_compatibility.py --library all-generators
+        uv run --frozen python scripts/check_compatibility.py --library all-generators
 
         # Comprehensive format validation with external tool validation
-        uv run python scripts/validate_all_formats.py --verbose
+        uv run --frozen python scripts/validate_all_formats.py --verbose
 
     - name: Run Docker-based comprehensive validation
       run: |
@@ -91,24 +91,24 @@ jobs:
 
     - name: Run linting and type checking
       run: |
-        uv run ruff check src/ tests/
-        uv run ruff format --check src/ tests/
+        uv run --frozen ruff check src/ tests/
+        uv run --frozen ruff format --check src/ tests/
 
     - name: Test CLI functionality
       run: |
         # Test basic CLI commands
-        uv run schema-gen --help
-        uv run schema-gen --version
+        uv run --frozen schema-gen --help
+        uv run --frozen schema-gen --version
 
         # Test project initialization in clean directory
         mkdir test_project && cd test_project
-        uv run schema-gen init
+        uv run --frozen schema-gen init
 
         # Test generation with created schemas
-        uv run schema-gen generate --verbose
+        uv run --frozen schema-gen generate --verbose
 
         # Test validation
-        uv run schema-gen validate
+        uv run --frozen schema-gen validate
 
         # Verify generated files exist and are valid Python
         test -f generated/pydantic/user_models.py
@@ -122,8 +122,8 @@ jobs:
         ls -la dist/
 
         # Show package contents
-        uv run pip install twine
-        uv run python -m twine check dist/* --strict
+        uv run --frozen pip install twine
+        uv run --frozen python -m twine check dist/* --strict
 
     - name: Verify package installation
       run: |

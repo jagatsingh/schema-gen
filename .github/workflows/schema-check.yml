@@ -44,7 +44,7 @@ jobs:
         rm -rf generated/
 
         # Generate fresh schemas
-        uv run schema-gen generate
+        uv run --frozen schema-gen generate
 
         # Check if there are any differences
         if git diff --quiet generated/; then
@@ -60,10 +60,10 @@ jobs:
       if: steps.check_schemas.outputs.schemas_exist == 'true'
       run: |
         # Validate that all schema files are syntactically correct
-        find schemas/ -name "*.py" -exec uv run python -m py_compile {} \;
+        find schemas/ -name "*.py" -exec uv run --frozen python -m py_compile {} \;
 
         # Try to import and validate each schema
-        uv run python -c "
+        uv run --frozen python -c "
         import sys
         import os
         from pathlib import Path
@@ -103,7 +103,7 @@ jobs:
       if: steps.check_schemas.outputs.schemas_exist == 'true'
       run: |
         # Test that generated models can be imported and used
-        uv run python -c "
+        uv run --frozen python -c "
         import sys
         from pathlib import Path
 
