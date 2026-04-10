@@ -266,9 +266,12 @@ class ZodGenerator(BaseGenerator):
             else:
                 field_def += f".default({str(field.default).lower() if isinstance(field.default, bool) else field.default})"
 
+        # Add trailing comma (required for valid JS/TS in z.object)
+        field_def += ","
+
         # Add description as comment
         if field.description:
-            field_def += f", // {field.description}"
+            field_def += f" // {field.description}"
 
         return field_def
 
