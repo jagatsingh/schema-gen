@@ -411,7 +411,8 @@ class PydanticGenerator(BaseGenerator):
         if (
             field.optional
             and field.inner_type
-            and field.type not in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET, FieldType.DICT)
+            and field.type
+            not in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET, FieldType.DICT)
         ):
             inner_type = self._get_pydantic_type(field.inner_type, imports)
             imports.add("typing")

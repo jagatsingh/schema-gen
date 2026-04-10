@@ -83,7 +83,9 @@ class TestOptionalListNesting:
 
         @Schema
         class WithDict:
-            meta: dict[str, str] | None = Field(default=None, description="optional dict")
+            meta: dict[str, str] | None = Field(
+                default=None, description="optional dict"
+            )
 
         schema = SchemaParser().parse_schema(WithDict)
         field = schema.get_field("meta")
