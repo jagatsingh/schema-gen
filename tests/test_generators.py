@@ -1300,6 +1300,72 @@ class TestSelfReferentialTypes:
         parent_prop = tree_def["properties"]["parent"]
         assert parent_prop["$ref"] == "#/$defs/TreeNode"
 
+    def test_jsonschema_cross_file_ref(self):
+        """Test that JSON Schema $ref points to external file for cross-file nested types"""
+        from schema_gen.core.usr import FieldType, USRField, USRSchema
+
+        # SignalLeg is defined in a separate schema file
+        signal_leg_schema = USRSchema(
+            name="SignalLeg",
+            fields=[
+                USRField(name="symbol", type=FieldType.STRING, python_type=str),
+                USRField(name="weight", type=FieldType.FLOAT, python_type=float),
+            ],
+            description="A single leg of a signal",
+        )
+
+        # ExecutionPlan references SignalLeg as a nested field
+        execution_plan_schema = USRSchema(
+            name="ExecutionPlan",
+            fields=[
+                USRField(name="name", type=FieldType.STRING, python_type=str),
+                USRField(
+                    name="leg",
+                    type=FieldType.NESTED_SCHEMA,
+                    python_type=object,
+                    nested_schema="SignalLeg",
+                ),
+                USRField(
+                    name="legs",
+                    type=FieldType.LIST,
+                    python_type=list,
+                    inner_type=USRField(
+                        name="legs_item",
+                        type=FieldType.NESTED_SCHEMA,
+                        python_type=object,
+                        nested_schema="SignalLeg",
+                    ),
+                ),
+            ],
+            description="An execution plan referencing signal legs",
+        )
+
+        generator = JsonSchemaGenerator()
+
+        # Generate the ExecutionPlan file — SignalLeg is NOT in its $defs
+        ep_content = generator.generate_file(execution_plan_schema)
+        ep_data = json.loads(ep_content)
+
+        # SignalLeg should NOT appear in ExecutionPlan's $defs
+        assert "SignalLeg" not in ep_data["$defs"]
+        assert "ExecutionPlan" in ep_data["$defs"]
+
+        ep_def = ep_data["$defs"]["ExecutionPlan"]
+
+        # Direct nested field should use file-relative $ref
+        leg_prop = ep_def["properties"]["leg"]
+        assert leg_prop["$ref"] == "signalleg.json#/$defs/SignalLeg"
+
+        # Nested field inside a list should also use file-relative $ref
+        legs_prop = ep_def["properties"]["legs"]
+        assert legs_prop["type"] == "array"
+        assert legs_prop["items"]["$ref"] == "signalleg.json#/$defs/SignalLeg"
+
+        # Verify the SignalLeg file itself uses local $ref for self
+        sl_content = generator.generate_file(signal_leg_schema)
+        sl_data = json.loads(sl_content)
+        assert "SignalLeg" in sl_data["$defs"]
+
     def test_zod_self_reference(self, tree_node_schema):
         """Test that Zod generator uses z.lazy() for self-referential fields"""
         generator = ZodGenerator()
