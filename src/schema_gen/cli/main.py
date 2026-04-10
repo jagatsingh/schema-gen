@@ -11,7 +11,7 @@ from watchdog.observers import Observer
 from ..core.generator import create_generation_engine
 from ..diff.baseline import BaselineError, load_baseline, load_current
 from ..diff.comparator import compare_schemas
-from ..diff.formatter import format_json, format_text
+from ..diff.formatter import format_github, format_json, format_text
 from ..diff.rules import RuleId, StrictnessLevel
 
 # Pattern to match timestamp lines across all generators
@@ -539,7 +539,7 @@ def install_hooks(install_pre_commit):
 @click.option(
     "--format",
     "fmt",
-    type=click.Choice(["text", "json"], case_sensitive=False),
+    type=click.Choice(["text", "json", "github"], case_sensitive=False),
     default="text",
     help="Output format [default: text]",
 )
@@ -597,6 +597,8 @@ def diff(against, level, fmt, ignore_rules, config_path):
         if violations:
             if fmt == "json":
                 click.echo(format_json(violations))
+            elif fmt == "github":
+                click.echo(format_github(violations))
             else:
                 click.echo(format_text(violations))
             raise SystemExit(1)
