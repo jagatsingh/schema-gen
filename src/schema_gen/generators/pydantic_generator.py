@@ -8,7 +8,7 @@ from typing import Any
 from jinja2 import Template
 
 from ..core.config import Config
-from ..core.usr import FieldType, USRField, USRSchema
+from ..core.usr import FieldType, USREnum, USRField, USRSchema
 from .base import BaseGenerator
 
 #: Pydantic ``ConfigDict`` keys honored by ``Config.pydantic``. Any other
@@ -84,11 +84,18 @@ class PydanticGenerator(BaseGenerator):
         inline, which prevents duplicate class definitions across modules.
         """
         # Collect unique enums across all schemas (first-seen wins).
-        seen: dict[str, Any] = {}  # enum_name -> USREnum
+        seen: dict[str, USREnum] = {}
         for schema in schemas:
             for enum_def in schema.enums:
                 if enum_def.name not in seen:
                     seen[enum_def.name] = enum_def
+                elif enum_def.values != seen[enum_def.name].values:
+                    raise ValueError(
+                        f"Enum name collision: '{enum_def.name}' is defined "
+                        f"with different members in multiple schemas. "
+                        f"First: {seen[enum_def.name].values}, "
+                        f"second: {enum_def.values}"
+                    )
 
         if not seen:
             self._shared_enum_names = set()
