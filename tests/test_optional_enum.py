@@ -38,7 +38,7 @@ class TestOptionalEnumDiscovery:
 
     @staticmethod
     def _assert_pydantic_has_members(code: str) -> None:
-        assert "class OptionType(Enum):" in code, code
+        assert "class OptionType(str, Enum):" in code, code
         assert 'CE = "CE"' in code, code
         assert 'PE = "PE"' in code, code
 
@@ -79,6 +79,32 @@ class TestOptionalEnumDiscovery:
         self._assert_pydantic_has_members(PydanticGenerator().generate_file(schema))
         self._assert_zod_has_members(ZodGenerator().generate_file(schema))
         self._assert_jsonschema_has_members(JsonSchemaGenerator().generate_file(schema))
+
+    def test_str_enum_json_roundtrip(self):
+        """Issue #26: str,Enum mixin must survive generation so json.dumps works."""
+        import json
+
+        class OptionType(str, Enum):
+            CE = "CE"
+            PE = "PE"
+
+        @Schema
+        class WithEnum:
+            option_type: OptionType = Field(description="required")
+
+        schema = SchemaParser().parse_schema(WithEnum)
+        code = PydanticGenerator().generate_file(schema)
+
+        # Execute the generated code to verify it produces a working model.
+        ns: dict = {}
+        exec(code, ns)  # noqa: S102
+        model_cls = ns["WithEnum"]
+        instance = model_cls(option_type="CE")
+        dumped = instance.model_dump()
+        # This is the actual bug from issue #26: json.dumps must not raise
+        # TypeError on enum values when the str mixin is preserved.
+        json_str = json.dumps(dumped)
+        assert '"CE"' in json_str
 
     def test_required_enum_control_case(self):
         """Required (non-Optional) enum must continue to emit members (no regression)."""
