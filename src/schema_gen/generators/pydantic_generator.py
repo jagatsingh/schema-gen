@@ -31,6 +31,11 @@ class PydanticGenerator(BaseGenerator):
     def __init__(self, config: Config | None = None) -> None:
         super().__init__(config=config)
         self.template = Template(self._get_template())
+        #: Set of enum names that have been extracted to ``_enums.py``.
+        #: Populated by ``get_extra_files()`` before ``generate_file()``
+        #: is called so that per-schema files can import instead of
+        #: re-declaring the enum inline.
+        self._shared_enum_names: set[str] = set()
 
     def _get_model_config_line(self) -> str:
         """Build the ``model_config = ConfigDict(...)`` line.
@@ -68,32 +73,107 @@ class PydanticGenerator(BaseGenerator):
     def get_schema_filename(self, schema: USRSchema) -> str:
         return f"{schema.name.lower()}_models.py"
 
+    def get_extra_files(
+        self, schemas: list[USRSchema], output_dir: Path
+    ) -> dict[str, str]:
+        """Emit ``_enums.py`` containing all enums across all schemas.
+
+        Enums are de-duplicated by name so that multiple schemas referencing
+        the same enum (e.g. ``OptionType``) share a single definition.
+        Per-schema files import from ``._enums`` instead of declaring enums
+        inline, which prevents duplicate class definitions across modules.
+        """
+        # Collect unique enums across all schemas (first-seen wins).
+        seen: dict[str, Any] = {}  # enum_name -> USREnum
+        for schema in schemas:
+            for enum_def in schema.enums:
+                if enum_def.name not in seen:
+                    seen[enum_def.name] = enum_def
+
+        if not seen:
+            self._shared_enum_names = set()
+            return {}
+
+        self._shared_enum_names = set(seen.keys())
+
+        # Build _enums.py content
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+        lines = [
+            '"""',
+            "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
+            "Shared enum definitions for generated Pydantic models",
+            f"Generated at: {timestamp}",
+            "Generator: schema-gen Pydantic generator",
+            "",
+            "To regenerate this file, run:",
+            "    schema-gen generate --target pydantic",
+            "",
+            "Changes to this file will be overwritten.",
+            '"""',
+            "",
+            "from enum import Enum",
+            "",
+        ]
+
+        for enum_def in seen.values():
+            lines.append("")
+            if enum_def.value_type is not None:
+                mixin_name = enum_def.value_type.__name__
+                lines.append(f"class {enum_def.name}({mixin_name}, Enum):")
+            else:
+                lines.append(f"class {enum_def.name}(Enum):")
+            for member_name, member_value in enum_def.values:
+                if isinstance(member_value, str):
+                    lines.append(f'    {member_name} = "{member_value}"')
+                else:
+                    lines.append(f"    {member_name} = {member_value}")
+
+            # Inject custom methods from PydanticMeta
+            enum_meta = (enum_def.custom_code or {}).get("pydantic", {}) or {}
+            methods_src = (enum_meta.get("methods") or "").strip()
+            if methods_src:
+                lines.append("")
+                for method_line in methods_src.splitlines():
+                    if method_line.strip():
+                        lines.append(f"    {method_line}")
+                    else:
+                        lines.append("")
+
+        lines.append("")
+        return {"_enums.py": "\n".join(lines) + "\n"}
+
     def generate_index(self, schemas: list[USRSchema], output_dir: Path) -> str | None:
         """Generate __init__.py content for the pydantic package."""
         lines = ['"""Generated Pydantic models"""\n']
 
+        # Import shared enums from _enums module (de-duplicated)
+        if self._shared_enum_names:
+            sorted_enums = sorted(self._shared_enum_names)
+            lines.append(f"from ._enums import {', '.join(sorted_enums)}")
+
         for schema in schemas:
-            enum_classes = [e.name for e in schema.enums]
+            # Enum classes now come from _enums, so only import models
             base_class = schema.name
             variant_classes = [
                 self._variant_to_class_name(schema.name, v) for v in schema.variants
             ]
-            all_classes = enum_classes + [base_class] + variant_classes
+            model_classes = [base_class] + variant_classes
             lines.append(
-                f"from .{schema.name.lower()}_models import {', '.join(all_classes)}"
+                f"from .{schema.name.lower()}_models import {', '.join(model_classes)}"
             )
 
-        lines.append("\n__all__ = [")
+        # Build __all__ with enums first, then models
+        all_names: list[str] = sorted(self._shared_enum_names)
         for schema in schemas:
-            enum_classes = [e.name for e in schema.enums]
             base_class = schema.name
             variant_classes = [
                 self._variant_to_class_name(schema.name, v) for v in schema.variants
             ]
-            all_classes = [
-                f'"{c}"' for c in enum_classes + [base_class] + variant_classes
-            ]
-            lines.append(f"    {', '.join(all_classes)},")
+            all_names.extend([base_class] + variant_classes)
+
+        lines.append("\n__all__ = [")
+        for name in all_names:
+            lines.append(f'    "{name}",')
         lines.append("]")
 
         return "\n".join(lines) + "\n"
@@ -539,9 +619,22 @@ class PydanticGenerator(BaseGenerator):
             "",
         ]
 
-        # Add enum import if we have enums
-        if enums:
+        # Determine which enums to import vs inline.
+        # When get_extra_files() has run (multi-schema generation), enums
+        # live in _enums.py and we import them. For single-schema usage
+        # (e.g. generate_file() called directly in tests without prior
+        # get_extra_files()), we fall back to inline declaration.
+        enums_to_import = [e for e in enums if e.name in self._shared_enum_names]
+        enums_to_inline = [e for e in enums if e.name not in self._shared_enum_names]
+
+        # Add enum import if we have inline enums
+        if enums_to_inline:
             lines.append("from enum import Enum")
+
+        # Add import from _enums module for shared enums
+        if enums_to_import:
+            enum_names = sorted(e.name for e in enums_to_import)
+            lines.append(f"from ._enums import {', '.join(enum_names)}")
 
         # Add custom imports from Meta.imports
         custom_imports = custom_code.get("imports", [])
@@ -587,8 +680,8 @@ class PydanticGenerator(BaseGenerator):
 
         lines.append("")
 
-        # Generate enum classes before models
-        for enum_def in enums:
+        # Generate inline enum classes before models (only enums NOT in _enums.py)
+        for enum_def in enums_to_inline:
             lines.append("")
             # Preserve the mixin base type (str, int) when the source enum
             # inherits from it — e.g. ``class Foo(str, Enum):``.
