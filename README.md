@@ -292,6 +292,7 @@ Generated files are committed to your repository, ensuring:
 - **CLI Tools** - Complete command-line interface
 - **File Watching** - Auto-regeneration during development
 - **Pre-commit Hooks** - Automatic generation in git workflow
+- **Breaking Change Detection** - `schema-gen diff` detects breaking schema changes before merge (inspired by [buf](https://buf.build/docs/breaking/rules/))
 
 ## 🛠️ CLI Commands
 
@@ -322,6 +323,22 @@ Validate that generated files are up-to-date with schema definitions.
 ```bash
 schema-gen validate
 ```
+
+### `schema-gen diff`
+Detect breaking changes by comparing schemas against a baseline.
+
+```bash
+# Compare against main branch
+schema-gen diff --against .git#branch=main
+
+# JSON output for CI
+schema-gen diff --against .git#branch=main --format json
+
+# Suppress a known intentional break
+schema-gen diff --against .git#branch=main --ignore FIELD_NO_DELETE
+```
+
+Detects: deleted types/fields, type changes, type narrowing, new required fields, removed enum variants, field renames, and enum value changes. See [CLI Reference](docs/cli-reference.md) for the full rule taxonomy.
 
 ### `schema-gen install-hooks`
 Set up pre-commit hooks for automatic generation.

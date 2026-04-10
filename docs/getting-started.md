@@ -185,6 +185,22 @@ schema-gen install-hooks
 
 This ensures generated files stay in sync with schema changes.
 
+### Breaking Change Detection
+Catch breaking schema changes before they reach production:
+
+```bash
+schema-gen diff --against .git#branch=main
+```
+
+This compares your current JSON Schema output against a baseline and reports breaking changes (deleted fields, type changes, removed enum values, etc.). Add it to your CI pipeline to gate PRs:
+
+```yaml
+- name: Schema breaking change detection
+  run: schema-gen diff --against .git#branch=main --format json
+```
+
+Requires `jsonschema` in your configured targets. See [CLI Reference](cli-reference.md#schema-gen-diff) for all options and rules.
+
 ## Next Steps
 
 - **[Schema Format Reference](schema-format.md)** - Complete field types and constraints
