@@ -543,14 +543,15 @@ class ZodGenerator(BaseGenerator):
         ]
 
         # Cross-file imports for nested schema references (POC finding C4).
-        # We import both the runtime schema (value) and the inferred type.
-        # `import type` avoids TS1205 in projects with verbatimModuleSyntax.
+        # We only import the runtime Zod schema (value).  The inferred TS
+        # types are derived via ``z.infer<typeof …Schema>`` so a separate
+        # ``import type`` is unnecessary and triggers TS6133 when
+        # ``noUnusedLocals`` is enabled (#38).
         for ref in sorted(external_refs):
             if ref == schema_name:
                 continue  # self-ref is handled via z.lazy()
             module = ref.lower()
             lines.append(f"import {{ {ref}Schema }} from './{module}';")
-            lines.append(f"import type {{ {ref} }} from './{module}';")
 
         lines.append("")
 

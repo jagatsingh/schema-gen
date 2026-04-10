@@ -58,8 +58,12 @@ class TestZodCrossFileImports:
         SchemaGenerationEngine(config).generate_all()
 
         order_ts = (out_dir / "zod" / "_zodorderreq.ts").read_text()
+        # Runtime schema import must be present (value, not type).
         assert "import { _ZodExecCtxSchema } from './_zodexecctx';" in order_ts
-        assert "import type { _ZodExecCtx } from './_zodexecctx';" in order_ts
+        # Type-only import must NOT be emitted — the inferred type is
+        # derived via z.infer<typeof …Schema>, so a separate import type
+        # is unused and triggers TS6133 with noUnusedLocals (#38).
+        assert "import type { _ZodExecCtx } from './_zodexecctx';" not in order_ts
 
 
 class TestZodIndexExportType:
