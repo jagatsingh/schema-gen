@@ -12,7 +12,7 @@ pre-commit run --all-files
 echo ""
 
 # Clean build artifacts and cache
-find . -type d -name "__pycache__" -exec rm -rf {} +
+find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 rm -rf build/ dist/ *.egg-info/
 
 # Check if uv is installed

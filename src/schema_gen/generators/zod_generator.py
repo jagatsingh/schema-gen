@@ -380,6 +380,9 @@ class ZodGenerator(BaseGenerator):
                 return "z.tuple([])"
 
         elif field.type == FieldType.DICT:
+            if field.inner_type is not None:
+                value_zod_type = self._get_zod_type(field.inner_type)
+                return f"z.record({value_zod_type})"
             return "z.record(z.any())"
 
         elif field.type == FieldType.UNION:
