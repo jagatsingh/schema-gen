@@ -32,12 +32,12 @@ jobs:
     - name: Set 7-day dependency delay
       run: echo "UV_EXCLUDE_NEWER=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=7)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')" >> $GITHUB_ENV
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         fetch-depth: 0  # Full history for version detection
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
       with:
         version: "latest"
         enable-cache: true
@@ -137,7 +137,7 @@ jobs:
         schema-gen --help
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: dist-${{ steps.version.outputs.version }}
         path: dist/
@@ -157,13 +157,13 @@ jobs:
 
     steps:
     - name: Download build artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
       with:
         name: dist-${{ needs.build-and-test.outputs.version }}
         path: dist/
 
     - name: Publish to Test PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
         verbose: true
@@ -190,13 +190,13 @@ jobs:
 
     steps:
     - name: Download build artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
       with:
         name: dist-${{ needs.build-and-test.outputs.version }}
         path: dist/
 
     - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
+      uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
       with:
         verbose: true
         skip-existing: true
@@ -215,7 +215,7 @@ jobs:
       contents: write  # For creating releases
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
     - name: Generate changelog
       id: changelog
