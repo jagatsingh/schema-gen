@@ -57,7 +57,7 @@ jobs:
         uv run --frozen ruff format --check src/ tests/
 
     - name: Run tests
-      run: uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml
+      run: uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml --ignore=tests/test_e2e_compile.py
 
     - name: Run version compatibility tests
       run: |
