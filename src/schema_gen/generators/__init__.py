@@ -3,6 +3,7 @@
 from .avro_generator import AvroGenerator
 from .base import BaseGenerator
 from .dataclasses_generator import DataclassesGenerator
+from .docs_generator import DocsGenerator
 from .graphql_generator import GraphQLGenerator
 from .jackson_generator import JacksonGenerator
 from .jsonschema_generator import JsonSchemaGenerator
@@ -30,4 +31,5 @@ __all__ = [
     "JacksonGenerator",
     "KotlinGenerator",
     "RustGenerator",
+    "DocsGenerator",
 ]
