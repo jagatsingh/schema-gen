@@ -239,6 +239,7 @@ class SqlAlchemyGenerator(BaseGenerator):
 
         if field.type == FieldType.STRING:
             if field.max_length:
+                imports.add("sqlalchemy.String")
                 return f"String({field.max_length})", "str"
             else:
                 imports.add("sqlalchemy.Text")
@@ -281,6 +282,7 @@ class SqlAlchemyGenerator(BaseGenerator):
 
         elif field.type == FieldType.ENUM:
             # Use String with length based on max enum value length
+            imports.add("sqlalchemy.String")
             if field.enum_values:
                 max_len = max(len(str(v)) for v in field.enum_values)
                 return f"String({max(max_len, 20)})", "str"
@@ -288,6 +290,7 @@ class SqlAlchemyGenerator(BaseGenerator):
 
         else:
             # Default to String for unknown types
+            imports.add("sqlalchemy.String")
             return "String(255)", "str"
 
     def _variant_to_class_name(self, schema_name: str, variant_name: str) -> str:
