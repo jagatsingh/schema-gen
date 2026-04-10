@@ -14,7 +14,7 @@ def format_text(violations: list[Violation]) -> str:
         return ""
 
     lines: list[str] = []
-    lines.append(f"Found {len(violations)} breaking change(s):\n")
+    lines.append(f"Found {len(violations)} breaking change(s):")
 
     for v in violations:
         location = v.schema_name

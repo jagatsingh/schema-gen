@@ -64,21 +64,47 @@ def _discover_current_json_files(jsonschema_dir: Path) -> list[str]:
     return sorted(p.name for p in jsonschema_dir.glob("*.json"))
 
 
+def _repo_relative_posix(path: Path) -> str:
+    """Return *path* as a POSIX-style repo-relative string.
+
+    Uses ``git rev-parse --show-toplevel`` to compute the repo root, then
+    makes *path* relative to it.  Falls back to ``path.as_posix()`` if the
+    repo root cannot be determined (e.g. not inside a git repository).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        repo_root = Path(result.stdout.strip())
+        return path.resolve().relative_to(repo_root).as_posix()
+    except (subprocess.CalledProcessError, ValueError):
+        return path.as_posix()
+
+
 def _discover_baseline_json_files(ref: str, jsonschema_dir: Path) -> list[str]:
     """Return sorted list of ``*.json`` filenames that exist at *ref* in git.
 
     Uses ``git ls-tree`` to enumerate files at the baseline ref, catching
     deletions that ``_discover_current_json_files`` would miss.
+
+    Raises :class:`BaselineError` for unexpected git failures (bad ref, not
+    a git repo, etc.).
     """
-    try:
-        result = subprocess.run(
-            ["git", "ls-tree", "--name-only", ref, str(jsonschema_dir) + "/"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError:
-        return []
+    posix_dir = _repo_relative_posix(jsonschema_dir)
+    result = subprocess.run(
+        ["git", "ls-tree", "--name-only", ref, posix_dir + "/"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        # "not a tree object" / path simply didn't exist at that ref → empty.
+        if "not a tree object" in stderr or not stderr:
+            return []
+        raise BaselineError(f"git ls-tree failed for ref '{ref}': {stderr}")
 
     filenames: list[str] = []
     for line in result.stdout.strip().splitlines():
@@ -130,7 +156,7 @@ def _load_from_git(against: str, output_dir: str) -> dict[str, dict[str, Any]]:
 
     schemas: dict[str, dict[str, Any]] = {}
     for filename in filenames:
-        rel_path = str(jsonschema_dir / filename)
+        rel_path = _repo_relative_posix(jsonschema_dir / filename)
         content = _git_show(ref, rel_path)
         if content is not None:
             try:

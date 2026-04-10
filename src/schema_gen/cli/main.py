@@ -12,7 +12,7 @@ from ..core.generator import create_generation_engine
 from ..diff.baseline import BaselineError, load_baseline, load_current
 from ..diff.comparator import compare_schemas
 from ..diff.formatter import format_json, format_text
-from ..diff.rules import StrictnessLevel
+from ..diff.rules import RuleId, StrictnessLevel
 
 # Pattern to match timestamp lines across all generators
 _TIMESTAMP_RE = re.compile(r"^.*Generated at:.*$", re.MULTILINE)
@@ -569,6 +569,17 @@ def diff(against, level, fmt, ignore_rules, config_path):
       2   Tool error
     """
     try:
+        # Validate --ignore values early so typos are caught before comparison.
+        valid_rule_names = {r.value for r in RuleId}
+        for rule_name in ignore_rules:
+            if rule_name not in valid_rule_names:
+                click.echo(
+                    f"Unknown rule: {rule_name}. "
+                    f"Valid rules: {sorted(valid_rule_names)}",
+                    err=True,
+                )
+                raise SystemExit(2)
+
         engine = create_generation_engine(config_path)
         output_dir = engine.config.output_dir
 

@@ -239,6 +239,23 @@ def _check_enums(
     old_enum = old_def.get("enum")
     new_enum = new_def.get("enum")
 
+    # Enum removed entirely (constrained → unconstrained) — all values deleted.
+    if old_enum is not None and new_enum is None:
+        if _should_check(RuleId.ENUM_VALUE_NO_DELETE, level, ignore_set):
+            for val in sorted(old_enum, key=str):
+                violations.append(
+                    Violation(
+                        rule_id=RuleId.ENUM_VALUE_NO_DELETE,
+                        schema_name=type_name,
+                        field_name=None,
+                        message=(
+                            f"Enum value '{val}' was removed from '{type_name}' "
+                            "(enum constraint removed entirely)"
+                        ),
+                        level=RULE_LEVELS[RuleId.ENUM_VALUE_NO_DELETE],
+                    )
+                )
+
     if old_enum is not None and new_enum is not None:
         # ENUM_VALUE_NO_DELETE
         if _should_check(RuleId.ENUM_VALUE_NO_DELETE, level, ignore_set):
@@ -280,6 +297,22 @@ def _check_enums(
             continue
         old_field_enum = old_props[field_name].get("enum")
         new_field_enum = new_props[field_name].get("enum")
+        if old_field_enum is not None and new_field_enum is None:
+            if _should_check(RuleId.ENUM_VALUE_NO_DELETE, level, ignore_set):
+                for val in sorted(old_field_enum, key=str):
+                    violations.append(
+                        Violation(
+                            rule_id=RuleId.ENUM_VALUE_NO_DELETE,
+                            schema_name=type_name,
+                            field_name=field_name,
+                            message=(
+                                f"Enum value '{val}' was removed from "
+                                f"field '{field_name}' in '{type_name}' "
+                                "(enum constraint removed entirely)"
+                            ),
+                            level=RULE_LEVELS[RuleId.ENUM_VALUE_NO_DELETE],
+                        )
+                    )
         if old_field_enum is not None and new_field_enum is not None:
             if _should_check(RuleId.ENUM_VALUE_NO_DELETE, level, ignore_set):
                 removed = set(old_field_enum) - set(new_field_enum)
@@ -322,8 +355,11 @@ def _check_field_renames(
 ) -> None:
     """Detect potential field renames (WIRE_JSON level).
 
-    Heuristic: if a field was removed and a new field was added with the
-    same type, it's likely a rename.
+    Heuristic: for each effective type, if there is exactly one removed
+    field and exactly one added field with that type, it's likely a rename.
+    When there are multiple removed/added fields of the same type (e.g.
+    two ``string`` fields), the match is ambiguous and we skip it to avoid
+    false positives.
     """
     removed = {k: v for k, v in old_props.items() if k not in new_props}
     added = {k: v for k, v in new_props.items() if k not in old_props}
@@ -331,27 +367,33 @@ def _check_field_renames(
     if not removed or not added:
         return
 
-    matched_removed: set[str] = set()
-    for added_name, added_field in added.items():
-        added_type = _effective_type(added_field)
-        for removed_name, removed_field in removed.items():
-            if removed_name in matched_removed:
-                continue
-            if _effective_type(removed_field) == added_type:
-                violations.append(
-                    Violation(
-                        rule_id=RuleId.FIELD_SAME_NAME,
-                        schema_name=type_name,
-                        field_name=removed_name,
-                        message=(
-                            f"Field '{removed_name}' in '{type_name}' appears to have "
-                            f"been renamed to '{added_name}' (same type: {added_type})"
-                        ),
-                        level=RULE_LEVELS[RuleId.FIELD_SAME_NAME],
-                    )
+    # Group removed and added fields by effective type.
+    removed_by_type: dict[str, list[str]] = {}
+    for name, field in removed.items():
+        t = _effective_type(field)
+        removed_by_type.setdefault(t, []).append(name)
+
+    added_by_type: dict[str, list[str]] = {}
+    for name, field in added.items():
+        t = _effective_type(field)
+        added_by_type.setdefault(t, []).append(name)
+
+    # Only flag renames when there is an unambiguous 1:1 match.
+    for etype, removed_names in removed_by_type.items():
+        added_names = added_by_type.get(etype, [])
+        if len(removed_names) == 1 and len(added_names) == 1:
+            violations.append(
+                Violation(
+                    rule_id=RuleId.FIELD_SAME_NAME,
+                    schema_name=type_name,
+                    field_name=removed_names[0],
+                    message=(
+                        f"Field '{removed_names[0]}' in '{type_name}' may have been "
+                        f"renamed to '{added_names[0]}' (same type: {etype})"
+                    ),
+                    level=RULE_LEVELS[RuleId.FIELD_SAME_NAME],
                 )
-                matched_removed.add(removed_name)
-                break
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -362,9 +404,16 @@ def _check_field_renames(
 def _effective_type(field_schema: dict[str, Any]) -> str:
     """Return the effective JSON Schema type string for a field.
 
-    Handles ``$ref``, ``anyOf``, plain ``type`` (string), and
-    multi-type arrays (e.g. ``["string", "null"]``).  Arrays are sorted
-    so that ordering differences don't cause false positives.
+    Handles ``$ref``, ``anyOf``, plain ``type`` (string), multi-type
+    arrays (e.g. ``["string", "null"]``), and ``array`` with ``items``.
+
+    .. note::
+        Inline nested objects (``{"type": "object", "properties": {...}}``)
+        are represented as ``"object"`` without recursing into their
+        properties.  schema-gen's own output always uses ``$ref`` +
+        ``$defs`` for nested types, so this is not a practical limitation
+        for generated schemas.  If a future generator emits inline nested
+        objects, this function should be extended to recurse.
     """
     if "$ref" in field_schema:
         return f"$ref:{field_schema['$ref']}"
@@ -374,7 +423,12 @@ def _effective_type(field_schema: dict[str, Any]) -> str:
     raw = field_schema.get("type", "any")
     if isinstance(raw, list):
         return ",".join(sorted(raw))
-    return str(raw)
+    type_str = str(raw)
+    # Include element type for arrays so that array<string> != array<integer>.
+    if type_str == "array" and "items" in field_schema:
+        item_type = _effective_type(field_schema["items"])
+        return f"array({item_type})"
+    return type_str
 
 
 def _is_type_width_change(old_type: str, new_type: str) -> bool:

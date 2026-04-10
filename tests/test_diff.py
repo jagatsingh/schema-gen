@@ -191,6 +191,29 @@ class TestEnumValueNoDelete:
         vs = compare_schemas(old, new, StrictnessLevel.WIRE)
         assert any(v.rule_id == RuleId.ENUM_VALUE_NO_DELETE for v in vs)
 
+    def test_enum_replaced_with_plain_type(self):
+        """Removing enum constraint entirely should flag all values as deleted."""
+        old_defs = {"Status": {"type": "string", "enum": ["active", "inactive"]}}
+        new_defs = {"Status": {"type": "string"}}
+        old = {"s.json": _schema_file(old_defs)}
+        new = {"s.json": _schema_file(new_defs)}
+        vs = compare_schemas(old, new, StrictnessLevel.WIRE)
+        enum_vs = [v for v in vs if v.rule_id == RuleId.ENUM_VALUE_NO_DELETE]
+        assert len(enum_vs) == 2
+        assert any("active" in v.message for v in enum_vs)
+        assert any("inactive" in v.message for v in enum_vs)
+
+    def test_inline_enum_replaced_with_plain_type(self):
+        old_def = _type_def(
+            properties={"status": {"type": "string", "enum": ["a", "b"]}}
+        )
+        new_def = _type_def(properties={"status": {"type": "string"}})
+        old = {"u.json": _schema_file({"User": old_def})}
+        new = {"u.json": _schema_file({"User": new_def})}
+        vs = compare_schemas(old, new, StrictnessLevel.WIRE)
+        enum_vs = [v for v in vs if v.rule_id == RuleId.ENUM_VALUE_NO_DELETE]
+        assert len(enum_vs) == 2
+
 
 # ---------------------------------------------------------------------------
 # Rule tests — WIRE_JSON level
@@ -216,6 +239,26 @@ class TestFieldSameName:
         new = {"u.json": _schema_file({"User": new_def})}
         vs = compare_schemas(old, new, StrictnessLevel.WIRE)
         assert not any(v.rule_id == RuleId.FIELD_SAME_NAME for v in vs)
+
+    def test_ambiguous_rename_not_flagged(self):
+        """Multiple removed+added string fields should not flag a rename."""
+        old_def = _type_def(
+            properties={
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+            }
+        )
+        new_def = _type_def(
+            properties={
+                "contact_email": {"type": "string"},
+                "mobile": {"type": "string"},
+            }
+        )
+        old = {"u.json": _schema_file({"User": old_def})}
+        new = {"u.json": _schema_file({"User": new_def})}
+        vs = compare_schemas(old, new, StrictnessLevel.WIRE_JSON)
+        same_name = [v for v in vs if v.rule_id == RuleId.FIELD_SAME_NAME]
+        assert same_name == []
 
 
 class TestEnumValueSameName:
@@ -329,6 +372,45 @@ class TestRefAndAnyOfTypes:
         new = {"u.json": _schema_file({"T": new_def})}
         vs = compare_schemas(old, new, StrictnessLevel.WIRE)
         assert vs == []
+
+
+class TestArrayItemsType:
+    def test_array_item_type_change_detected(self):
+        """Changing array<string> to array<integer> should be a type change."""
+        old_def = _type_def(
+            properties={"tags": {"type": "array", "items": {"type": "string"}}}
+        )
+        new_def = _type_def(
+            properties={"tags": {"type": "array", "items": {"type": "integer"}}}
+        )
+        old = {"u.json": _schema_file({"User": old_def})}
+        new = {"u.json": _schema_file({"User": new_def})}
+        vs = compare_schemas(old, new, StrictnessLevel.WIRE)
+        assert any(v.rule_id == RuleId.FIELD_SAME_TYPE for v in vs)
+
+    def test_array_same_item_type_is_safe(self):
+        old_def = _type_def(
+            properties={"tags": {"type": "array", "items": {"type": "string"}}}
+        )
+        new_def = _type_def(
+            properties={"tags": {"type": "array", "items": {"type": "string"}}}
+        )
+        old = {"u.json": _schema_file({"User": old_def})}
+        new = {"u.json": _schema_file({"User": new_def})}
+        vs = compare_schemas(old, new, StrictnessLevel.WIRE)
+        assert vs == []
+
+    def test_array_ref_item_type_change(self):
+        old_def = _type_def(
+            properties={"legs": {"type": "array", "items": {"$ref": "#/$defs/Leg"}}}
+        )
+        new_def = _type_def(
+            properties={"legs": {"type": "array", "items": {"$ref": "#/$defs/Step"}}}
+        )
+        old = {"u.json": _schema_file({"T": old_def})}
+        new = {"u.json": _schema_file({"T": new_def})}
+        vs = compare_schemas(old, new, StrictnessLevel.WIRE)
+        assert any(v.rule_id == RuleId.FIELD_SAME_TYPE for v in vs)
 
 
 class TestInlineEnumValueSameName:
@@ -504,6 +586,15 @@ class TestDiffCLI:
 
         result = self.runner.invoke(main, ["diff", "--against", "/nonexistent/path"])
         assert result.exit_code == 2
+
+    def test_diff_invalid_ignore_rule(self):
+        """Typo in --ignore should error with exit code 2."""
+        result = self.runner.invoke(
+            main,
+            ["diff", "--against", ".git#branch=main", "--ignore", "FIELD_NO_DELET"],
+        )
+        assert result.exit_code == 2
+        assert "Unknown rule" in result.output
 
 
 # ---------------------------------------------------------------------------
