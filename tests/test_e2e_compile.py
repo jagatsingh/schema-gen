@@ -15,7 +15,8 @@ import importlib.util
 import json
 import shutil
 import subprocess
-from enum import StrEnum
+import sys
+from enum import StrEnum, nonmember
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -44,14 +45,21 @@ class E2ESide(StrEnum):
     buy = "buy"
     sell = "sell"
 
-    class SerdeMeta:
-        raw_code = (
-            "impl E2ESide {\n"
-            "    pub fn is_buy(&self) -> bool {\n"
-            "        matches!(self, Self::Buy)\n"
-            "    }\n"
-            "}"
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "raw_code": (
+                    "impl E2ESide {\n"
+                    "    pub fn is_buy(&self) -> bool {\n"
+                    "        matches!(self, Self::Buy)\n"
+                    "    }\n"
+                    "}"
+                )
+            },
         )
+    )
 
 
 @Schema
@@ -215,18 +223,35 @@ class TestE2ECompile:
         self._generate_targets(["pydantic"])
         pydantic_dir = self.out_dir / "pydantic"
 
+        # Load the generated directory as a package so relative imports
+        # (e.g. ``from .e2eaddress_models import E2EAddress``) resolve.
+        pkg_name = "_e2e_pydantic_pkg"
+        pkg_spec = importlib.util.spec_from_file_location(
+            pkg_name,
+            pydantic_dir / "__init__.py",
+            submodule_search_locations=[str(pydantic_dir)],
+        )
+        pkg_mod = importlib.util.module_from_spec(pkg_spec)
+        sys.modules[pkg_name] = pkg_mod
+        pkg_spec.loader.exec_module(pkg_mod)
+
         errors = []
-        for py_file in sorted(pydantic_dir.glob("*.py")):
-            # Skip __init__.py — it uses relative imports that require
-            # a package context. We test individual model files instead.
-            if py_file.name.startswith("__"):
-                continue
-            try:
-                spec = importlib.util.spec_from_file_location(py_file.stem, py_file)
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-            except Exception as exc:
-                errors.append(f"{py_file.name}: {exc}")
+        try:
+            for py_file in sorted(pydantic_dir.glob("*.py")):
+                if py_file.name.startswith("__"):
+                    continue
+                mod_name = f"{pkg_name}.{py_file.stem}"
+                try:
+                    spec = importlib.util.spec_from_file_location(mod_name, py_file)
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[mod_name] = mod
+                    spec.loader.exec_module(mod)
+                except Exception as exc:
+                    errors.append(f"{py_file.name}: {exc}")
+        finally:
+            # Clean up all submodules and the synthetic package.
+            for key in [k for k in sys.modules if k.startswith(pkg_name)]:
+                sys.modules.pop(key, None)
 
         assert not errors, "Pydantic import errors:\n" + "\n".join(errors)
 

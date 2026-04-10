@@ -231,7 +231,7 @@ class TestEngineThreadsConfigEndToEnd:
         assert "validate_assignment=True" in generated
 
 
-from enum import Enum  # noqa: E402
+from enum import Enum, nonmember  # noqa: E402
 
 
 class _PyOrderStatus(str, Enum):  # noqa: UP042
@@ -239,11 +239,18 @@ class _PyOrderStatus(str, Enum):  # noqa: UP042
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class PydanticMeta:
-        methods = (
-            "def is_terminal(self) -> bool:\n"
-            "    return self in {_PyOrderStatus.FILLED, _PyOrderStatus.CANCELLED}"
+    PydanticMeta = nonmember(
+        type(
+            "PydanticMeta",
+            (),
+            {
+                "methods": (
+                    "def is_terminal(self) -> bool:\n"
+                    "    return self in {_PyOrderStatus.FILLED, _PyOrderStatus.CANCELLED}"
+                )
+            },
         )
+    )
 
 
 class _PyPlainColor(str, Enum):  # noqa: UP042
@@ -268,9 +275,6 @@ class TestPydanticEnumMeta:
     def setup_method(self):
         SchemaRegistry._schemas.clear()
 
-    @pytest.mark.xfail(
-        reason="Python 3.12: PydanticMeta inner class on str,Enum becomes enum member (#58)"
-    )
     def test_enum_pydantic_meta_methods(self):
         from schema_gen.generators.pydantic_generator import PydanticGenerator
 
@@ -404,7 +408,6 @@ class TestPydanticDefaultFactory:
 
     def test_lambda_default_factory_raises(self):
         """Lambda factories can't be emitted as valid Python — raise a clear error."""
-        import pytest
 
         from schema_gen.core.usr import FieldType, USRField, USRSchema
 
