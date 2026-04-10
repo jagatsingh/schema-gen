@@ -315,8 +315,20 @@ class ZodGenerator(BaseGenerator):
         elif field.type == FieldType.BOOLEAN:
             return "z.boolean()"
 
-        elif field.type == FieldType.DATETIME or field.type == FieldType.DATE:
-            return "z.date()"
+        elif field.type == FieldType.DATETIME:
+            if self._zod_cfg().get("coerce", False):
+                return "z.coerce.date()"
+            return "z.string().datetime()"
+
+        elif field.type == FieldType.DATE:
+            if self._zod_cfg().get("coerce", False):
+                return "z.coerce.date()"
+            return "z.string().date()"
+
+        elif field.type == FieldType.TIME:
+            if self._zod_cfg().get("coerce", False):
+                return "z.coerce.date()"
+            return "z.string().time()"
 
         elif field.type == FieldType.UUID:
             return "z.string().uuid()"
@@ -403,7 +415,6 @@ class ZodGenerator(BaseGenerator):
         for field_def in field_defs:
             lines.append(field_def)
 
-        # TODO: support Config.zod coerce key
         strict = self._zod_cfg().get("strict", False)
         closing = "}).strict();" if strict else "});"
         lines.append(closing)
@@ -425,8 +436,10 @@ class ZodGenerator(BaseGenerator):
             return "number"
         elif field.type == FieldType.BOOLEAN:
             return "boolean"
-        elif field.type == FieldType.DATETIME or field.type == FieldType.DATE:
-            return "Date"
+        elif field.type in (FieldType.DATETIME, FieldType.DATE, FieldType.TIME):
+            if self._zod_cfg().get("coerce", False):
+                return "Date"
+            return "string"
         elif field.type == FieldType.UUID:
             return "string"
         elif field.type == FieldType.LIST or field.type in (

@@ -110,6 +110,10 @@ class TestAllGenerators:
         assert ".min(13).max(120)" in file_content
         assert "export type TestUser = z.infer<typeof TestUserSchema>;" in file_content
 
+        # Datetime fields should use z.string().datetime(), not z.date() (#27)
+        assert "z.string().datetime()" in file_content
+        assert "z.date()" not in file_content
+
     def test_pathway_generator(self, comprehensive_schema):
         """Test Pathway generator"""
         generator = PathwayGenerator()
@@ -1320,6 +1324,43 @@ class TestSelfReferentialTypes:
 
         # Parent should be an optional TreeNode
         assert "parent: TreeNode" in file_content
+
+    def test_zod_date_and_time_fields(self):
+        """Test that DATE and TIME field types get correct Zod types (#27)"""
+        from datetime import date, time
+
+        from schema_gen.core.config import Config
+
+        SchemaRegistry._schemas.clear()
+
+        @Schema
+        class EventTimes:
+            """Schema with date and time fields"""
+
+            event_date: date = Field(description="The event date")
+            event_time: time = Field(description="The event time")
+            event_datetime: datetime = Field(description="Full timestamp")
+
+        parser = SchemaParser()
+        schema = parser.parse_schema(EventTimes)
+
+        generator = ZodGenerator()
+        file_content = generator.generate_file(schema)
+
+        assert "z.string().date()" in file_content
+        assert "z.string().time()" in file_content
+        assert "z.string().datetime()" in file_content
+        assert "z.date()" not in file_content
+
+        # With coerce mode, all should use z.coerce.date()
+        config = Config(zod={"coerce": True})
+        generator_coerce = ZodGenerator(config=config)
+        file_content_coerce = generator_coerce.generate_file(schema)
+
+        assert file_content_coerce.count("z.coerce.date()") == 3
+        assert "z.string().date()" not in file_content_coerce
+        assert "z.string().time()" not in file_content_coerce
+        assert "z.string().datetime()" not in file_content_coerce
 
 
 if __name__ == "__main__":
