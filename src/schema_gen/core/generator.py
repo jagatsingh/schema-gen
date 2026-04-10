@@ -110,7 +110,8 @@ class SchemaGenerationEngine:
             self._generate_target(target, schemas, output_dir)
 
         # Auto-generate registry index after all targets are done.
-        self._generate_registry_index(schemas, output_dir)
+        if self.config.registry.get("enabled", True):
+            self._generate_registry_index(schemas, output_dir)
 
     def _import_schema_file(self, schema_file: Path):
         """Import a Python schema file to register its schemas"""

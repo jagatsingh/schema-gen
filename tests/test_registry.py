@@ -29,6 +29,7 @@ def _make_field(
     enum_values: list | None = None,
     nested_schema: str | None = None,
     inner_type: USRField | None = None,
+    union_types: list | None = None,
 ) -> USRField:
     return USRField(
         name=name,
@@ -40,6 +41,7 @@ def _make_field(
         enum_values=enum_values or [],
         nested_schema=nested_schema,
         inner_type=inner_type,
+        union_types=union_types or [],
     )
 
 
@@ -736,3 +738,340 @@ class TestCLICompat:
 
                 assert result.exit_code != 0
                 assert "Compatibility issues" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Fix-specific tests
+# ---------------------------------------------------------------------------
+
+
+class TestUnionMultipleEnumRefs:
+    """Union field with multiple enum refs should all appear in enums_referenced."""
+
+    def test_union_with_multiple_enums(self, default_config):
+        enum_a = USREnum(name="Side", values=[("buy", "buy"), ("sell", "sell")])
+        enum_b = USREnum(name="Status", values=[("open", "open"), ("closed", "closed")])
+
+        schema = USRSchema(
+            name="MultiEnumType",
+            fields=[
+                _make_field(
+                    "combo",
+                    FieldType.UNION,
+                    union_types=[
+                        _make_field("combo_0", FieldType.ENUM, enum_name="Side"),
+                        _make_field("combo_1", FieldType.ENUM, enum_name="Status"),
+                    ],
+                ),
+            ],
+            enums=[enum_a, enum_b],
+        )
+
+        index = build_registry_index([schema], default_config)
+        enums_ref = index["types"]["MultiEnumType"]["enums_referenced"]
+        assert "Side" in enums_ref
+        assert "Status" in enums_ref
+
+
+class TestUnionMultipleNestedRefs:
+    """Union field with multiple nested schema refs should all appear in nested_types."""
+
+    def test_union_with_multiple_nested(self, default_config):
+        schema_a = USRSchema(
+            name="Foo",
+            fields=[_make_field("x", FieldType.STRING)],
+        )
+        schema_b = USRSchema(
+            name="Bar",
+            fields=[_make_field("y", FieldType.INTEGER)],
+        )
+        parent = USRSchema(
+            name="Parent",
+            fields=[
+                _make_field(
+                    "child",
+                    FieldType.UNION,
+                    union_types=[
+                        _make_field(
+                            "child_0",
+                            FieldType.NESTED_SCHEMA,
+                            nested_schema="Foo",
+                        ),
+                        _make_field(
+                            "child_1",
+                            FieldType.NESTED_SCHEMA,
+                            nested_schema="Bar",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        index = build_registry_index([parent, schema_a, schema_b], default_config)
+        nested = index["types"]["Parent"]["nested_types"]
+        assert "Foo" in nested
+        assert "Bar" in nested
+
+
+class TestTupleFieldTypeRendering:
+    """TUPLE field type should render inner types."""
+
+    def test_tuple_rendering(self, default_config):
+        schema = USRSchema(
+            name="TupleType",
+            fields=[
+                _make_field(
+                    "coords",
+                    FieldType.TUPLE,
+                    union_types=[
+                        _make_field("coords_0", FieldType.STRING),
+                        _make_field("coords_1", FieldType.INTEGER),
+                    ],
+                ),
+            ],
+        )
+
+        index = build_registry_index([schema], default_config)
+        assert (
+            index["types"]["TupleType"]["fields"]["coords"]["type"]
+            == "tuple[string, integer]"
+        )
+
+    def test_tuple_no_inner(self, default_config):
+        schema = USRSchema(
+            name="EmptyTuple",
+            fields=[_make_field("data", FieldType.TUPLE)],
+        )
+        index = build_registry_index([schema], default_config)
+        assert index["types"]["EmptyTuple"]["fields"]["data"]["type"] == "tuple"
+
+
+class TestValidateTypeNotInDefs:
+    """validate with type name not in $defs should raise error, not silently pass."""
+
+    def test_type_not_in_defs_errors(self, runner):
+        json_schema = {
+            "$defs": {
+                "RealType": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                }
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "generated"
+            jsonschema_dir = output_dir / "jsonschema"
+            jsonschema_dir.mkdir(parents=True)
+
+            schema_file = jsonschema_dir / "wrongname.json"
+            schema_file.write_text(json.dumps(json_schema))
+
+            data_file = Path(tmpdir) / "data.json"
+            data_file.write_text(json.dumps({"anything": "goes"}))
+
+            config_path = _write_config_file(Path(tmpdir), str(output_dir))
+
+            result = runner.invoke(
+                main,
+                [
+                    "registry",
+                    "validate",
+                    str(data_file),
+                    "--type",
+                    "WrongName",
+                    "-c",
+                    str(config_path),
+                ],
+            )
+
+            assert result.exit_code != 0
+            assert "not found" in result.output
+
+
+class TestValidateMalformedJSON:
+    """validate with malformed JSON file should raise error."""
+
+    def test_malformed_json(self, runner):
+        json_schema = {
+            "$defs": {
+                "TestType": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                }
+            }
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "generated"
+            jsonschema_dir = output_dir / "jsonschema"
+            jsonschema_dir.mkdir(parents=True)
+
+            schema_file = jsonschema_dir / "testtype.json"
+            schema_file.write_text(json.dumps(json_schema))
+
+            data_file = Path(tmpdir) / "bad.json"
+            data_file.write_text("{not valid json!!!")
+
+            config_path = _write_config_file(Path(tmpdir), str(output_dir))
+
+            result = runner.invoke(
+                main,
+                [
+                    "registry",
+                    "validate",
+                    str(data_file),
+                    "--type",
+                    "TestType",
+                    "-c",
+                    str(config_path),
+                ],
+            )
+
+            assert result.exit_code != 0
+            assert "Invalid JSON" in result.output
+
+
+class TestRefsNoSubstringFalsePositive:
+    """refs should not match substring type names."""
+
+    def test_no_substring_match(self, runner):
+        """Type 'Order' should not match 'OrderRequest' via substring."""
+        index = {
+            "version": "1.0.0",
+            "generated_at": "2026-01-01T00:00:00Z",
+            "schema_gen_version": "0.2.0",
+            "types": {
+                "Order": {
+                    "domain": None,
+                    "kind": "struct",
+                    "description": "",
+                    "fields": {
+                        "id": {"type": "string", "required": True, "description": ""},
+                    },
+                    "enums_referenced": [],
+                    "nested_types": [],
+                    "variants": [],
+                },
+                "OrderRequest": {
+                    "domain": None,
+                    "kind": "struct",
+                    "description": "",
+                    "fields": {
+                        # Field type string contains "Order" as substring
+                        "order": {
+                            "type": "OrderDetail",
+                            "required": True,
+                            "description": "",
+                        },
+                    },
+                    "enums_referenced": [],
+                    "nested_types": ["OrderDetail"],
+                    "variants": [],
+                },
+                "OrderDetail": {
+                    "domain": None,
+                    "kind": "struct",
+                    "description": "",
+                    "fields": {
+                        "qty": {
+                            "type": "integer",
+                            "required": True,
+                            "description": "",
+                        },
+                    },
+                    "enums_referenced": [],
+                    "nested_types": [],
+                    "variants": [],
+                },
+            },
+            "enums": {},
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "generated"
+            output_dir.mkdir()
+            _write_registry_json(output_dir, index)
+            config_path = _write_config_file(Path(tmpdir), str(output_dir))
+
+            result = runner.invoke(
+                main,
+                ["registry", "refs", "Order", "-c", str(config_path)],
+            )
+
+            assert result.exit_code == 0
+            # "OrderRequest" should NOT appear because it does not reference
+            # "Order" in enums_referenced or nested_types — only "OrderDetail"
+            assert "OrderRequest" not in result.output
+            assert "No types reference" in result.output
+
+
+class TestCLIIndex:
+    """Test the registry index CLI command."""
+
+    def test_index_no_schemas(self, runner):
+        """index command with no schemas should fail."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            schemas_dir = Path(tmpdir) / "schemas"
+            schemas_dir.mkdir()
+            output_dir = Path(tmpdir) / "generated"
+            output_dir.mkdir()
+
+            config_path = Path(tmpdir) / ".schema-gen.config.py"
+            config_path.write_text(
+                f"from schema_gen import Config\n"
+                f"config = Config(\n"
+                f'    input_dir="{schemas_dir}",\n'
+                f'    output_dir="{output_dir}",\n'
+                f'    targets=["pydantic"],\n'
+                f")\n"
+            )
+
+            result = runner.invoke(
+                main,
+                ["registry", "index", "-c", str(config_path)],
+            )
+
+            assert result.exit_code != 0
+            # Empty directory triggers "No Python files found" error
+            assert "No Python files found" in result.output
+
+    def test_index_with_schemas(self, runner):
+        """index command with schemas should build registry.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            schemas_dir = Path(tmpdir) / "schemas"
+            schemas_dir.mkdir()
+
+            # Write a schema file using the @Schema decorator for registration
+            schema_file = schemas_dir / "order.py"
+            schema_file.write_text(
+                "from pydantic import BaseModel\n"
+                "from schema_gen import Schema\n\n"
+                "@Schema\n"
+                "class Order(BaseModel):\n"
+                "    order_id: str\n"
+                "    quantity: int\n"
+            )
+
+            output_dir = Path(tmpdir) / "generated"
+            output_dir.mkdir()
+
+            config_path = Path(tmpdir) / ".schema-gen.config.py"
+            config_path.write_text(
+                f"from schema_gen import Config\n"
+                f"config = Config(\n"
+                f'    input_dir="{schemas_dir}",\n'
+                f'    output_dir="{output_dir}",\n'
+                f'    targets=["pydantic"],\n'
+                f")\n"
+            )
+
+            result = runner.invoke(
+                main,
+                ["registry", "index", "-c", str(config_path)],
+            )
+
+            assert result.exit_code == 0, f"Unexpected output: {result.output}"
+            assert "Registry index built" in result.output
+            assert (output_dir / "registry.json").exists()

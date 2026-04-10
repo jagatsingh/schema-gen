@@ -57,16 +57,16 @@ def build_registry_index(
             fields_index[usr_field.name] = field_entry
 
             # Track enum references.
-            referenced_enum = _extract_enum_ref(usr_field)
-            if referenced_enum and referenced_enum not in enums_referenced:
-                enums_referenced.append(referenced_enum)
-                if referenced_enum in enum_used_by:
-                    enum_used_by[referenced_enum].add(schema.name)
+            for ref in _extract_enum_refs(usr_field):
+                if ref not in enums_referenced:
+                    enums_referenced.append(ref)
+                if ref in enum_used_by:
+                    enum_used_by[ref].add(schema.name)
 
             # Track nested type references.
-            referenced_nested = _extract_nested_ref(usr_field)
-            if referenced_nested and referenced_nested not in nested_types:
-                nested_types.append(referenced_nested)
+            for ref in _extract_nested_refs(usr_field):
+                if ref not in nested_types:
+                    nested_types.append(ref)
 
         # Build variant names (sorted for determinism).
         variant_names = sorted(
@@ -158,6 +158,11 @@ def _render_field_type(usr_field: USRField) -> str:
             inner = _render_field_type(usr_field.inner_type)
             return f"dict[string, {inner}]"
         return "dict"
+    if usr_field.type == FieldType.TUPLE:
+        if usr_field.union_types:
+            parts = [_render_field_type(ut) for ut in usr_field.union_types]
+            return f"tuple[{', '.join(parts)}]"
+        return "tuple"
     if usr_field.type == FieldType.UNION:
         if usr_field.union_types:
             parts = [_render_field_type(ut) for ut in usr_field.union_types]
@@ -179,30 +184,28 @@ def _build_field_entry(usr_field: USRField) -> dict[str, Any]:
     }
 
 
-def _extract_enum_ref(usr_field: USRField) -> str | None:
-    """Extract enum name referenced by a field, if any."""
+def _extract_enum_refs(usr_field: USRField) -> list[str]:
+    """Extract all enum names referenced by a field."""
+    refs: list[str] = []
     if usr_field.type == FieldType.ENUM and usr_field.enum_name:
-        return usr_field.enum_name
+        refs.append(usr_field.enum_name)
     if usr_field.inner_type:
-        return _extract_enum_ref(usr_field.inner_type)
+        refs.extend(_extract_enum_refs(usr_field.inner_type))
     for ut in usr_field.union_types:
-        ref = _extract_enum_ref(ut)
-        if ref:
-            return ref
-    return None
+        refs.extend(_extract_enum_refs(ut))
+    return refs
 
 
-def _extract_nested_ref(usr_field: USRField) -> str | None:
-    """Extract nested schema name referenced by a field, if any."""
+def _extract_nested_refs(usr_field: USRField) -> list[str]:
+    """Extract all nested schema names referenced by a field."""
+    refs: list[str] = []
     if usr_field.type == FieldType.NESTED_SCHEMA and usr_field.nested_schema:
-        return usr_field.nested_schema
+        refs.append(usr_field.nested_schema)
     if usr_field.inner_type:
-        return _extract_nested_ref(usr_field.inner_type)
+        refs.extend(_extract_nested_refs(usr_field.inner_type))
     for ut in usr_field.union_types:
-        ref = _extract_nested_ref(ut)
-        if ref:
-            return ref
-    return None
+        refs.extend(_extract_nested_refs(ut))
+    return refs
 
 
 def _serialize_value(val: Any) -> Any:

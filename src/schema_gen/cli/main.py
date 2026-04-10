@@ -832,20 +832,14 @@ def registry_refs(type_name, config_path):
                 click.echo(f"No types reference enum '{type_name}'.")
             return
 
-        # For struct types, scan all other types' nested_types and fields
+        # For struct types, scan all other types' enums_referenced and nested_types
         for tname, tentry in sorted(types.items()):
             if tname == type_name:
                 continue
-            nested = tentry.get("nested_types", [])
-            if type_name in nested:
+            enums_ref = tentry.get("enums_referenced", [])
+            nested_ref = tentry.get("nested_types", [])
+            if type_name in enums_ref or type_name in nested_ref:
                 referencing.append(tname)
-                continue
-            # Also check field types for direct references
-            for _fname, finfo in tentry.get("fields", {}).items():
-                if type_name in finfo.get("type", ""):
-                    if tname not in referencing:
-                        referencing.append(tname)
-                    break
 
         if referencing:
             click.echo(f"Types referencing '{type_name}':")
@@ -964,7 +958,11 @@ def registry_validate(file, type_name, config_path):
                 "$defs": defs,
             }
         else:
-            type_schema = json_schema
+            click.echo(
+                f"Type '{type_name}' not found in $defs of {schema_path}.\n"
+                f"Available types: {', '.join(sorted(defs)) or '(none)'}"
+            )
+            raise SystemExit(1)
 
         # Load the data file
         data = json.loads(Path(file).read_text())
@@ -1006,7 +1004,7 @@ def registry_compat(type_name, against, config_path):
     """Check compatibility of a type against a baseline."""
     try:
         engine = create_generation_engine(config_path)
-        output_dir = engine.config.output_dir
+        output_dir = Path(engine.config.output_dir)
 
         old_schemas = load_baseline(against, output_dir)
         new_schemas = load_current(output_dir)
