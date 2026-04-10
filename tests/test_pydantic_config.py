@@ -123,6 +123,46 @@ class TestPydanticConfigOverrides:
         ):
             assert fragment in out, f"missing: {fragment}"
 
+    def test_deterministic_output(self):
+        """Generating the same schema twice must produce identical output.
+
+        Regression for non-deterministic frozenset iteration (PYTHONHASHSEED).
+        """
+        schema = _make_schema()
+        gen = PydanticGenerator(
+            config=Config(
+                pydantic={
+                    "extra": "forbid",
+                    "validate_assignment": True,
+                    "frozen": True,
+                    "strict": True,
+                }
+            )
+        )
+        out1 = gen.generate_file(schema)
+        out2 = gen.generate_file(schema)
+        assert out1 == out2
+
+    def test_config_dict_kwargs_order(self):
+        """ConfigDict kwargs must follow the tuple order defined in
+        _SUPPORTED_PYDANTIC_CONFIG_KEYS, not random hash order."""
+        gen = PydanticGenerator(
+            config=Config(
+                pydantic={
+                    "populate_by_name": True,
+                    "extra": "forbid",
+                    "strict": True,
+                }
+            )
+        )
+        line = gen._get_model_config_line()
+        # "extra" comes before "strict" comes before "populate_by_name"
+        # per the tuple ordering.
+        extra_pos = line.index("extra=")
+        strict_pos = line.index("strict=")
+        populate_pos = line.index("populate_by_name=")
+        assert extra_pos < strict_pos < populate_pos
+
     def test_unknown_keys_are_ignored(self):
         """Unknown pydantic keys should not cause crashes or leak into output."""
         schema = _make_schema()

@@ -15,15 +15,13 @@ from .base import BaseGenerator
 #: keys are ignored (and must NOT cause ``_needs_config`` to return True,
 #: otherwise an unrelated schema would grow a spurious ``model_config``
 #: block).
-_SUPPORTED_PYDANTIC_CONFIG_KEYS: frozenset[str] = frozenset(
-    {
-        "extra",
-        "validate_assignment",
-        "frozen",
-        "strict",
-        "str_strip_whitespace",
-        "populate_by_name",
-    }
+_SUPPORTED_PYDANTIC_CONFIG_KEYS: tuple[str, ...] = (
+    "extra",
+    "validate_assignment",
+    "frozen",
+    "strict",
+    "str_strip_whitespace",
+    "populate_by_name",
 )
 
 
