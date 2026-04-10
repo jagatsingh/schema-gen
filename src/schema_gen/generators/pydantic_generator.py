@@ -268,6 +268,14 @@ class PydanticGenerator(BaseGenerator):
                 field_params.append(f'default="{field.default}"')
             else:
                 field_params.append(f"default={field.default}")
+        elif field.default_factory is not None:
+            factory_name = getattr(field.default_factory, "__name__", None)
+            if not factory_name or not factory_name.isidentifier():
+                raise ValueError(
+                    f"Field '{field.name}': default_factory must be a named callable "
+                    f"(e.g. list, dict), got {field.default_factory!r}"
+                )
+            field_params.append(f"default_factory={factory_name}")
         elif field.optional and not field_params:
             field_params.append("default=None")
         elif not field.optional and not field_params:

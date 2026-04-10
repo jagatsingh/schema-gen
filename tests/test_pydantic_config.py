@@ -232,7 +232,7 @@ class TestEngineThreadsConfigEndToEnd:
 from enum import Enum  # noqa: E402
 
 
-class _PyOrderStatus(str, Enum):
+class _PyOrderStatus(str, Enum):  # noqa: UP042
     PENDING = "pending"
     FILLED = "filled"
     CANCELLED = "cancelled"
@@ -244,7 +244,7 @@ class _PyOrderStatus(str, Enum):
         )
 
 
-class _PyPlainColor(str, Enum):
+class _PyPlainColor(str, Enum):  # noqa: UP042
     RED = "red"
     BLUE = "blue"
 
@@ -341,3 +341,75 @@ class TestPydanticDiscriminatedUnion:
         assert typing_line, "Missing typing import"
         assert "Annotated" in typing_line[0]
         assert "Union" in typing_line[0]
+
+
+# ------------------------------------------------------------------
+# default_factory support (Fix #28)
+# ------------------------------------------------------------------
+
+
+@Schema
+class _DefaultFactoryModel:
+    """Schema with default_factory fields."""
+
+    name: str = Field(description="name")
+    tags: list[str] = Field(default_factory=list, description="tags")
+    metadata: dict[str, str] = Field(default_factory=dict, description="extra metadata")
+
+
+class TestPydanticDefaultFactory:
+    """Pydantic generator must emit Field(default_factory=...) when the
+    USRField has a default_factory set, instead of Field(...) (required)."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_default_factory_list(self):
+        usr = SchemaParser().parse_schema(_DefaultFactoryModel)
+        out = PydanticGenerator().generate_file(usr)
+        assert "default_factory=list" in out
+
+    def test_default_factory_dict(self):
+        usr = SchemaParser().parse_schema(_DefaultFactoryModel)
+        out = PydanticGenerator().generate_file(usr)
+        assert "default_factory=dict" in out
+
+    def test_default_factory_not_required(self):
+        """Fields with default_factory must NOT be marked as required (...)."""
+        usr = SchemaParser().parse_schema(_DefaultFactoryModel)
+        out = PydanticGenerator().generate_file(usr)
+        # The 'tags' and 'metadata' fields should not have Field(...)
+        # Only 'name' should be required.
+        lines = out.splitlines()
+        for line in lines:
+            if "tags:" in line or "metadata:" in line:
+                assert "Field(...)" not in line, (
+                    f"Field with default_factory marked as required: {line}"
+                )
+
+    def test_default_factory_usr_field_populated(self):
+        """Parser must populate default_factory on USRField."""
+        usr = SchemaParser().parse_schema(_DefaultFactoryModel)
+        tags_field = usr.get_field("tags")
+        assert tags_field is not None
+        assert tags_field.default_factory is list
+        metadata_field = usr.get_field("metadata")
+        assert metadata_field is not None
+        assert metadata_field.default_factory is dict
+
+    def test_lambda_default_factory_raises(self):
+        """Lambda factories can't be emitted as valid Python — raise a clear error."""
+        import pytest
+
+        from schema_gen.core.usr import FieldType, USRField, USRSchema
+
+        field = USRField(
+            name="items",
+            type=FieldType.LIST,
+            python_type=list,
+            optional=False,
+            default_factory=lambda: [],
+        )
+        schema = USRSchema(name="Bad", fields=[field], enums=[], variants=[])
+        with pytest.raises(ValueError, match="named callable"):
+            PydanticGenerator().generate_file(schema)
