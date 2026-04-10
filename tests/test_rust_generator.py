@@ -192,6 +192,52 @@ class TestRustGenerator:
         assert "pub struct TreeNode {" in out
         assert "pub children: Vec<TreeNode>," in out
 
+    def test_recursive_struct_uses_box_for_direct_self_reference(self):
+        """Direct self-reference (not via Vec) must use Box<T> to avoid
+        Rust E0072: recursive type has infinite size."""
+        schema = USRSchema(
+            name="TreeNode",
+            fields=[
+                USRField(name="value", type=FieldType.INTEGER, python_type=int),
+                USRField(
+                    name="parent",
+                    type=FieldType.NESTED_SCHEMA,
+                    python_type=str,
+                    nested_schema="TreeNode",
+                    optional=True,
+                ),
+            ],
+        )
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub parent: Option<Box<TreeNode>>," in out
+        # Must NOT be Option<TreeNode> — that's E0072.
+        assert "Option<TreeNode>," not in out
+
+    def test_recursive_struct_vec_does_not_use_box(self):
+        """Vec<TreeNode> is already heap-allocated — no Box needed."""
+        schema = USRSchema(
+            name="TreeNode",
+            fields=[
+                USRField(name="value", type=FieldType.INTEGER, python_type=int),
+                USRField(
+                    name="children",
+                    type=FieldType.LIST,
+                    python_type=list,
+                    inner_type=USRField(
+                        name="children_item",
+                        type=FieldType.NESTED_SCHEMA,
+                        python_type=str,
+                        nested_schema="TreeNode",
+                    ),
+                ),
+            ],
+        )
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub children: Vec<TreeNode>," in out
+        assert "Box<TreeNode>" not in out
+
     # ------------------------------------------------------------------
     # 5. SerdeMeta custom code injection
     # ------------------------------------------------------------------

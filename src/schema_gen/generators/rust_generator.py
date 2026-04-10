@@ -158,6 +158,10 @@ class RustGenerator(BaseGenerator):
         # _rust_type_for can substitute the helper enum name in place of
         # the original Union type. Cleared afterwards.
         self._du_helper_names: dict[str, str] = {}
+        # Name of the struct currently being emitted. Used by
+        # _rust_type_for to detect direct self-references and wrap them
+        # in Box<T> (Rust E0072: recursive type has infinite size).
+        self._current_struct_name: str | None = None
 
     @property
     def file_extension(self) -> str:
@@ -315,6 +319,7 @@ class RustGenerator(BaseGenerator):
         self._du_helper_names = du_helper_names
 
         # Base struct
+        self._current_struct_name = schema.name
         body_parts.append(
             self._generate_struct(
                 schema=schema,
@@ -326,6 +331,7 @@ class RustGenerator(BaseGenerator):
                 is_base=True,
             )
         )
+        self._current_struct_name = None
         self._du_helper_names = {}
 
         # Variant structs
@@ -335,6 +341,7 @@ class RustGenerator(BaseGenerator):
             variant_struct_name = self._variant_to_struct_name(
                 schema.name, variant_name
             )
+            self._current_struct_name = variant_struct_name
             body_parts.append(
                 self._generate_struct(
                     schema=schema,
@@ -346,6 +353,7 @@ class RustGenerator(BaseGenerator):
                     is_base=False,
                 )
             )
+            self._current_struct_name = None
 
             # Emit From<Variant> for Full if variant is a strict subset
             variant_field_names = {f.name for f in variant_fields}
@@ -563,11 +571,19 @@ class RustGenerator(BaseGenerator):
         out.append("")
         return out
 
-    def _rust_type_for(self, field: USRField, imports: set[str]) -> str:
+    def _rust_type_for(
+        self,
+        field: USRField,
+        imports: set[str],
+        *,
+        inside_container: bool = False,
+    ) -> str:
         """Map a USR field to a Rust type string."""
         # Optional with inner_type → recurse on the inner.
+        # Option is NOT a heap-allocated container, so self-references
+        # inside Option still need Box<T>.
         if field.type == FieldType.OPTIONAL and field.inner_type is not None:
-            return f"Option<{self._rust_type_for(field.inner_type, imports)}>"
+            return f"Option<{self._rust_type_for(field.inner_type, imports, inside_container=inside_container)}>"
 
         # Many parsers emit ``optional=True`` + ``inner_type`` while keeping
         # ``field.type`` as the underlying type (e.g. INTEGER). For such
@@ -626,7 +642,9 @@ class RustGenerator(BaseGenerator):
 
         if ftype in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
             if field.inner_type is not None:
-                inner = self._rust_type_for(field.inner_type, imports)
+                inner = self._rust_type_for(
+                    field.inner_type, imports, inside_container=True
+                )
                 return f"Vec<{inner}>"
             return "Vec<serde_json::Value>"
 
@@ -638,7 +656,10 @@ class RustGenerator(BaseGenerator):
 
         if ftype == FieldType.TUPLE:
             if field.union_types:
-                parts = [self._rust_type_for(t, imports) for t in field.union_types]
+                parts = [
+                    self._rust_type_for(t, imports, inside_container=True)
+                    for t in field.union_types
+                ]
                 return f"({', '.join(parts)})"
             return "Vec<serde_json::Value>"
 
@@ -669,7 +690,33 @@ class RustGenerator(BaseGenerator):
             return field.enum_name or "String"
 
         if ftype == FieldType.NESTED_SCHEMA:
+            # Discriminated union (#18): when the parser resolves a
+            # Union via types.UnionType (Python 3.12+ pipe syntax),
+            # the field may be typed as NESTED_SCHEMA rather than UNION.
+            # Check the helper-name map so the struct field references
+            # the helper enum.
+            helper = self._du_helper_names.get(field.name)
+            if helper:
+                return helper
             nested = field.nested_schema or "serde_json::Value"
+            # Python 3.12+ pipe unions (A | B) may be stored as a
+            # stringified UnionType in nested_schema. This is not a
+            # valid Rust type — fall back to serde_json::Value (same
+            # as the plain Union path) and warn.
+            if "|" in nested:
+                logger.warning(
+                    "Rust generator: union field '%s' emitted as serde_json::Value. "
+                    "Use Field(discriminator='<tag>') with Annotated[Union[...]] to "
+                    "emit a serde-tagged enum instead. See schema-gen#18.",
+                    field.name,
+                )
+                return "serde_json::Value"
+            # Direct self-reference requires Box<T> to avoid E0072
+            # (recursive type has infinite size). Vec<T> and other
+            # heap-allocated containers are already on the heap, so
+            # Box is unnecessary there.
+            if nested == self._current_struct_name and not inside_container:
+                return f"Box<{nested}>"
             return nested
 
         return "serde_json::Value"
@@ -888,11 +935,20 @@ def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
     Walks through ``inner_type`` and ``union_types`` so nested containers
     (lists, unions, tuples) produce imports too. The caller filters out
     self-references when emitting ``use`` lines.
+
+    Fields with a discriminator are handled separately (their union
+    variants already appear in ``union_types``), so the top-level
+    ``nested_schema`` (which may be a garbage ``UnionType.__str__``)
+    is skipped.
     """
     refs: set[str] = set()
 
-    def _walk(field: USRField) -> None:
-        if field.type == FieldType.NESTED_SCHEMA and field.nested_schema:
+    def _walk(field: USRField, *, skip_top_nested: bool = False) -> None:
+        if (
+            field.type == FieldType.NESTED_SCHEMA
+            and field.nested_schema
+            and not skip_top_nested
+        ):
             refs.add(field.nested_schema)
         if field.inner_type is not None:
             _walk(field.inner_type)
@@ -900,7 +956,11 @@ def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
             _walk(ut)
 
     for f in schema.fields:
-        _walk(f)
+        # When a field carries a discriminator its nested_schema may be
+        # the string repr of a Python UnionType (e.g. "mod._A | mod._B")
+        # which is not a valid Rust import. Skip it; the individual
+        # union_types already contribute their nested_schema names.
+        _walk(f, skip_top_nested=bool(f.discriminator and f.union_types))
     return refs
 
 
