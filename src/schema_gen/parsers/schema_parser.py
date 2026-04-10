@@ -80,18 +80,10 @@ class SchemaParser:
                         usr_field
                     )
                 except ValueError as exc:
-                    # Drop the discriminator so the field falls back to
-                    # the plain-Union path with a clear warning. Avoids
-                    # producing broken Rust output.
-                    logger.warning(
-                        "Schema '%s', field '%s': discriminator resolution failed "
-                        "(%s). Falling back to untagged Union (serde_json::Value).",
-                        schema_class.__name__,
-                        field_name,
-                        exc,
-                    )
-                    usr_field.discriminator = None
-                    usr_field.union_tag_values = []
+                    raise ValueError(
+                        f"Schema '{schema_class.__name__}', field '{field_name}': "
+                        f"discriminator resolution failed — {exc}"
+                    ) from exc
             usr_fields.append(usr_field)
 
         # Discover enum types referenced by fields.

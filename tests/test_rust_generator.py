@@ -192,6 +192,52 @@ class TestRustGenerator:
         assert "pub struct TreeNode {" in out
         assert "pub children: Vec<TreeNode>," in out
 
+    def test_recursive_struct_uses_box_for_direct_self_reference(self):
+        """Direct self-reference (not via Vec) must use Box<T> to avoid
+        Rust E0072: recursive type has infinite size."""
+        schema = USRSchema(
+            name="TreeNode",
+            fields=[
+                USRField(name="value", type=FieldType.INTEGER, python_type=int),
+                USRField(
+                    name="parent",
+                    type=FieldType.NESTED_SCHEMA,
+                    python_type=str,
+                    nested_schema="TreeNode",
+                    optional=True,
+                ),
+            ],
+        )
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub parent: Option<Box<TreeNode>>," in out
+        # Must NOT be Option<TreeNode> — that's E0072.
+        assert "Option<TreeNode>," not in out
+
+    def test_recursive_struct_vec_does_not_use_box(self):
+        """Vec<TreeNode> is already heap-allocated — no Box needed."""
+        schema = USRSchema(
+            name="TreeNode",
+            fields=[
+                USRField(name="value", type=FieldType.INTEGER, python_type=int),
+                USRField(
+                    name="children",
+                    type=FieldType.LIST,
+                    python_type=list,
+                    inner_type=USRField(
+                        name="children_item",
+                        type=FieldType.NESTED_SCHEMA,
+                        python_type=str,
+                        nested_schema="TreeNode",
+                    ),
+                ),
+            ],
+        )
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub children: Vec<TreeNode>," in out
+        assert "Box<TreeNode>" not in out
+
     # ------------------------------------------------------------------
     # 5. SerdeMeta custom code injection
     # ------------------------------------------------------------------
@@ -371,6 +417,37 @@ class TestRustGenerator:
         # Filenames follow snake_case convention
         assert gen.get_schema_filename(schemas[0]) == "order_request.rs"
         assert gen.get_schema_filename(schemas[1]) == "fill_event.rs"
+
+
+# ------------------------------------------------------------------
+# _snake_case helper — Fix #3: leading underscores
+# ------------------------------------------------------------------
+
+
+class TestSnakeCase:
+    """The _snake_case helper must strip leading underscores so module
+    names don't start with __ (Python-private convention has no place
+    in Rust module names)."""
+
+    def test_single_leading_underscore(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("_CeLeg") == "ce_leg"
+
+    def test_double_leading_underscore(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("__DoublePrivate") == "double_private"
+
+    def test_no_leading_underscore_unchanged(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("OrderRequest") == "order_request"
+
+    def test_already_snake_case(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("order_request") == "order_request"
 
 
 def test_rust_generator_registered_in_registry():
@@ -950,7 +1027,7 @@ class TestRustEnumMeta:
 # Discriminated unions (#18)
 # ----------------------------------------------------------------------
 
-from typing import Annotated, Literal, Union  # noqa: E402
+from typing import Annotated, Literal  # noqa: E402
 
 
 @Schema
@@ -973,17 +1050,17 @@ class _OtherLeg:
 
 @Schema
 class _DiscriminatedOrder:
-    leg: Annotated[Union[_CeLeg, _PeLeg], Field(discriminator="option_type")]
+    leg: Annotated[_CeLeg | _PeLeg, Field(discriminator="option_type")]
 
 
 @Schema
 class _DiscriminatedThreeWay:
-    leg: Annotated[Union[_CeLeg, _PeLeg, _OtherLeg], Field(discriminator="option_type")]
+    leg: Annotated[_CeLeg | _PeLeg | _OtherLeg, Field(discriminator="option_type")]
 
 
 @Schema
 class _PlainUnionOrder:
-    leg: Union[_CeLeg, _PeLeg]
+    leg: _CeLeg | _PeLeg
 
 
 class TestRustDiscriminatedUnion:
@@ -1040,3 +1117,96 @@ class TestRustDiscriminatedUnion:
             out = RustGenerator().generate_file(usr)
         assert "pub leg: serde_json::Value," in out
         assert any("union field 'leg'" in rec.message for rec in caplog.records)
+
+
+# ------------------------------------------------------------------
+# Fix #4: strict discriminator resolution errors
+# ------------------------------------------------------------------
+
+
+# Module-level fixtures for Fix #4 discriminator error tests.
+# @Schema classes must be at module scope for forward-reference resolution.
+
+
+@Schema
+class _DiscErrAVariant:
+    kind: Literal["A"]
+    x: int
+
+
+@Schema
+class _DiscErrBVariant:
+    kind: Literal["B"]
+    x: int
+
+
+@Schema
+class _BadDiscHolder:
+    leg: Annotated[_DiscErrAVariant | _DiscErrBVariant, Field(discriminator="typ")]
+
+
+@Schema
+class _StrTagVariant:
+    kind: str
+    x: int
+
+
+@Schema
+class _NonLiteralHolder:
+    leg: Annotated[_StrTagVariant | _DiscErrBVariant, Field(discriminator="kind")]
+
+
+@Schema
+class _DiscV1:
+    tag: Literal["v1"]
+    data: str
+
+
+@Schema
+class _DiscV2:
+    tag: Literal["v2"]
+    data: int
+
+
+@Schema
+class _GoodDiscHolder:
+    item: Annotated[_DiscV1 | _DiscV2, Field(discriminator="tag")]
+
+
+class TestDiscriminatorErrors:
+    """Discriminator resolution errors must raise ValueError, not silently
+    fall back to plain Union / serde_json::Value."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+        for cls in (
+            _DiscErrAVariant,
+            _DiscErrBVariant,
+            _BadDiscHolder,
+            _StrTagVariant,
+            _NonLiteralHolder,
+            _DiscV1,
+            _DiscV2,
+            _GoodDiscHolder,
+        ):
+            SchemaRegistry.register(cls)
+
+    def test_bad_discriminator_field_name_raises(self):
+        """Typo in discriminator field name must raise, not silently degrade."""
+        import pytest
+
+        with pytest.raises(ValueError, match="has no discriminator field 'typ'"):
+            SchemaParser().parse_schema(_BadDiscHolder)
+
+    def test_non_literal_discriminator_raises(self):
+        """Discriminator field must be Literal[...], not plain str."""
+        import pytest
+
+        with pytest.raises(ValueError, match="must be Literal"):
+            SchemaParser().parse_schema(_NonLiteralHolder)
+
+    def test_correct_discriminator_still_works(self):
+        """Regression: correct discriminated unions must still parse fine."""
+        usr = SchemaParser().parse_schema(_GoodDiscHolder)
+        assert usr.fields[0].discriminator == "tag"
+        assert usr.fields[0].union_tag_values == ["v1", "v2"]

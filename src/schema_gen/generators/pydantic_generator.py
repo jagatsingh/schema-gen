@@ -15,15 +15,13 @@ from .base import BaseGenerator
 #: keys are ignored (and must NOT cause ``_needs_config`` to return True,
 #: otherwise an unrelated schema would grow a spurious ``model_config``
 #: block).
-_SUPPORTED_PYDANTIC_CONFIG_KEYS: frozenset[str] = frozenset(
-    {
-        "extra",
-        "validate_assignment",
-        "frozen",
-        "strict",
-        "str_strip_whitespace",
-        "populate_by_name",
-    }
+_SUPPORTED_PYDANTIC_CONFIG_KEYS: tuple[str, ...] = (
+    "extra",
+    "validate_assignment",
+    "frozen",
+    "strict",
+    "str_strip_whitespace",
+    "populate_by_name",
 )
 
 
@@ -242,6 +240,20 @@ class PydanticGenerator(BaseGenerator):
 
         # Generate type annotation
         type_annotation = self._get_pydantic_type(field, imports)
+
+        # Discriminated union: wrap in Annotated[Union[...], Field(discriminator="...")]
+        # so Pydantic v2 can deserialize tagged payloads correctly.
+        if field.discriminator and field.union_types:
+            union_types = [
+                self._get_pydantic_type(ut, imports) for ut in field.union_types
+            ]
+            imports.add("typing")
+            imports.add("typing.Annotated")
+            imports.add("pydantic.Field")
+            type_annotation = (
+                f"Annotated[Union[{', '.join(union_types)}], "
+                f'Field(discriminator="{field.discriminator}")]'
+            )
 
         # Generate Field() definition
         field_params = []
@@ -550,6 +562,8 @@ class PydanticGenerator(BaseGenerator):
                 typing_imports.extend(["Optional", "Any", "Union"])
             elif imp == "typing.Literal":
                 typing_imports.append("Literal")
+            elif imp == "typing.Annotated":
+                typing_imports.append("Annotated")
 
         # Add typing import if needed
         if typing_imports:
