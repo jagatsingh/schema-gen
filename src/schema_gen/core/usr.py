@@ -75,6 +75,13 @@ class USREnum:
     name: str
     values: list[tuple[str, Any]]  # (member_name, member_value)
 
+    # Mixin base type for the enum (e.g. ``str``, ``int``).  When the
+    # source enum inherits from ``str, Enum`` or ``int, Enum`` (or
+    # ``StrEnum`` / ``IntEnum``) generators must preserve that mixin so
+    # that JSON serialization round-trips correctly.  ``None`` means a
+    # plain ``Enum`` with no mixin.
+    value_type: type | None = None
+
     # Per-target custom code (raw_code, imports, methods, derives, ...)
     # extracted from PydanticMeta / SerdeMeta inner classes on the Enum.
     custom_code: dict[str, dict] = field(default_factory=dict)

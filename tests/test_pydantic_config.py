@@ -1,3 +1,7 @@
+# ruff: noqa: UP042
+# These tests deliberately use ``class X(str, Enum)`` because the bug we're
+# pinning requires this exact spelling. Rewriting to ``StrEnum`` would change
+# the code paths under test.
 """Tests for per-target Pydantic Config (Config.pydantic) wiring.
 
 These tests guard the fix that threads ``Config.pydantic`` from the engine
@@ -267,7 +271,7 @@ class TestPydanticEnumMeta:
 
         usr = SchemaParser().parse_schema(_PyOrderEvent)
         out = PydanticGenerator().generate_file(usr)
-        assert "class _PyOrderStatus(Enum):" in out
+        assert "class _PyOrderStatus(str, Enum):" in out
         assert "def is_terminal(self) -> bool:" in out
         assert "_PyOrderStatus.FILLED" in out
 
@@ -276,7 +280,7 @@ class TestPydanticEnumMeta:
 
         usr = SchemaParser().parse_schema(_PyPaint)
         out = PydanticGenerator().generate_file(usr)
-        assert "class _PyPlainColor(Enum):" in out
+        assert "class _PyPlainColor(str, Enum):" in out
         # No injected methods
         assert "def is_terminal" not in out
 

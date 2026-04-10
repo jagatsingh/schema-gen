@@ -582,7 +582,13 @@ class PydanticGenerator(BaseGenerator):
         # Generate enum classes before models
         for enum_def in enums:
             lines.append("")
-            lines.append(f"class {enum_def.name}(Enum):")
+            # Preserve the mixin base type (str, int) when the source enum
+            # inherits from it — e.g. ``class Foo(str, Enum):``.
+            if enum_def.value_type is not None:
+                mixin_name = enum_def.value_type.__name__
+                lines.append(f"class {enum_def.name}({mixin_name}, Enum):")
+            else:
+                lines.append(f"class {enum_def.name}(Enum):")
             for member_name, member_value in enum_def.values:
                 if isinstance(member_value, str):
                     lines.append(f'    {member_name} = "{member_value}"')

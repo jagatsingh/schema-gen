@@ -17,6 +17,33 @@ _ENUM_META_CLASSES = {
 }
 
 
+def _detect_enum_value_type(enum_cls: type) -> type | None:
+    """Return the mixin base type (``str``, ``int``, …) of an Enum class.
+
+    Detects both explicit mixin forms (``class Foo(str, Enum)``) and
+    stdlib convenience classes (``StrEnum``, ``IntEnum``).  Returns
+    ``None`` for a plain ``Enum`` with no mixin.
+    """
+    import enum as _enum_mod
+
+    # StrEnum / IntEnum are subclasses of str / int respectively.
+    # Check these first so that ``class Foo(StrEnum)`` is handled.
+    if issubclass(enum_cls, str):
+        return str
+    if issubclass(enum_cls, int):
+        return int
+
+    # Fallback: walk the MRO for any non-Enum builtin mixin.
+    for base in enum_cls.__mro__:
+        if base in (object, Enum, _enum_mod.Enum):
+            continue
+        if base is str:
+            return str
+        if base is int:
+            return int
+    return None
+
+
 def _build_usr_enum(enum_cls: type) -> USREnum:
     """Construct a USREnum from a Python Enum class, including any
     target-specific meta classes (PydanticMeta, SerdeMeta, ...) the user
@@ -33,6 +60,7 @@ def _build_usr_enum(enum_cls: type) -> USREnum:
     return USREnum(
         name=enum_cls.__name__,
         values=[(e.name, e.value) for e in enum_cls],
+        value_type=_detect_enum_value_type(enum_cls),
         custom_code=custom_code,
     )
 

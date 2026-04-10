@@ -38,7 +38,7 @@ class TestOptionalEnumDiscovery:
 
     @staticmethod
     def _assert_pydantic_has_members(code: str) -> None:
-        assert "class OptionType(Enum):" in code, code
+        assert "class OptionType(str, Enum):" in code, code
         assert 'CE = "CE"' in code, code
         assert 'PE = "PE"' in code, code
 
