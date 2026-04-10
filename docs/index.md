@@ -42,6 +42,7 @@ Schema Gen provides a **single source of truth** approach:
 - **File Watching** - Auto-regeneration during development
 - **Pre-commit Hooks** - Automatic generation in git workflow
 - **Type Safety** - Full IDE support and static type checking
+- **Breaking Change Detection** - Detect breaking schema changes before merge with `schema-gen diff`
 
 ### Planned Features
 - **SQLAlchemy Generation** - Database models and migrations
