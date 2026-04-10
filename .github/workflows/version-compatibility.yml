@@ -23,9 +23,6 @@ jobs:
       fail-fast: false
 
     steps:
-    - name: Set 7-day dependency delay
-      run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
-
     - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
     - name: Install uv
