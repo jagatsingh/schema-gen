@@ -337,11 +337,55 @@ class TestRustGenerator:
         out = RustGenerator().generate_file(schema)
 
         assert "pub tags: Vec<String>," in out
-        assert "pub attributes: HashMap<String, serde_json::Value>," in out
-        assert "use std::collections::HashMap;" in out
+        # dict[str, Any] should produce serde_json::Value, not HashMap
+        assert "pub attributes: serde_json::Value," in out
         assert "pub created_at: chrono::DateTime<chrono::Utc>," in out
         assert "pub event_id: uuid::Uuid," in out
         assert "pub price: rust_decimal::Decimal," in out
+
+    # ------------------------------------------------------------------
+    # 7b. dict[str, Any] vs dict[str, T] in Rust
+    # ------------------------------------------------------------------
+
+    def test_dict_str_any_produces_serde_json_value(self):
+        """dict[str, Any] should generate serde_json::Value, not HashMap."""
+
+        @Schema
+        class Config:
+            settings: dict[str, Any]
+
+        schema = SchemaParser().parse_schema(Config)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub settings: serde_json::Value," in out
+        # HashMap should NOT be imported when the only dict is dict[str, Any]
+        assert "use std::collections::HashMap;" not in out
+
+    def test_dict_str_specific_type_produces_hashmap(self):
+        """dict[str, int] should generate HashMap<String, i64>."""
+
+        @Schema
+        class Scores:
+            values: dict[str, int]
+
+        schema = SchemaParser().parse_schema(Scores)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub values: HashMap<String, i64>," in out
+        assert "use std::collections::HashMap;" in out
+
+    def test_dict_str_nested_type_produces_hashmap(self):
+        """dict[str, list[str]] should generate HashMap<String, Vec<String>>."""
+
+        @Schema
+        class TagMap:
+            tags: dict[str, list[str]]
+
+        schema = SchemaParser().parse_schema(TagMap)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub tags: HashMap<String, Vec<String>>," in out
+        assert "use std::collections::HashMap;" in out
 
     # ------------------------------------------------------------------
     # 8. Reserved-word field name

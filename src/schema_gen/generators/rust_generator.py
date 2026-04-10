@@ -709,10 +709,15 @@ class RustGenerator(BaseGenerator):
             return "Vec<serde_json::Value>"
 
         if ftype == FieldType.DICT:
+            # dict[str, Any] or plain dict -> serde_json::Value (any JSON)
+            # dict[str, T] where T is a specific type -> HashMap<String, T>
+            if field.inner_type is None or field.inner_type.type == FieldType.JSON:
+                return "serde_json::Value"
             imports.add("HashMap")
-            # We don't currently thread a value type through USR for dicts
-            # so default to ``serde_json::Value`` (matches ``dict[str, Any]``).
-            return "HashMap<String, serde_json::Value>"
+            value_type = self._rust_type_for(
+                field.inner_type, imports, inside_container=True
+            )
+            return f"HashMap<String, {value_type}>"
 
         if ftype == FieldType.TUPLE:
             if field.union_types:
