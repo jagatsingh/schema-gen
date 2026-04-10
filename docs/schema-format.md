@@ -539,6 +539,14 @@ generated enum body on either side. See
 [docs/generators/pydantic.md](generators/pydantic.md#pydanticmeta-on-enums)
 and [docs/generators/rust.md](generators/rust.md#enum-level-serdemeta).
 
+> **Python 3.12+**: Inner classes inside `str, Enum` or `StrEnum` are
+> treated as enum members (causing `TypeError` or deprecation warnings).
+> Wrap Meta classes with `enum.nonmember()` when attaching them to enums.
+> This is **not** needed for `@Schema`-decorated classes. See the
+> [Rust](generators/rust.md#enum-level-serdemeta) and
+> [Pydantic](generators/pydantic.md#pydanticmeta-on-enums) generator docs
+> for examples.
+
 ### PydanticMeta Options
 
 | Option | Description | Use Case |

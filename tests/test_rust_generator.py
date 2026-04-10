@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum, StrEnum
+from enum import Enum, StrEnum, nonmember
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -958,22 +958,28 @@ class _OrderStatus(str, Enum):
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class SerdeMeta:
-        raw_code = (
-            "impl _OrderStatus {\n"
-            "    pub fn is_terminal(&self) -> bool {\n"
-            "        matches!(self, Self::Filled | Self::Cancelled)\n"
-            "    }\n"
-            "}"
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "raw_code": (
+                    "impl _OrderStatus {\n"
+                    "    pub fn is_terminal(&self) -> bool {\n"
+                    "        matches!(self, Self::Filled | Self::Cancelled)\n"
+                    "    }\n"
+                    "}"
+                )
+            },
         )
+    )
 
 
 class _Priority(str, Enum):
     LOW = "low"
     HIGH = "high"
 
-    class SerdeMeta:
-        derives = ["Ord", "PartialOrd"]
+    SerdeMeta = nonmember(type("SerdeMeta", (), {"derives": ["Ord", "PartialOrd"]}))
 
 
 class _PlainColor(str, Enum):
@@ -985,14 +991,21 @@ class _Mode2(str, Enum):
     AUTO = "auto"
     MANUAL = "manual"
 
-    class SerdeMeta:
-        raw_code = (
-            "impl _Mode2 {\n"
-            "    pub fn is_auto(&self) -> bool {\n"
-            "        matches!(self, Self::Auto)\n"
-            "    }\n"
-            "}"
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "raw_code": (
+                    "impl _Mode2 {\n"
+                    "    pub fn is_auto(&self) -> bool {\n"
+                    "        matches!(self, Self::Auto)\n"
+                    "    }\n"
+                    "}"
+                )
+            },
         )
+    )
 
 
 @Schema
@@ -1022,9 +1035,6 @@ class TestRustEnumMeta:
     def setup_method(self):
         SchemaRegistry._schemas.clear()
 
-    @pytest.mark.xfail(
-        reason="Python 3.12: SerdeMeta inner class on str,Enum becomes enum member (#58)"
-    )
     def test_enum_serde_meta_raw_code(self):
         usr = SchemaParser().parse_schema(_OrderEnumHolder)
         out = RustGenerator().generate_file(usr)
@@ -1032,9 +1042,6 @@ class TestRustEnumMeta:
         assert "pub fn is_terminal(&self) -> bool" in out
         assert "matches!(self, Self::Filled | Self::Cancelled)" in out
 
-    @pytest.mark.xfail(
-        reason="Python 3.12: SerdeMeta inner class on str,Enum becomes enum member (#58)"
-    )
     def test_enum_serde_meta_extra_derives(self):
         usr = SchemaParser().parse_schema(_PrioHolder)
         out = RustGenerator().generate_file(usr)
@@ -1054,9 +1061,6 @@ class TestRustEnumMeta:
         assert "pub enum _PlainColor {" in out
         assert "impl _PlainColor" not in out  # no impl block when no raw_code
 
-    @pytest.mark.xfail(
-        reason="Python 3.12: SerdeMeta inner class on str,Enum becomes enum member (#58)"
-    )
     def test_enum_serde_meta_via_common_module(self, tmp_path):
         """End-to-end via the engine: shared enum lands in common.rs and
         carries its raw_code impl block."""
@@ -1250,14 +1254,12 @@ class TestDiscriminatorErrors:
 
     def test_bad_discriminator_field_name_raises(self):
         """Typo in discriminator field name must raise, not silently degrade."""
-        import pytest
 
         with pytest.raises(ValueError, match="has no discriminator field 'typ'"):
             SchemaParser().parse_schema(_BadDiscHolder)
 
     def test_non_literal_discriminator_raises(self):
         """Discriminator field must be Literal[...], not plain str."""
-        import pytest
 
         with pytest.raises(ValueError, match="must be Literal"):
             SchemaParser().parse_schema(_NonLiteralHolder)

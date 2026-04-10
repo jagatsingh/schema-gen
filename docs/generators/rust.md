@@ -211,24 +211,37 @@ pub enum Exchange {
 
 ### Enum-level `SerdeMeta`
 
-Attach a `SerdeMeta` inner class to an `Enum` subclass to inject domain
+Attach a `SerdeMeta` to an `Enum` subclass to inject domain
 methods on the generated Rust enum (and/or extra derives).
 
+> **Python 3.12+**: Inner classes inside `str, Enum` or `StrEnum` are
+> treated as enum members, which causes errors. Wrap with
+> `enum.nonmember()` to prevent this.
+
 ```python
+from enum import Enum, nonmember
+
 class OrderStatus(str, Enum):
     PENDING = "pending"
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class SerdeMeta:
-        derives = ["Eq", "Hash"]
-        raw_code = """
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "derives": ["Eq", "Hash"],
+                "raw_code": """
 impl OrderStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(self, OrderStatus::Filled | OrderStatus::Cancelled)
     }
 }
-"""
+""",
+            },
+        )
+    )
 ```
 
 ### Overriding the rename strategy

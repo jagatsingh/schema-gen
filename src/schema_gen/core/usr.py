@@ -274,12 +274,18 @@ class USRSchema:
 
         A field is self-referencing if:
         - It has nested_schema == self.name (direct self-reference), or
-        - It is a LIST/SET/FROZENSET with inner_type.nested_schema == self.name
+        - It is a LIST/SET/FROZENSET/DICT with inner_type.nested_schema == self.name
         """
         result = []
         for f in self.fields:
             if f.nested_schema == self.name or (
-                f.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET)
+                f.type
+                in (
+                    FieldType.LIST,
+                    FieldType.SET,
+                    FieldType.FROZENSET,
+                    FieldType.DICT,
+                )
                 and f.inner_type
                 and f.inner_type.nested_schema == self.name
             ):
