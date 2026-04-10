@@ -1,13 +1,21 @@
 """Generator to create Zod schemas from USR schemas"""
 
+import logging
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from jinja2 import Template
 
+from ..core.config import Config
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
+
+logger = logging.getLogger(__name__)
+
+# Keys honored from ``Config.zod``. Any other key triggers a warning.
+_SUPPORTED_ZOD_CONFIG_KEYS: frozenset[str] = frozenset({"strict", "coerce"})
 
 
 def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
@@ -38,9 +46,26 @@ class ZodGenerator(BaseGenerator):
 
     index_filename = "index.ts"
 
-    def __init__(self):
+    def __init__(self, config: Config | None = None) -> None:
+        super().__init__(config=config)
         self.template = Template(self._get_template())
         self._self_ref_schema_names: set[str] = set()
+        # Warn on unknown Config.zod keys.
+        if config is not None:
+            zod_cfg: dict[str, Any] = getattr(config, "zod", None) or {}
+            for key in zod_cfg:
+                if key not in _SUPPORTED_ZOD_CONFIG_KEYS:
+                    logger.warning(
+                        "Unknown Config.zod key: %s (supported: %s)",
+                        key,
+                        sorted(_SUPPORTED_ZOD_CONFIG_KEYS),
+                    )
+
+    def _zod_cfg(self) -> dict[str, Any]:
+        """Return the ``Config.zod`` dict, or empty dict if not set."""
+        if self.config is None:
+            return {}
+        return getattr(self.config, "zod", None) or {}
 
     @property
     def file_extension(self) -> str:
@@ -378,7 +403,10 @@ class ZodGenerator(BaseGenerator):
         for field_def in field_defs:
             lines.append(field_def)
 
-        lines.append("});")
+        # TODO: support Config.zod coerce key
+        strict = self._zod_cfg().get("strict", False)
+        closing = "}).strict();" if strict else "});"
+        lines.append(closing)
 
         return "\n".join(lines)
 
