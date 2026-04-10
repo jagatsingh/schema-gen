@@ -22,8 +22,8 @@ def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
     """Walk a USR schema and return the set of NESTED_SCHEMA names it
     references that are NOT the schema itself (those are self-refs and
     handled via z.lazy()). Looks through ``inner_type`` (list / set /
-    frozenset) and ``union_types`` (tuple / union) so nested container
-    types produce imports too.
+    frozenset / dict) and ``union_types`` (tuple / union) so nested
+    container types produce imports too.
     """
     refs: set[str] = set()
 
@@ -491,6 +491,9 @@ class ZodGenerator(BaseGenerator):
                 return f"[{', '.join(inner_types)}]"
             return "[]"
         elif field.type == FieldType.DICT:
+            if field.inner_type is not None:
+                value_ts_type = self._get_typescript_type(field.inner_type)
+                return f"Record<string, {value_ts_type}>"
             return "Record<string, any>"
         elif field.type == FieldType.UNION:
             if field.union_types:

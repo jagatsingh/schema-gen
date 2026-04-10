@@ -36,6 +36,11 @@ class _DictOptionalNestedParent:
     mapping: dict[str, _DictNested] | None
 
 
+@Schema
+class _DictListNestedParent:
+    mapping: dict[str, list[_DictNested]]
+
+
 def _reregister(*classes):
     SchemaRegistry._schemas.clear()
     for cls in classes:
@@ -107,4 +112,20 @@ class TestZodDictValueTypes:
 
         parent_ts = (out_dir / "zod" / "_dictoptionalnestedparent.ts").read_text()
         assert "z.record(_DictNestedSchema).optional()" in parent_ts
+        assert "import { _DictNestedSchema } from './_dictnested';" in parent_ts
+
+    def test_dict_list_nested_generates_record_with_array(self, tmp_path):
+        """dict[str, list[NestedSchema]] -> z.record(z.array(NestedSchemaSchema))."""
+        _reregister(_DictNested, _DictListNestedParent)
+
+        out_dir = tmp_path / "out"
+        config = Config(
+            input_dir=str(tmp_path / "schemas"),
+            output_dir=str(out_dir),
+            targets=["zod"],
+        )
+        SchemaGenerationEngine(config).generate_all()
+
+        parent_ts = (out_dir / "zod" / "_dictlistnestedparent.ts").read_text()
+        assert "z.record(z.array(_DictNestedSchema))" in parent_ts
         assert "import { _DictNestedSchema } from './_dictnested';" in parent_ts
