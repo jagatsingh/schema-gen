@@ -836,15 +836,24 @@ class RustGenerator(BaseGenerator):
 
 
 def _snake_case(name: str) -> str:
-    """Convert PascalCase/camelCase to snake_case."""
+    """Convert PascalCase/camelCase to snake_case.
+
+    Leading underscores are stripped so that Python-convention private
+    prefixes (``_CeLeg``, ``__DoublePrivate``) don't produce module
+    names starting with ``__`` which look like reserved internals in Rust
+    and trigger clippy warnings.
+    """
+    stripped = name.lstrip("_")
+    if not stripped:
+        return name.lower()
     out: list[str] = []
-    for i, ch in enumerate(name):
+    for i, ch in enumerate(stripped):
         if (
             ch.isupper()
             and i > 0
             and (
-                not name[i - 1].isupper()
-                or (i + 1 < len(name) and name[i + 1].islower())
+                not stripped[i - 1].isupper()
+                or (i + 1 < len(stripped) and stripped[i + 1].islower())
             )
         ):
             out.append("_")

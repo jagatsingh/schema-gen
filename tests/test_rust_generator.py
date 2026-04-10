@@ -373,6 +373,37 @@ class TestRustGenerator:
         assert gen.get_schema_filename(schemas[1]) == "fill_event.rs"
 
 
+# ------------------------------------------------------------------
+# _snake_case helper — Fix #3: leading underscores
+# ------------------------------------------------------------------
+
+
+class TestSnakeCase:
+    """The _snake_case helper must strip leading underscores so module
+    names don't start with __ (Python-private convention has no place
+    in Rust module names)."""
+
+    def test_single_leading_underscore(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("_CeLeg") == "ce_leg"
+
+    def test_double_leading_underscore(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("__DoublePrivate") == "double_private"
+
+    def test_no_leading_underscore_unchanged(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("OrderRequest") == "order_request"
+
+    def test_already_snake_case(self):
+        from schema_gen.generators.rust_generator import _snake_case
+
+        assert _snake_case("order_request") == "order_request"
+
+
 def test_rust_generator_registered_in_registry():
     from schema_gen.generators.registry import GENERATOR_REGISTRY
 
@@ -950,7 +981,7 @@ class TestRustEnumMeta:
 # Discriminated unions (#18)
 # ----------------------------------------------------------------------
 
-from typing import Annotated, Literal, Union  # noqa: E402
+from typing import Annotated, Literal  # noqa: E402
 
 
 @Schema
@@ -973,17 +1004,17 @@ class _OtherLeg:
 
 @Schema
 class _DiscriminatedOrder:
-    leg: Annotated[Union[_CeLeg, _PeLeg], Field(discriminator="option_type")]
+    leg: Annotated[_CeLeg | _PeLeg, Field(discriminator="option_type")]
 
 
 @Schema
 class _DiscriminatedThreeWay:
-    leg: Annotated[Union[_CeLeg, _PeLeg, _OtherLeg], Field(discriminator="option_type")]
+    leg: Annotated[_CeLeg | _PeLeg | _OtherLeg, Field(discriminator="option_type")]
 
 
 @Schema
 class _PlainUnionOrder:
-    leg: Union[_CeLeg, _PeLeg]
+    leg: _CeLeg | _PeLeg
 
 
 class TestRustDiscriminatedUnion:
