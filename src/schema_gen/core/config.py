@@ -39,6 +39,7 @@ class Config:
     jackson: dict[str, Any] = field(default_factory=dict)
     kotlin: dict[str, Any] = field(default_factory=dict)
     rust: dict[str, Any] = field(default_factory=dict)
+    docs: dict[str, Any] = field(default_factory=dict)
 
     # Generation settings
     overwrite: bool = True
