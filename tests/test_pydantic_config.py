@@ -392,3 +392,20 @@ class TestPydanticDefaultFactory:
         metadata_field = usr.get_field("metadata")
         assert metadata_field is not None
         assert metadata_field.default_factory is dict
+
+    def test_lambda_default_factory_raises(self):
+        """Lambda factories can't be emitted as valid Python — raise a clear error."""
+        import pytest
+
+        from schema_gen.core.usr import FieldType, USRField, USRSchema
+
+        field = USRField(
+            name="items",
+            type=FieldType.LIST,
+            python_type=list,
+            optional=False,
+            default_factory=lambda: [],
+        )
+        schema = USRSchema(name="Bad", fields=[field], enums=[], variants=[])
+        with pytest.raises(ValueError, match="named callable"):
+            PydanticGenerator().generate_file(schema)
