@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Jagat Singh", email = "jagatsingh@gmail.com" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "click>=8.3",
     "pydantic>=2.12",

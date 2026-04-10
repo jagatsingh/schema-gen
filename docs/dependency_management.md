@@ -1,197 +1,146 @@
-# Dependency Management System
+# Supply Chain Security & Dependency Management
 
-This document describes the automated dependency management system for schema-gen, ensuring all Python libraries and external compilers are kept up to date with comprehensive validation.
+This guide documents the dependency management practices for schema-gen, aligned with the tradingutils supply chain security conventions.
 
-## 📊 Current Dependencies
+## 7-Day Dependency Delay
 
-### Python Libraries (8 formats - 67% coverage)
-| Library | Current | Min Required | Purpose | Critical |
-|---------|---------|--------------|---------|----------|
-| **pydantic** | 2.11.7 | ≥2.0 | Data validation using type annotations | ✅ |
-| **sqlalchemy** | 2.0.43 | ≥2.0 | SQL toolkit and ORM library | ✅ |
-| **jsonschema** | 4.25.1 | ≥4.0 | JSON Schema validation | ✅ |
-| **graphql-core** | 3.2.6 | ≥3.2 | GraphQL implementation for Python | ✅ |
-| **avro-python3** | 1.10.2 | ≥1.11 | Apache Avro serialization | ✅ |
-| **pathway** | 0.26.1 | ≥0.7 | Data processing framework | ✅ |
+All dependency upgrades are delayed by 7 days to allow the open-source community time to detect compromised packages. Most supply chain attacks on PyPI are detected within 24-72 hours — a 7-day quarantine provides a comfortable margin. Security vulnerabilities bypass the delay entirely.
 
-### External Compilers (4 formats - 33% coverage)
-| Compiler | Current | Purpose | Critical |
-|----------|---------|---------|----------|
-| **TypeScript** | 5.9.2 | Zod validation compilation | ✅ |
-| **Node.js** | v20.19.2 | TypeScript runtime | ✅ |
-| **Java JDK** | 21.0.8 | Jackson validation compilation | ✅ |
-| **Kotlin** | v2.0.21 | Data class validation compilation | ✅ |
-| **Protobuf** | 3.21.12 | Multi-language schema compilation | ✅ |
+## Architecture: Defense in Depth
 
-### External Libraries
-| Library | Current | Purpose |
-|---------|---------|---------|
-| **Jackson Core** | 2.18.0 | JSON processing for Java |
-| **kotlinx.serialization** | 1.6.2 | Kotlin serialization support |
-
-## 🤖 Automated Update System
-
-### 1. Dependency Monitoring
-- **Schedule**: Weekly checks every Monday at 9 AM UTC
-- **Trigger**: Manual workflow dispatch or file changes
-- **Monitoring**: GitHub Actions workflow `dependency-check.yml`
-
-### 2. Update Detection
-The system checks for updates using:
-- **Python Libraries**: PyPI API for latest versions
-- **External Compilers**: GitHub Releases API and registry APIs
-- **External Libraries**: Maven Central search API
-
-### 3. Automated Actions
-When updates are detected:
-1. **Issue Creation**: Auto-creates/updates GitHub issue with update details
-2. **Version Comparison**: Uses semantic versioning for accurate comparison
-3. **Impact Assessment**: Categorizes updates by criticality
-4. **Testing Validation**: Ensures Docker build still works
-
-## 📁 Key Files
-
-### Configuration Files
-- **`dependencies.json`** - Central dependency configuration
-- **`Dockerfile.validation`** - External compiler versions
-- **`pyproject.toml`** - Python library constraints
-
-### Automation Scripts
-- **`scripts/check_dependency_versions.py`** - Version checking and reporting
-- **`scripts/update_dependencies.py`** - Automated update execution
-- **`.github/workflows/dependency-check.yml`** - CI/CD automation
-
-## 🔧 Usage
-
-### Manual Dependency Check
-```bash
-# Check all dependency versions
-python scripts/check_dependency_versions.py
-
-# Generate detailed report
-python scripts/check_dependency_versions.py > dependency_report.txt
+```
+┌─────────────────────────────────────────────────────────┐
+│  Layer 1: Registry-Level Delay                          │
+│  UV exclude-newer blocks packages < 7 days old          │
+├─────────────────────────────────────────────────────────┤
+│  Layer 2: Automated PR Delay                            │
+│  Renovate minimumReleaseAge delays update PRs           │
+├─────────────────────────────────────────────────────────┤
+│  Layer 3: Lockfile Discipline                           │
+│  Frozen installs in CI prevent silent resolution        │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Manual Updates
-```bash
-# Update dependencies automatically
-python scripts/update_dependencies.py
+## Layer 1: UV Exclude-Newer
 
-# Update without Docker build test
-python scripts/update_dependencies.py --no-test
+UV's `--exclude-newer` flag refuses to resolve any package version published less than 7 days ago. Set globally via environment variable in `~/.bashrc`:
+
+```bash
+export UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
 ```
 
-### GitHub Actions
-The dependency check workflow runs automatically:
-- **Weekly**: Every Monday at 9 AM UTC
-- **On Changes**: When Dockerfile.validation or pyproject.toml changes
-- **Manual**: Via workflow_dispatch
+This covers every UV operation: `uv lock`, `uv sync`, `uv pip install`.
 
-## 📈 Update Strategy
+### CI Enforcement
 
-### Critical Dependencies (Auto-monitored)
-- **Python validation libraries** - Essential for format validation
-- **External compilers** - Required for compilation testing
-- **Security updates** - Applied immediately
+Every GitHub Actions job sets the same variable:
 
-### Development Tools (Auto-updated)
-- **pytest, ruff, mypy** - Development and testing tools
-- **Non-critical utilities** - Updated automatically
-
-### Update Process
-1. **Detection**: Automated weekly scans
-2. **Validation**: Docker build and validation tests
-3. **Notification**: GitHub issue with update details
-4. **Manual Review**: Human approval for critical updates
-5. **Application**: Automated or manual update application
-
-## 🧪 Validation Requirements
-
-Before applying any dependency updates, the system validates:
-
-### Python Library Updates
-- ✅ Import and basic functionality tests
-- ✅ Generated code syntax validation
-- ✅ Library-specific validation (e.g., Pydantic model creation)
-
-### External Compiler Updates
-- ✅ Compilation success with generated code
-- ✅ Multi-format output validation (Protobuf: Python + C++ + Java)
-- ✅ Library integration (Jackson, kotlinx.serialization)
-
-### Docker Environment
-- ✅ Complete Docker build success
-- ✅ All compiler validation tests pass
-- ✅ Comprehensive format validation (12/12 formats)
-
-## 🚨 Rollback Strategy
-
-If updates cause issues:
-1. **Immediate**: Revert Dockerfile.validation changes
-2. **Testing**: Run validation suite to confirm fix
-3. **Documentation**: Update issue with rollback details
-4. **Investigation**: Analyze compatibility issues
-
-## 📊 Success Metrics
-
-### Current Achievement
-- **Total Formats**: 12
-- **Validation Coverage**: 100% (12/12)
-- **Python Library Coverage**: 67% (8/12 formats)
-- **External Compiler Coverage**: 33% (4/12 formats)
-- **Overall Success Rate**: 100% validation success
-
-### Target Metrics
-- **Update Detection**: < 1 week lag time
-- **Update Application**: < 1 day for critical security updates
-- **Validation Success**: 100% format validation after updates
-- **Docker Build Success**: 100% after dependency changes
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-**Dependency Check Fails**
-- Check network connectivity to PyPI/GitHub APIs
-- Verify API rate limits not exceeded
-- Review authentication if required
-
-**Docker Build Fails After Update**
-- Check for breaking changes in updated dependencies
-- Verify compatibility between library versions
-- Review Dockerfile syntax for URL/version changes
-
-**Validation Tests Fail**
-- Compare generated code before/after update
-- Check for API changes in updated libraries
-- Validate external compiler compatibility
-
-### Support Commands
-```bash
-# Test current environment
-docker run --rm schema-gen-validation:latest validate-compilers
-
-# Validate specific format
-python scripts/validate_all_formats.py --format pydantic --verbose
-
-# Check Docker build
-docker build -f Dockerfile.validation -t test-build .
+```yaml
+steps:
+  - name: Set 7-day dependency delay
+    run: echo "UV_EXCLUDE_NEWER=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
 ```
 
-## 🎯 Future Enhancements
+### Emergency Bypass
 
-### Planned Features
-- **Automated PRs**: Auto-create pull requests for updates
-- **Security Scanning**: Automated vulnerability detection
-- **Performance Monitoring**: Track validation performance changes
-- **Notification Integration**: Slack/email notifications for updates
+When a critical security patch requires a package released within the last 7 days:
 
-### Version Pinning Strategy
-- **Major versions**: Manual review required
-- **Minor versions**: Automated with validation
-- **Patch versions**: Automated for security fixes
-- **Pre-release versions**: Never automated
+```bash
+UV_EXCLUDE_NEWER="" uv lock
+```
 
----
+Always document the reason for bypassing in the commit message.
 
-**🎉 The dependency management system ensures schema-gen stays current with the latest libraries and compilers while maintaining 100% validation success across all 12 supported formats.**
+## Layer 2: Renovate
+
+schema-gen extends the shared Renovate preset from tradingutils:
+
+```jsonc
+// renovate.json5
+{
+  "extends": ["github>jagatsingh/tradingutils"]
+}
+```
+
+The shared preset enforces:
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `minimumReleaseAge` | `7 days` (default) | All packages delayed 7 days |
+| `minimumReleaseAge` (major) | `14 days` | Extra caution for breaking changes |
+| `minimumReleaseAge` (vulnerability) | `0 days` | Security patches immediate |
+
+schema-gen adds project-specific rules on top:
+
+- **Core schema libraries** (pydantic, sqlalchemy, protobuf, etc.) get separate PRs for major updates
+- **Development dependencies** are grouped and auto-merged for patches
+- **GitHub Actions** are pinned by SHA digest
+- **Lock file maintenance** runs weekly
+
+### Updating Dependencies (the right way)
+
+1. **Wait for a Renovate PR** — opens weekly after the 7-day stability period
+2. **Review the PR** — check changelog, breaking changes, CI results
+3. **Merge** — non-major updates auto-merge if CI passes; major updates require manual review
+
+## Layer 3: Lockfile Discipline
+
+### Frozen Installs
+
+All CI workflows use frozen install mode:
+
+```bash
+uv sync --frozen  # Uses committed uv.lock exactly — fails if out of date
+```
+
+This prevents silent resolution of new (potentially malicious) packages.
+
+### Python Version Pinning
+
+Python version is pinned to a minor version range (`>=3.12,<3.13`) to prevent accidental upgrades to untested Python releases.
+
+## Vulnerability Scanning
+
+Security vulnerabilities **bypass all delays**. Detection tools:
+
+| Tool | When it runs | What it checks |
+|------|-------------|----------------|
+| `uv-secure` | Pre-commit hook | PyPI CVEs in `uv.lock` |
+| Renovate vulnerability alerts | Continuous | All ecosystems |
+| GitHub Dependabot alerts | Continuous | Security tab |
+
+The `uv-secure` pre-commit hook runs automatically when `pyproject.toml` or `uv.lock` changes:
+
+```yaml
+# .pre-commit-config.yaml
+- id: uv-secure
+  name: uv-secure vulnerability check
+  entry: bash -c 'uv-secure uv.lock; rc=$?; if [ "$rc" -eq 1 ]; then exit 1; else exit 0; fi'
+  language: system
+  files: '(pyproject\.toml|uv\.lock)$'
+```
+
+## Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `~/.bashrc` | `UV_EXCLUDE_NEWER` environment variable |
+| `renovate.json5` | Renovate config (extends `github>jagatsingh/tradingutils`) |
+| `.github/workflows/*.yml` | CI with `UV_EXCLUDE_NEWER` enforcement |
+| `.pre-commit-config.yaml` | `uv-secure` vulnerability scanning hook |
+| `pyproject.toml` | Python version constraint, dependency pins |
+| `uv.lock` | Committed lockfile for frozen installs |
+
+## Verification
+
+```bash
+# Check UV delay is active
+echo $UV_EXCLUDE_NEWER
+# Should show a date 7 days in the past
+
+# Run vulnerability scan
+uv-secure uv.lock
+
+# Check Renovate config extends shared preset
+grep 'github>jagatsingh/tradingutils' renovate.json5
+```
