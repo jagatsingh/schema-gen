@@ -1053,15 +1053,22 @@ def _render_cargo_toml(rust_cfg: dict[str, Any]) -> str:
         'path = "lib.rs"',
         "",
         "[dependencies]",
-        'serde = { version = "1", features = ["derive"] }',
-        'chrono = { version = "0.4", features = ["serde"] }',
-        'schemars = "0.8"',
     ]
+    # Default base deps — overridable via extra_deps
+    base_deps = {
+        "serde": '{ version = "1", features = ["derive"] }',
+        "chrono": '{ version = "0.4", features = ["serde"] }',
+        "schemars": '"0.8"',
+    }
+    for crate, default_spec in base_deps.items():
+        if crate not in extra_deps:
+            lines.append(f"{crate} = {default_spec}")
     for crate, spec in sorted(extra_deps.items()):
-        if isinstance(spec, str):
+        if isinstance(spec, str) and not spec.lstrip().startswith("{"):
+            # Simple version string — wrap in quotes
             lines.append(f'{crate} = "{spec}"')
         else:
-            # Assume a pre-formatted inline table string provided by the user.
+            # Inline table or pre-formatted TOML — emit verbatim
             lines.append(f"{crate} = {spec}")
     lines.append("")
     return "\n".join(lines)
