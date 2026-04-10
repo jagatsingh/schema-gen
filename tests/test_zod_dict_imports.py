@@ -8,6 +8,8 @@ from schema_gen import Schema
 from schema_gen.core.config import Config
 from schema_gen.core.generator import SchemaGenerationEngine
 from schema_gen.core.schema import SchemaRegistry
+from schema_gen.core.usr import FieldType, USRField, USRSchema
+from schema_gen.generators.zod_generator import ZodGenerator
 
 
 @Schema
@@ -129,3 +131,25 @@ class TestZodDictValueTypes:
         parent_ts = (out_dir / "zod" / "_dictlistnestedparent.ts").read_text()
         assert "z.record(z.array(_DictNestedSchema))" in parent_ts
         assert "import { _DictNestedSchema } from './_dictnested';" in parent_ts
+
+    def test_self_referential_dict_uses_lazy(self):
+        """dict[str, Self] -> z.record(z.lazy(() => SelfSchema))."""
+        schema = USRSchema(
+            name="TreeNode",
+            fields=[
+                USRField(name="value", type=FieldType.STRING, python_type=str),
+                USRField(
+                    name="children",
+                    type=FieldType.DICT,
+                    python_type=dict,
+                    inner_type=USRField(
+                        name="children_value",
+                        type=FieldType.NESTED_SCHEMA,
+                        python_type=str,
+                        nested_schema="TreeNode",
+                    ),
+                ),
+            ],
+        )
+        out = ZodGenerator().generate_file(schema)
+        assert "z.record(z.lazy(() => TreeNodeSchema))" in out
