@@ -155,6 +155,20 @@ class RustGenerator(BaseGenerator):
 
     index_filename = "lib.rs"
 
+    # Keys honored from ``Config.rust``. Any other key triggers a warning.
+    _SUPPORTED_RUST_CONFIG_KEYS: frozenset[str] = frozenset(
+        {
+            "json_schema_derive",
+            "deny_unknown_fields",
+            "rename_all",
+            "crate_name",
+            "crate_version",
+            "edition",
+            "extra_deps",
+            "emit_cargo_toml",
+        }
+    )
+
     def __init__(self, config: Any | None = None) -> None:  # type: ignore[override]
         super().__init__(config=config)
         # Enums deduplicated across all generated files into a shared
@@ -172,6 +186,28 @@ class RustGenerator(BaseGenerator):
         # _rust_type_for to detect direct self-references and wrap them
         # in Box<T> (Rust E0072: recursive type has infinite size).
         self._current_struct_name: str | None = None
+        # Validate Config.rust keys and warn on unknown ones.
+        self._warn_unknown_config_keys()
+
+    def _warn_unknown_config_keys(self) -> None:
+        """Log a warning for every key in ``Config.rust`` that is not
+        in ``_SUPPORTED_RUST_CONFIG_KEYS``."""
+        if self.config is None:
+            return
+        rust_cfg: dict[str, Any] = getattr(self.config, "rust", None) or {}
+        for key in rust_cfg:
+            if key not in self._SUPPORTED_RUST_CONFIG_KEYS:
+                logger.warning(
+                    "Unknown Config.rust key: %s (supported: %s)",
+                    key,
+                    sorted(self._SUPPORTED_RUST_CONFIG_KEYS),
+                )
+
+    def _rust_cfg(self) -> dict[str, Any]:
+        """Return the ``Config.rust`` dict, or empty dict if not set."""
+        if self.config is None:
+            return {}
+        return getattr(self.config, "rust", None) or {}
 
     @property
     def file_extension(self) -> str:
@@ -206,7 +242,7 @@ class RustGenerator(BaseGenerator):
         self._emit_common_module = bool(seen)
 
         if seen:
-            json_schema_derive = True
+            json_schema_derive = self._rust_cfg().get("json_schema_derive", True)
             lines = [
                 "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
                 "// Generator: schema-gen Rust Serde generator",
@@ -268,7 +304,11 @@ class RustGenerator(BaseGenerator):
     def generate_file(self, schema: USRSchema) -> str:
         """Emit a complete ``.rs`` file for a single schema."""
         custom_code = schema.custom_code.get("rust", {}) or {}
-        json_schema_derive = custom_code.get("json_schema_derive", True)
+        global_cfg = self._rust_cfg()
+        # Per-schema SerdeMeta overrides Config.rust global defaults.
+        json_schema_derive = custom_code.get(
+            "json_schema_derive", global_cfg.get("json_schema_derive", True)
+        )
 
         imports: set[str] = set()
         body_parts: list[str] = []
@@ -280,9 +320,10 @@ class RustGenerator(BaseGenerator):
 
         # Schema-level rename_all (from SerdeMeta) — if set and valid, it
         # applies uniformly across both the struct and every emitted enum
-        # in this schema. Enums fall back to per-variant `rename` attributes
-        # (preserving the Python enum value) when no rename_all is given.
-        schema_rename_all = custom_code.get("rename_all")
+        # in this schema. Falls back to Config.rust global default. Enums
+        # fall back to per-variant `rename` attributes (preserving the Python
+        # enum value) when no rename_all is given.
+        schema_rename_all = custom_code.get("rename_all", global_cfg.get("rename_all"))
         enum_rename_all = (
             schema_rename_all if schema_rename_all in _VALID_RENAME_ALL else None
         )
@@ -398,7 +439,10 @@ class RustGenerator(BaseGenerator):
         """Generate a single struct (base or variant) without headers."""
         imports: set[str] = set()
         custom_code = schema.custom_code.get("rust", {}) or {}
-        json_schema_derive = custom_code.get("json_schema_derive", True)
+        global_cfg = self._rust_cfg()
+        json_schema_derive = custom_code.get(
+            "json_schema_derive", global_cfg.get("json_schema_derive", True)
+        )
 
         if variant is None:
             return self._generate_struct(
@@ -508,7 +552,8 @@ class RustGenerator(BaseGenerator):
 
         lines.append(f"#[derive({', '.join(derives)})]")
 
-        deny_unknown = True
+        global_cfg = self._rust_cfg()
+        deny_unknown = global_cfg.get("deny_unknown_fields", True)
         if is_base and "deny_unknown_fields" in (custom_code or {}):
             deny_unknown = bool(custom_code["deny_unknown_fields"])
 
@@ -516,7 +561,12 @@ class RustGenerator(BaseGenerator):
         if deny_unknown:
             serde_struct_attrs.append("deny_unknown_fields")
 
-        rename_all = (custom_code or {}).get("rename_all") if is_base else None
+        # Per-schema override takes precedence; fall back to Config.rust.
+        rename_all = (
+            ((custom_code or {}).get("rename_all") or global_cfg.get("rename_all"))
+            if is_base
+            else None
+        )
         if rename_all is not None:
             if rename_all in _VALID_RENAME_ALL:
                 serde_struct_attrs.append(f'rename_all = "{rename_all}"')

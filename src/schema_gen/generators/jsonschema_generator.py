@@ -1,18 +1,55 @@
 """Generator to create JSON Schema from USR schemas"""
 
 import json
+import logging
 from enum import Enum
 from typing import Any
 
+from ..core.config import Config
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_SCHEMA_URI = "https://json-schema.org/draft/2020-12/schema"
+_DEFAULT_BASE_URL = "https://example.com/schemas"
+
+# Keys honored from ``Config.jsonschema``. Any other key triggers a warning.
+_SUPPORTED_JSONSCHEMA_CONFIG_KEYS: frozenset[str] = frozenset(
+    {"additional_properties", "schema_uri", "base_url"}
+)
 
 
 class JsonSchemaGenerator(BaseGenerator):
     """Generates JSON Schema definitions from USR schemas"""
 
-    def __init__(self, base_url: str = "https://example.com/schemas"):
-        self.base_url = base_url.rstrip("/")
+    def __init__(
+        self,
+        base_url: str = _DEFAULT_BASE_URL,
+        config: Config | None = None,
+    ) -> None:
+        super().__init__(config=config)
+        # Config.jsonschema.base_url overrides the constructor arg so the
+        # constructor arg becomes redundant when using Config.
+        js_cfg: dict[str, Any] = (
+            getattr(config, "jsonschema", None) or {} if config is not None else {}
+        )
+        cfg_base_url = js_cfg.get("base_url")
+        self.base_url = (cfg_base_url or base_url).rstrip("/")
+        # Warn on unknown Config.jsonschema keys.
+        for key in js_cfg:
+            if key not in _SUPPORTED_JSONSCHEMA_CONFIG_KEYS:
+                logger.warning(
+                    "Unknown Config.jsonschema key: %s (supported: %s)",
+                    key,
+                    sorted(_SUPPORTED_JSONSCHEMA_CONFIG_KEYS),
+                )
+
+    def _js_cfg(self) -> dict[str, Any]:
+        """Return the ``Config.jsonschema`` dict, or empty dict if not set."""
+        if self.config is None:
+            return {}
+        return getattr(self.config, "jsonschema", None) or {}
 
     @property
     def file_extension(self) -> str:
@@ -43,9 +80,11 @@ class JsonSchemaGenerator(BaseGenerator):
             schema_title = self._variant_to_schema_title(schema.name, variant)
 
         # Build JSON Schema object
+        js_cfg = self._js_cfg()
+        schema_uri = js_cfg.get("schema_uri", _DEFAULT_SCHEMA_URI)
         base_url = self._get_base_url(schema)
-        json_schema = {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
+        json_schema: dict[str, Any] = {
+            "$schema": schema_uri,
             "$id": f"{base_url}/{schema_title.lower()}.json",
             "title": schema_title,
             "type": "object",
@@ -68,6 +107,10 @@ class JsonSchemaGenerator(BaseGenerator):
         if not json_schema["required"]:
             del json_schema["required"]
 
+        # Emit additionalProperties if explicitly configured.
+        if "additional_properties" in js_cfg:
+            json_schema["additionalProperties"] = js_cfg["additional_properties"]
+
         return json.dumps(json_schema, indent=2)
 
     def generate_file(self, schema: USRSchema) -> str:
@@ -80,9 +123,11 @@ class JsonSchemaGenerator(BaseGenerator):
             Complete JSON Schema file content
         """
         # For JSON Schema, we'll create a definitions-based schema with all variants
+        js_cfg = self._js_cfg()
+        schema_uri = js_cfg.get("schema_uri", _DEFAULT_SCHEMA_URI)
         base_url = self._get_base_url(schema)
-        json_schema = {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
+        json_schema: dict[str, Any] = {
+            "$schema": schema_uri,
             "$id": f"{base_url}/{schema.name.lower()}.json",
             "title": f"{schema.name} Schema Collection",
             "description": f"Auto-generated JSON Schema for {schema.name} and its variants",
@@ -120,7 +165,7 @@ class JsonSchemaGenerator(BaseGenerator):
         self, title: str, description: str, fields: list[USRField]
     ) -> dict[str, Any]:
         """Generate a schema definition object"""
-        schema_def = {
+        schema_def: dict[str, Any] = {
             "type": "object",
             "title": title,
             "properties": {},
@@ -140,6 +185,11 @@ class JsonSchemaGenerator(BaseGenerator):
         # Remove empty required array
         if not schema_def["required"]:
             del schema_def["required"]
+
+        # Emit additionalProperties if explicitly configured.
+        js_cfg = self._js_cfg()
+        if "additional_properties" in js_cfg:
+            schema_def["additionalProperties"] = js_cfg["additional_properties"]
 
         return schema_def
 
