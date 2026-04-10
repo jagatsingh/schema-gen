@@ -29,6 +29,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=7)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')" >> $GITHUB_ENV
+
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Full history for version detection
@@ -38,12 +41,13 @@ jobs:
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python
       run: uv python install 3.12
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync --frozen --all-extras --dev
 
     - name: Get version
       id: version

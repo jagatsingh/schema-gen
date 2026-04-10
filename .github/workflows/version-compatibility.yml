@@ -23,6 +23,9 @@ jobs:
       fail-fast: false
 
     steps:
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=7)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')" >> $GITHUB_ENV
+
     - uses: actions/checkout@v4
 
     - name: Install uv
@@ -30,12 +33,13 @@ jobs:
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync --frozen --all-extras --dev --python ${{ matrix.python-version }}
 
     - name: Test all generators compatibility
       run: |

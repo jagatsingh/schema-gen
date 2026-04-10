@@ -11,6 +11,9 @@ jobs:
   check-generated-schemas:
     runs-on: ubuntu-latest
     steps:
+    - name: Set 7-day dependency delay
+      run: echo "UV_EXCLUDE_NEWER=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=7)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')" >> $GITHUB_ENV
+
     - uses: actions/checkout@v4
       with:
         fetch-depth: 2  # Need to compare with previous commit
@@ -20,12 +23,13 @@ jobs:
       with:
         version: "latest"
         enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python
       run: uv python install 3.12
 
     - name: Install dependencies
-      run: uv sync
+      run: uv sync --frozen
 
     - name: Check if schemas directory exists
       id: check_schemas
