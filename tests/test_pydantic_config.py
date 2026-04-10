@@ -279,3 +279,61 @@ class TestPydanticEnumMeta:
         assert "class _PyPlainColor(Enum):" in out
         # No injected methods
         assert "def is_terminal" not in out
+
+
+# ------------------------------------------------------------------
+# Pydantic discriminated union support (Fix #6)
+# ------------------------------------------------------------------
+
+from typing import Annotated, Literal  # noqa: E402
+
+
+@Schema
+class _PydCeLeg:
+    option_type: Literal["CE"]
+    strike: float
+
+
+@Schema
+class _PydPeLeg:
+    option_type: Literal["PE"]
+    strike: float
+
+
+@Schema
+class _PydDiscOrder:
+    leg: Annotated[_PydCeLeg | _PydPeLeg, Field(discriminator="option_type")]
+
+
+class TestPydanticDiscriminatedUnion:
+    """Pydantic generator must emit Annotated[Union[...], Field(discriminator=...)]
+    for discriminated union fields."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+        for cls in (_PydCeLeg, _PydPeLeg, _PydDiscOrder):
+            SchemaRegistry.register(cls)
+
+    def test_discriminated_union_type_annotation(self):
+        from schema_gen.generators.pydantic_generator import PydanticGenerator
+
+        usr = SchemaParser().parse_schema(_PydDiscOrder)
+        out = PydanticGenerator().generate_file(usr)
+        assert (
+            'Annotated[Union["_PydCeLeg", "_PydPeLeg"], Field(discriminator="option_type")]'
+            in out
+        )
+        assert "from typing import" in out
+        assert "Annotated" in out
+
+    def test_discriminated_union_imports(self):
+        from schema_gen.generators.pydantic_generator import PydanticGenerator
+
+        usr = SchemaParser().parse_schema(_PydDiscOrder)
+        out = PydanticGenerator().generate_file(usr)
+        # Must import Annotated, Union, and Field
+        lines = out.splitlines()
+        typing_line = [ln for ln in lines if ln.startswith("from typing import")]
+        assert typing_line, "Missing typing import"
+        assert "Annotated" in typing_line[0]
+        assert "Union" in typing_line[0]
