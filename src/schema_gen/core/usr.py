@@ -357,6 +357,10 @@ class TypeMapper:
             base_type = typing.get_args(python_type)[0]
             return cls.python_type_to_usr(base_type)
 
+        # Handle typing.Any as JSON (catch-all value)
+        if python_type is Any:
+            return FieldType.JSON
+
         # Handle basic types
         if python_type in cls._type_mapping:
             return cls._type_mapping[python_type]
@@ -487,6 +491,14 @@ class TypeMapper:
                         cls.create_usr_field_from_python(f"{name}_{i}", arg, None)
                         for i, arg in enumerate(args)
                     ]
+
+        elif origin is dict:
+            args = typing.get_args(python_type)
+            if args and len(args) == 2:
+                # Store the value type as inner_type (e.g. dict[str, int] -> int)
+                inner_type = cls.create_usr_field_from_python(
+                    f"{name}_value", args[1], None
+                )
 
         # Get field type from the actual type (not Optional wrapper)
         field_type = cls.python_type_to_usr(actual_type)
