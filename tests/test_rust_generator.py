@@ -1117,3 +1117,96 @@ class TestRustDiscriminatedUnion:
             out = RustGenerator().generate_file(usr)
         assert "pub leg: serde_json::Value," in out
         assert any("union field 'leg'" in rec.message for rec in caplog.records)
+
+
+# ------------------------------------------------------------------
+# Fix #4: strict discriminator resolution errors
+# ------------------------------------------------------------------
+
+
+# Module-level fixtures for Fix #4 discriminator error tests.
+# @Schema classes must be at module scope for forward-reference resolution.
+
+
+@Schema
+class _DiscErrAVariant:
+    kind: Literal["A"]
+    x: int
+
+
+@Schema
+class _DiscErrBVariant:
+    kind: Literal["B"]
+    x: int
+
+
+@Schema
+class _BadDiscHolder:
+    leg: Annotated[_DiscErrAVariant | _DiscErrBVariant, Field(discriminator="typ")]
+
+
+@Schema
+class _StrTagVariant:
+    kind: str
+    x: int
+
+
+@Schema
+class _NonLiteralHolder:
+    leg: Annotated[_StrTagVariant | _DiscErrBVariant, Field(discriminator="kind")]
+
+
+@Schema
+class _DiscV1:
+    tag: Literal["v1"]
+    data: str
+
+
+@Schema
+class _DiscV2:
+    tag: Literal["v2"]
+    data: int
+
+
+@Schema
+class _GoodDiscHolder:
+    item: Annotated[_DiscV1 | _DiscV2, Field(discriminator="tag")]
+
+
+class TestDiscriminatorErrors:
+    """Discriminator resolution errors must raise ValueError, not silently
+    fall back to plain Union / serde_json::Value."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+        for cls in (
+            _DiscErrAVariant,
+            _DiscErrBVariant,
+            _BadDiscHolder,
+            _StrTagVariant,
+            _NonLiteralHolder,
+            _DiscV1,
+            _DiscV2,
+            _GoodDiscHolder,
+        ):
+            SchemaRegistry.register(cls)
+
+    def test_bad_discriminator_field_name_raises(self):
+        """Typo in discriminator field name must raise, not silently degrade."""
+        import pytest
+
+        with pytest.raises(ValueError, match="has no discriminator field 'typ'"):
+            SchemaParser().parse_schema(_BadDiscHolder)
+
+    def test_non_literal_discriminator_raises(self):
+        """Discriminator field must be Literal[...], not plain str."""
+        import pytest
+
+        with pytest.raises(ValueError, match="must be Literal"):
+            SchemaParser().parse_schema(_NonLiteralHolder)
+
+    def test_correct_discriminator_still_works(self):
+        """Regression: correct discriminated unions must still parse fine."""
+        usr = SchemaParser().parse_schema(_GoodDiscHolder)
+        assert usr.fields[0].discriminator == "tag"
+        assert usr.fields[0].union_tag_values == ["v1", "v2"]
