@@ -268,6 +268,11 @@ class PydanticGenerator(BaseGenerator):
                 field_params.append(f'default="{field.default}"')
             else:
                 field_params.append(f"default={field.default}")
+        elif field.default_factory is not None:
+            factory_name = getattr(
+                field.default_factory, "__name__", repr(field.default_factory)
+            )
+            field_params.append(f"default_factory={factory_name}")
         elif field.optional and not field_params:
             field_params.append("default=None")
         elif not field.optional and not field_params:
