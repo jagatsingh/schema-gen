@@ -85,6 +85,10 @@ class ZodGenerator(BaseGenerator):
         types are re-exported via ``export type`` so that projects using
         ``verbatimModuleSyntax`` don't trip TS1205 on the type-only names
         (POC finding C5).
+
+        Each name is exported at most once (from the first module that
+        declares it) to avoid ``Duplicate identifier`` TS errors when
+        multiple schema files reference the same enum.
         """
         lines = [
             "/**",
@@ -94,25 +98,50 @@ class ZodGenerator(BaseGenerator):
             "",
         ]
 
+        # Track names already emitted so shared enums are only exported once.
+        exported_value_names: set[str] = set()
+        exported_type_names: set[str] = set()
+
         for schema in schemas:
             module = f"./{schema.name.lower()}"
             # Collect runtime (value) names — schemas themselves.
-            value_names = [f"{e.name}Schema" for e in schema.enums]
-            value_names.append(f"{schema.name}Schema")
-            value_names.extend(
-                f"{self._variant_to_schema_name(schema.name, v)}Schema"
-                for v in schema.variants
-            )
+            value_names: list[str] = []
+            for e in schema.enums:
+                name = f"{e.name}Schema"
+                if name not in exported_value_names:
+                    value_names.append(name)
+                    exported_value_names.add(name)
+            schema_val = f"{schema.name}Schema"
+            if schema_val not in exported_value_names:
+                value_names.append(schema_val)
+                exported_value_names.add(schema_val)
+            for v in schema.variants:
+                variant_val = f"{self._variant_to_schema_name(schema.name, v)}Schema"
+                if variant_val not in exported_value_names:
+                    value_names.append(variant_val)
+                    exported_value_names.add(variant_val)
 
             # Collect type-only names — inferred TS types.
-            type_names = [e.name for e in schema.enums]
-            type_names.append(schema.name)
-            type_names.extend(
-                self._variant_to_schema_name(schema.name, v) for v in schema.variants
-            )
+            type_names: list[str] = []
+            for e in schema.enums:
+                if e.name not in exported_type_names:
+                    type_names.append(e.name)
+                    exported_type_names.add(e.name)
+            if schema.name not in exported_type_names:
+                type_names.append(schema.name)
+                exported_type_names.add(schema.name)
+            for v in schema.variants:
+                variant_type = self._variant_to_schema_name(schema.name, v)
+                if variant_type not in exported_type_names:
+                    type_names.append(variant_type)
+                    exported_type_names.add(variant_type)
 
-            lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
-            lines.append(f"export type {{ {', '.join(type_names)} }} from '{module}';")
+            if value_names:
+                lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
+            if type_names:
+                lines.append(
+                    f"export type {{ {', '.join(type_names)} }} from '{module}';"
+                )
 
         return "\n".join(lines) + "\n"
 
