@@ -86,7 +86,8 @@ schemars = "0.8"
 | `time`                       | `chrono::NaiveTime`             |
 | `UUID`                       | `uuid::Uuid`                    |
 | `Decimal`                    | `rust_decimal::Decimal`         |
-| `dict[str, Any]`             | `HashMap<String, serde_json::Value>` |
+| `dict[str, Any]`             | `serde_json::Value`             |
+| `dict[str, T]`               | `HashMap<String, T>`            |
 | `list[T]` / `set[T]`         | `Vec<T>`                        |
 | `tuple[A, B, ...]`           | `(A, B, ...)`                   |
 | `Optional[T]`                | `Option<T>` (+ `skip_serializing_if`) |
