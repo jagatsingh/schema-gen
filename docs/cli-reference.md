@@ -162,7 +162,7 @@ schema-gen diff [OPTIONS]
   - `.git#commit=abc123` — compare against a specific commit
   - `/path/to/snapshot/` — compare against a directory of JSON Schema files
 - `--level [WIRE|WIRE_JSON|SOURCE]` - Strictness level (default: `WIRE_JSON`)
-- `--format [text|json]` - Output format (default: `text`)
+- `--format [text|json|github]` - Output format (default: `text`)
 - `--ignore TEXT` - Suppress a specific rule (repeatable)
 - `-c, --config TEXT` - Path to config file (default: `.schema-gen.config.py`)
 
@@ -180,6 +180,9 @@ schema-gen diff --against .git#tag=v1.0.0 --level WIRE
 
 # JSON output for CI parsing
 schema-gen diff --against .git#branch=main --format json
+
+# GitHub Actions annotations (inline PR comments)
+schema-gen diff --against .git#branch=main --format github
 
 # Suppress a known intentional break
 schema-gen diff --against .git#branch=main --ignore FIELD_NO_DELETE

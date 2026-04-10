@@ -8,7 +8,7 @@ from click.testing import CliRunner
 
 from schema_gen.cli.main import main
 from schema_gen.diff.comparator import compare_schemas
-from schema_gen.diff.formatter import format_json, format_text
+from schema_gen.diff.formatter import format_github, format_json, format_text
 from schema_gen.diff.rules import RuleId, StrictnessLevel, Violation
 
 # ---------------------------------------------------------------------------
@@ -494,6 +494,47 @@ class TestFormatJson:
         assert result[0]["field"] == "age"
 
 
+class TestFormatGithub:
+    def test_empty(self):
+        assert format_github([]) == ""
+
+    def test_single_violation(self):
+        v = Violation(
+            rule_id=RuleId.FIELD_NO_DELETE,
+            schema_name="User",
+            field_name="age",
+            message="Field 'age' was deleted from 'User'",
+            level=StrictnessLevel.WIRE,
+        )
+        output = format_github([v])
+        assert output.startswith("::error ")
+        assert "FIELD_NO_DELETE" in output
+        assert "User.age" in output
+        assert "Field 'age' was deleted from 'User'" in output
+
+    def test_multiple_violations(self):
+        vs = [
+            Violation(
+                rule_id=RuleId.FIELD_NO_DELETE,
+                schema_name="User",
+                field_name="age",
+                message="deleted",
+                level=StrictnessLevel.WIRE,
+            ),
+            Violation(
+                rule_id=RuleId.TYPE_NO_DELETE,
+                schema_name="Order",
+                field_name=None,
+                message="removed",
+                level=StrictnessLevel.WIRE,
+            ),
+        ]
+        output = format_github(vs)
+        lines = output.strip().splitlines()
+        assert len(lines) == 2
+        assert all(line.startswith("::error ") for line in lines)
+
+
 # ---------------------------------------------------------------------------
 # CLI tests
 # ---------------------------------------------------------------------------
@@ -558,6 +599,25 @@ class TestDiffCLI:
         parsed = json.loads(result.output)
         assert len(parsed) >= 1
         assert parsed[0]["rule"] == "FIELD_NO_DELETE"
+
+    @patch("schema_gen.cli.main.create_generation_engine")
+    @patch("schema_gen.cli.main.load_current")
+    @patch("schema_gen.cli.main.load_baseline")
+    def test_diff_github_format(self, mock_baseline, mock_current, mock_engine):
+        mock_engine.return_value.config.output_dir = "generated/"
+        old_schema = _schema_file(
+            {"User": _type_def(properties={"name": {"type": "string"}})}
+        )
+        new_schema = _schema_file({"User": _type_def(properties={})})
+        mock_baseline.return_value = {"user.json": old_schema}
+        mock_current.return_value = {"user.json": new_schema}
+
+        result = self.runner.invoke(
+            main, ["diff", "--against", ".git#branch=main", "--format", "github"]
+        )
+        assert result.exit_code == 1
+        assert "::error " in result.output
+        assert "FIELD_NO_DELETE" in result.output
 
     @patch("schema_gen.cli.main.create_generation_engine")
     @patch("schema_gen.cli.main.load_current")

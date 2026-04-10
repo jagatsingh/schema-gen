@@ -39,3 +39,20 @@ def format_json(violations: list[Violation]) -> str:
         for v in violations
     ]
     return json.dumps(items, indent=2)
+
+
+def format_github(violations: list[Violation]) -> str:
+    """Format violations as GitHub Actions workflow commands.
+
+    Emits ``::error`` annotations that render as inline PR comments
+    when the workflow runs on a pull request.
+    """
+    lines: list[str] = []
+    for v in violations:
+        location = v.schema_name
+        if v.field_name:
+            location = f"{v.schema_name}.{v.field_name}"
+        # GitHub Actions workflow command format:
+        # ::error title=RULE::message
+        lines.append(f"::error title={v.rule_id.value} ({location})::{v.message}")
+    return "\n".join(lines)
