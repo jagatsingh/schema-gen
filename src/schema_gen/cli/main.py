@@ -9,6 +9,10 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from ..core.generator import create_generation_engine
+from ..diff.baseline import BaselineError, load_baseline, load_current
+from ..diff.comparator import compare_schemas
+from ..diff.formatter import format_json, format_text
+from ..diff.rules import StrictnessLevel
 
 # Pattern to match timestamp lines across all generators
 _TIMESTAMP_RE = re.compile(r"^.*Generated at:.*$", re.MULTILINE)
@@ -515,6 +519,87 @@ def install_hooks(install_pre_commit):
         except FileNotFoundError:
             click.echo("❌ pip not found")
             click.echo("💡 Install pre-commit manually and run: pre-commit install")
+
+
+@main.command()
+@click.option(
+    "--against",
+    required=True,
+    help=(
+        "Baseline reference: .git#branch=main, .git#tag=v1.0.0, "
+        ".git#commit=abc123, or /path/to/snapshot/"
+    ),
+)
+@click.option(
+    "--level",
+    type=click.Choice(["WIRE", "WIRE_JSON", "SOURCE"], case_sensitive=False),
+    default="WIRE_JSON",
+    help="Strictness level [default: WIRE_JSON]",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help="Output format [default: text]",
+)
+@click.option(
+    "--ignore",
+    "ignore_rules",
+    multiple=True,
+    help="Suppress a specific rule (repeatable)",
+)
+@click.option(
+    "--config",
+    "-c",
+    "config_path",
+    help="Path to config file",
+    default=".schema-gen.config.py",
+)
+def diff(against, level, fmt, ignore_rules, config_path):
+    """Compare schemas against a baseline to detect breaking changes.
+
+    Requires 'jsonschema' in your configured targets with generated output
+    committed to version control.
+
+    \b
+    EXIT CODES:
+      0   No breaking changes
+      1   Breaking changes detected
+      2   Tool error
+    """
+    try:
+        engine = create_generation_engine(config_path)
+        output_dir = engine.config.output_dir
+
+        strictness = StrictnessLevel(level.upper())
+        old_schemas = load_baseline(against, output_dir)
+        new_schemas = load_current(output_dir)
+
+        violations = compare_schemas(
+            old_schemas,
+            new_schemas,
+            level=strictness,
+            ignore=list(ignore_rules),
+        )
+
+        if violations:
+            if fmt == "json":
+                click.echo(format_json(violations))
+            else:
+                click.echo(format_text(violations))
+            raise SystemExit(1)
+        else:
+            click.echo("No breaking changes detected.")
+
+    except BaselineError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(2) from exc
+    except SystemExit:
+        raise
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(2) from exc
 
 
 if __name__ == "__main__":

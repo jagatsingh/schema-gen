@@ -147,6 +147,77 @@ schema-gen install-hooks --no-install-pre-commit
 - Installs the hooks in your git repository
 - Sets up automatic generation on schema changes
 
+### `schema-gen diff`
+
+Detect breaking changes by comparing current JSON Schema output against a baseline (git branch, tag, commit, or directory snapshot). Inspired by [buf breaking](https://buf.build/docs/breaking/rules/).
+
+```bash
+schema-gen diff [OPTIONS]
+```
+
+**Options:**
+- `--against TEXT` - **(required)** Baseline reference:
+  - `.git#branch=main` — compare against a git branch
+  - `.git#tag=v1.0.0` — compare against a git tag
+  - `.git#commit=abc123` — compare against a specific commit
+  - `/path/to/snapshot/` — compare against a directory of JSON Schema files
+- `--level [WIRE|WIRE_JSON|SOURCE]` - Strictness level (default: `WIRE_JSON`)
+- `--format [text|json]` - Output format (default: `text`)
+- `--ignore TEXT` - Suppress a specific rule (repeatable)
+- `-c, --config TEXT` - Path to config file (default: `.schema-gen.config.py`)
+
+**Prerequisites:**
+- `jsonschema` must be in your configured `targets`
+- JSON Schema output must be committed to version control
+
+**Examples:**
+```bash
+# Compare against main branch
+schema-gen diff --against .git#branch=main
+
+# Use WIRE level (serialization-breaking only)
+schema-gen diff --against .git#tag=v1.0.0 --level WIRE
+
+# JSON output for CI parsing
+schema-gen diff --against .git#branch=main --format json
+
+# Suppress a known intentional break
+schema-gen diff --against .git#branch=main --ignore FIELD_NO_DELETE
+```
+
+**Strictness levels:**
+
+| Level | What it checks |
+|-------|---------------|
+| `WIRE` | Serialization-breaking: deleted types/fields, type changes, narrowed types, new required fields, removed enum variants |
+| `WIRE_JSON` | WIRE + JSON key identity: field renames, enum value name changes |
+| `SOURCE` | Reserved for future use (field ordering, namespace changes) |
+
+**Rules:**
+
+| Rule | Level | Description |
+|------|-------|-------------|
+| `TYPE_NO_DELETE` | WIRE | Schema type was removed |
+| `FIELD_NO_DELETE` | WIRE | Field was removed from a schema |
+| `FIELD_SAME_TYPE` | WIRE | Field type changed incompatibly |
+| `FIELD_TYPE_NARROWED` | WIRE | Numeric type narrowed (e.g. number to integer) |
+| `FIELD_REQUIRED_ADDED` | WIRE | New required field added |
+| `ENUM_VALUE_NO_DELETE` | WIRE | Enum variant was removed |
+| `FIELD_SAME_NAME` | WIRE_JSON | Field appears to have been renamed |
+| `ENUM_VALUE_SAME_NAME` | WIRE_JSON | Enum value changed at same position |
+
+**Always safe (never flagged):**
+- Adding a new optional field
+- Adding a new enum variant
+- Adding a new schema type
+- Adding a new schema file
+- Widening a numeric type (integer to number)
+
+**Exit codes:**
+- `0` — No breaking changes
+- `1` — Breaking changes detected
+- `2` — Tool error (e.g. baseline not found)
+
 ## Configuration Priority
 
 Schema Gen uses the following priority order for configuration:
@@ -210,6 +281,18 @@ git diff --exit-code generated/ || {
     echo "Generated models are out of date"
     exit 1
 }
+```
+
+### Breaking Change Detection
+```bash
+# Check for breaking schema changes on every PR
+schema-gen diff --against .git#branch=main
+
+# Use in CI with JSON output
+schema-gen diff --against .git#branch=main --format json
+
+# Allow a known intentional break
+schema-gen diff --against .git#branch=main --ignore FIELD_NO_DELETE
 ```
 
 ### Multi-Environment Setup
