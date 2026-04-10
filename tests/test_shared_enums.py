@@ -120,6 +120,49 @@ class TestSharedEnums:
         # Only one class definition
         assert content.count("class OptionType") == 1
 
+    def test_name_collision_different_values_raises(self):
+        """Same enum name with different members must raise ValueError."""
+        import pytest
+
+        from schema_gen.core.usr import FieldType, USREnum, USRField, USRSchema
+
+        enum_a = USREnum(
+            name="Status",
+            values=[("OPEN", "open"), ("CLOSED", "closed")],
+        )
+        enum_b = USREnum(
+            name="Status",
+            values=[("ACTIVE", "active"), ("INACTIVE", "inactive")],
+        )
+        schema_a = USRSchema(
+            name="Order",
+            fields=[
+                USRField(
+                    name="status",
+                    type=FieldType.ENUM,
+                    python_type=str,
+                    enum_name="Status",
+                )
+            ],
+            enums=[enum_a],
+        )
+        schema_b = USRSchema(
+            name="Position",
+            fields=[
+                USRField(
+                    name="status",
+                    type=FieldType.ENUM,
+                    python_type=str,
+                    enum_name="Status",
+                )
+            ],
+            enums=[enum_b],
+        )
+
+        gen = PydanticGenerator()
+        with pytest.raises(ValueError, match="Enum name collision"):
+            gen.get_extra_files([schema_a, schema_b], Path("/tmp/out"))
+
     def test_no_enums_no_extra_file(self):
         """Schemas with no enums should not produce _enums.py."""
 
