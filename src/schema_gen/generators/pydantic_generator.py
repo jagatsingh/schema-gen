@@ -404,8 +404,15 @@ class PydanticGenerator(BaseGenerator):
     def _get_pydantic_type(self, field: USRField, imports: set) -> str:
         """Get the Pydantic type annotation for a field"""
 
-        # For optional fields, get the base type from inner_type first
-        if field.optional and field.inner_type:
+        # For optional scalar fields (not containers), get the base type
+        # from inner_type. Container types (LIST, SET, DICT) handle their
+        # own inner_type in the branches below and wrap with Optional at
+        # the end.
+        if (
+            field.optional
+            and field.inner_type
+            and field.type not in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET, FieldType.DICT)
+        ):
             inner_type = self._get_pydantic_type(field.inner_type, imports)
             imports.add("typing")
             return f"Optional[{inner_type}]"
@@ -512,6 +519,12 @@ class PydanticGenerator(BaseGenerator):
         else:
             imports.add("typing")
             base_type = "Any"
+
+        # Wrap container types with Optional if the field is optional.
+        # Scalar optionals are handled at the top of this method.
+        if field.optional and base_type:
+            imports.add("typing")
+            return f"Optional[{base_type}]"
 
         return base_type
 
