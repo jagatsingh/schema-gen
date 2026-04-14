@@ -26,6 +26,24 @@ _SUPPORTED_PYDANTIC_CONFIG_KEYS: tuple[str, ...] = (
 )
 
 
+def _format_class_docstring(docstring: str, indent: str = "    ") -> list[str]:
+    '''Render ``docstring`` as the body lines of a Python class docstring.
+
+    Collapses to a single-line """...""" form when the source is a
+    single line free of embedded triple-quotes; otherwise emits the
+    multi-line block form. Shared between ``_enums.py`` emission and the
+    single-file ``_generate_complete_file`` path so the two can't drift.
+    '''
+    doc_lines = docstring.splitlines()
+    if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
+        return [f'{indent}"""{doc_lines[0]}"""']
+    out = [f'{indent}"""']
+    for doc_line in doc_lines:
+        out.append(f"{indent}{doc_line}" if doc_line else "")
+    out.append(f'{indent}"""')
+    return out
+
+
 class PydanticGenerator(BaseGenerator):
     """Generates Pydantic models from USR schemas"""
 
@@ -131,14 +149,7 @@ class PydanticGenerator(BaseGenerator):
             else:
                 lines.append(f"class {enum_def.name}(Enum):")
             if enum_def.docstring:
-                doc_lines = enum_def.docstring.splitlines()
-                if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
-                    lines.append(f'    """{doc_lines[0]}"""')
-                else:
-                    lines.append('    """')
-                    for doc_line in doc_lines:
-                        lines.append(f"    {doc_line}" if doc_line else "")
-                    lines.append('    """')
+                lines.extend(_format_class_docstring(enum_def.docstring))
             for member_name, member_value in enum_def.values:
                 if isinstance(member_value, str):
                     lines.append(f'    {member_name} = "{member_value}"')
@@ -724,14 +735,7 @@ class PydanticGenerator(BaseGenerator):
             else:
                 lines.append(f"class {enum_def.name}(Enum):")
             if enum_def.docstring:
-                doc_lines = enum_def.docstring.splitlines()
-                if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
-                    lines.append(f'    """{doc_lines[0]}"""')
-                else:
-                    lines.append('    """')
-                    for doc_line in doc_lines:
-                        lines.append(f"    {doc_line}" if doc_line else "")
-                    lines.append('    """')
+                lines.extend(_format_class_docstring(enum_def.docstring))
             for member_name, member_value in enum_def.values:
                 if isinstance(member_value, str):
                     lines.append(f'    {member_name} = "{member_value}"')
