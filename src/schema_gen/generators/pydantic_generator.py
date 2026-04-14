@@ -1,5 +1,6 @@
 """Generator to create Pydantic models from USR schemas"""
 
+import json
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -129,6 +130,15 @@ class PydanticGenerator(BaseGenerator):
                 lines.append(f"class {enum_def.name}({mixin_name}, Enum):")
             else:
                 lines.append(f"class {enum_def.name}(Enum):")
+            if enum_def.docstring:
+                doc_lines = enum_def.docstring.splitlines()
+                if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
+                    lines.append(f'    """{doc_lines[0]}"""')
+                else:
+                    lines.append('    """')
+                    for doc_line in doc_lines:
+                        lines.append(f"    {doc_line}" if doc_line else "")
+                    lines.append('    """')
             for member_name, member_value in enum_def.values:
                 if isinstance(member_value, str):
                     lines.append(f'    {member_name} = "{member_value}"')
@@ -380,15 +390,17 @@ class PydanticGenerator(BaseGenerator):
         if field.regex_pattern:
             field_params.append(f'pattern=r"{field.regex_pattern}"')
 
-        # Description
+        # Description. Use json.dumps so embedded quotes, backslashes, and
+        # newlines are escaped safely (#70) while keeping the outer form
+        # as a double-quoted string for tooling consistency.
         if field.description:
-            field_params.append(f'description="{field.description}"')
+            field_params.append(f"description={json.dumps(field.description)}")
 
         # Pydantic-specific configurations
         pydantic_config = field.target_config.get("pydantic", {})
         for key, value in pydantic_config.items():
             if isinstance(value, str):
-                field_params.append(f'{key}="{value}"')
+                field_params.append(f"{key}={json.dumps(value)}")
             else:
                 field_params.append(f"{key}={value}")
 
@@ -711,6 +723,15 @@ class PydanticGenerator(BaseGenerator):
                 lines.append(f"class {enum_def.name}({mixin_name}, Enum):")
             else:
                 lines.append(f"class {enum_def.name}(Enum):")
+            if enum_def.docstring:
+                doc_lines = enum_def.docstring.splitlines()
+                if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
+                    lines.append(f'    """{doc_lines[0]}"""')
+                else:
+                    lines.append('    """')
+                    for doc_line in doc_lines:
+                        lines.append(f"    {doc_line}" if doc_line else "")
+                    lines.append('    """')
             for member_name, member_value in enum_def.values:
                 if isinstance(member_value, str):
                     lines.append(f'    {member_name} = "{member_value}"')

@@ -563,6 +563,17 @@ class ZodGenerator(BaseGenerator):
 
         # Add enum definitions before schemas
         for enum_def in enums:
+            if enum_def.docstring:
+                doc_lines = enum_def.docstring.splitlines()
+                # Close any */ sequences that would end the JSDoc block early.
+                safe_lines = [line.replace("*/", "*\\/") for line in doc_lines]
+                if len(safe_lines) == 1:
+                    lines.append(f"/** {safe_lines[0]} */")
+                else:
+                    lines.append("/**")
+                    for doc_line in safe_lines:
+                        lines.append(f" * {doc_line}" if doc_line else " *")
+                    lines.append(" */")
             values = ", ".join(f'"{v}"' for _name, v in enum_def.values)
             lines.append(f"export const {enum_def.name}Schema = z.enum([{values}]);")
             lines.append(

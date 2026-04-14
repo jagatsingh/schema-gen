@@ -89,6 +89,12 @@ class USREnum:
     # Per-target configuration overrides (mirrors USRSchema.target_config).
     target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    # Class-level docstring from the source Enum. Propagated verbatim to
+    # generated Pydantic enums, as ``///`` doc comments on Rust enums, and
+    # as JSDoc blocks / ``description`` fields on Zod and JSON Schema
+    # emissions so downstream maintainers see the enum's intent.
+    docstring: str | None = None
+
 
 @dataclass
 class USRField:

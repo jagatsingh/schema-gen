@@ -804,7 +804,14 @@ class RustGenerator(BaseGenerator):
             if extra not in derives:
                 derives.append(extra)
 
-        lines = [f"#[derive({', '.join(derives)})]"]
+        lines: list[str] = []
+        if enum.docstring:
+            for doc_line in enum.docstring.splitlines():
+                if doc_line.strip():
+                    lines.append(f"/// {doc_line.strip()}")
+                else:
+                    lines.append("///")
+        lines.append(f"#[derive({', '.join(derives)})]")
 
         # Per-variant `#[serde(rename = "<value>")]` using the actual enum
         # value from the IR is the correct default: it's the only way to

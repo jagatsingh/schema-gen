@@ -155,7 +155,9 @@ class JsonSchemaGenerator(BaseGenerator):
             # Add enum definitions to $defs
             for enum_def in getattr(schema, "enums", []):
                 enum_values = [v for _name, v in enum_def.values]
-                enum_schema = {"type": "string", "enum": enum_values}
+                enum_schema: dict[str, Any] = {"type": "string", "enum": enum_values}
+                if enum_def.docstring:
+                    enum_schema["description"] = enum_def.docstring
                 json_schema["$defs"][enum_def.name] = enum_schema
 
             # Add base schema
