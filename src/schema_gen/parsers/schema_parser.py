@@ -45,11 +45,19 @@ def _build_usr_enum(enum_cls: type) -> USREnum:
         # enum itself (or one of its bases that is also an Enum subclass).
         if meta is not None and isinstance(meta, type):
             custom_code[target] = _extract_meta_attributes(meta)
+    # Only read __doc__ from the enum's own __dict__ to avoid picking up
+    # Python's auto-generated "An enumeration." fallback that older
+    # versions of the stdlib ``Enum`` metaclass install on subclasses.
+    raw_doc = enum_cls.__dict__.get("__doc__")
+    docstring = (
+        raw_doc.strip() if isinstance(raw_doc, str) and raw_doc.strip() else None
+    )
     return USREnum(
         name=enum_cls.__name__,
         values=[(e.name, e.value) for e in enum_cls],
         value_type=_detect_enum_value_type(enum_cls),
         custom_code=custom_code,
+        docstring=docstring,
     )
 
 
