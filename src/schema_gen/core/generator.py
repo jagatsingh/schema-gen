@@ -61,8 +61,10 @@ class SchemaGenerationEngine:
         if not schema_dir.exists():
             raise FileNotFoundError(f"Schema directory not found: {schema_dir}")
 
-        # Find all Python files in the schema directory
-        schema_files = list(schema_dir.rglob("*.py"))
+        # Find all Python files in the schema directory.
+        # Sort for deterministic registration order — rglob yields
+        # filesystem-dependent order, which leaks into generated output.
+        schema_files = sorted(schema_dir.rglob("*.py"))
 
         if not schema_files:
             raise ValueError(f"No Python files found in {schema_dir}")
