@@ -154,7 +154,9 @@ class SchemaParser:
         for usr_field in usr_fields:
             _collect_enum(usr_field)
 
-        enums = list(seen_enums.values())
+        # Sort by name so generated output is deterministic across
+        # runs/environments regardless of field declaration order.
+        enums = sorted(seen_enums.values(), key=lambda e: e.name)
 
         # Extract variants if defined
         variants = {}
@@ -280,6 +282,9 @@ class SchemaParser:
         if all_errors:
             raise ValueError("Schema validation failed:\n" + "\n".join(all_errors))
 
+        # Sort by schema name so downstream generators emit files and
+        # index entries in a stable, environment-independent order.
+        usr_schemas.sort(key=lambda s: s.name)
         return usr_schemas
 
     def parse_schema_by_name(self, schema_name: str) -> USRSchema:
