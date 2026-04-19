@@ -1,6 +1,5 @@
 """Main CLI entry point for schema-gen"""
 
-import re
 import time
 from pathlib import Path
 
@@ -13,14 +12,6 @@ from ..diff.baseline import BaselineError, load_baseline, load_current
 from ..diff.comparator import compare_schemas
 from ..diff.formatter import format_github, format_json, format_text
 from ..diff.rules import RuleId, StrictnessLevel
-
-# Pattern to match timestamp lines across all generators
-_TIMESTAMP_RE = re.compile(r"^.*Generated at:.*$", re.MULTILINE)
-
-
-def _normalize_generated(content: str) -> str:
-    """Strip timestamp lines so content can be compared across runs."""
-    return _TIMESTAMP_RE.sub("", content).strip()
 
 
 class SchemaWatcher(FileSystemEventHandler):
@@ -322,9 +313,7 @@ def validate(config_path):
 
                 actual_content = actual_path.read_text()
 
-                if _normalize_generated(expected_content) != _normalize_generated(
-                    actual_content
-                ):
+                if expected_content != actual_content:
                     click.echo(f"  OUT-OF-DATE: {target}/{filename}")
                     validation_passed = False
                 else:

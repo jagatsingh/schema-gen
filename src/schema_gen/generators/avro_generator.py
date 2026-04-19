@@ -1,7 +1,6 @@
 """Generator to create Apache Avro schemas from USR schemas"""
 
 import json
-from datetime import datetime
 from typing import Any
 
 from ..core.usr import FieldType, USRField, USRSchema
@@ -60,13 +59,10 @@ class AvroGenerator(BaseGenerator):
             Complete Avro schema file content (JSON)
         """
         # For Avro, we'll create a schema collection with all variants
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-
         schema_collection = {
             "_meta": {
                 "generator": "schema-gen Avro generator",
                 "generated_from": schema.name,
-                "generated_at": timestamp,
                 "note": "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             },
             "schemas": [],

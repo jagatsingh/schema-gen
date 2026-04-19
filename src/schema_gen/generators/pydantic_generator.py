@@ -1,7 +1,6 @@
 """Generator to create Pydantic models from USR schemas"""
 
 import json
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -123,12 +122,10 @@ class PydanticGenerator(BaseGenerator):
         self._shared_enum_names = set(seen.keys())
 
         # Build _enums.py content
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         lines = [
             '"""',
             "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             "Shared enum definitions for generated Pydantic models",
-            f"Generated at: {timestamp}",
             "Generator: schema-gen Pydantic generator",
             "",
             "To regenerate this file, run:",
@@ -241,7 +238,6 @@ class PydanticGenerator(BaseGenerator):
             fields=field_definitions,
             has_config=self._needs_config(fields),
             model_config_line=self._get_model_config_line(),
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
     def generate_all_variants(self, schema: USRSchema) -> dict[str, str]:
@@ -644,7 +640,6 @@ class PydanticGenerator(BaseGenerator):
         self_ref_model: str | None = None,
     ) -> str:
         """Generate complete file with header, imports, and all models"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         custom_code = custom_code or {}
         enums = enums or []
 
@@ -652,7 +647,6 @@ class PydanticGenerator(BaseGenerator):
             '"""',
             "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             f"Generated from: {schema_name}",
-            f"Generated at: {timestamp}",
             "Generator: schema-gen Pydantic generator",
             "",
             "To regenerate this file, run:",
@@ -780,7 +774,6 @@ class PydanticGenerator(BaseGenerator):
         return '''"""
 AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 Generated from: {{ schema_name }}{% if variant_name %} ({{ variant_name }} variant){% endif %}
-Generated at: {{ timestamp }}
 Generator: schema-gen Pydantic generator
 
 To regenerate this file, run:
