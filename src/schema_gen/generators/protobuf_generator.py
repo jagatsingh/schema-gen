@@ -1,7 +1,5 @@
 """Generator to create Protocol Buffers schemas from USR schemas"""
 
-from datetime import datetime
-
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
@@ -66,12 +64,10 @@ class ProtobufGenerator(BaseGenerator):
         lines = []
 
         # Add proto file header
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         lines.extend(
             [
                 "// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
                 f"// Generated from: {schema.name}",
-                f"// Generated at: {timestamp}",
                 "// Generator: schema-gen Protobuf generator",
                 "//",
                 "// To regenerate this file, run:",

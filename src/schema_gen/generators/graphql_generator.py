@@ -1,7 +1,5 @@
 """Generator to create GraphQL schema from USR schemas"""
 
-from datetime import datetime
-
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
@@ -66,12 +64,10 @@ class GraphQLGenerator(BaseGenerator):
         lines = []
 
         # Add header comment
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         lines.extend(
             [
                 "# AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
                 f"# Generated from: {schema.name}",
-                f"# Generated at: {timestamp}",
                 "# Generator: schema-gen GraphQL generator",
                 "#",
                 "# To regenerate this file, run:",

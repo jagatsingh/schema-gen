@@ -1,7 +1,6 @@
 """Generator to create Zod schemas from USR schemas"""
 
 import logging
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -175,7 +174,6 @@ class ZodGenerator(BaseGenerator):
             variant_name=variant,
             description=schema.description,
             fields=field_definitions,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
     def generate_all_variants(self, schema: USRSchema) -> dict[str, str]:
@@ -528,7 +526,6 @@ class ZodGenerator(BaseGenerator):
         external_refs: set[str] | None = None,
     ) -> str:
         """Generate complete TypeScript file with header, imports, and all schemas"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         enums = enums or []
         external_refs = external_refs or set()
 
@@ -536,7 +533,6 @@ class ZodGenerator(BaseGenerator):
             "/**",
             " * AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             f" * Generated from: {schema_name}",
-            f" * Generated at: {timestamp}",
             " * Generator: schema-gen Zod generator",
             " *",
             " * To regenerate this file, run:",
@@ -600,7 +596,6 @@ class ZodGenerator(BaseGenerator):
         return """/**
  * AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
  * Generated from: {{ base_schema_name }}{% if variant_name %} ({{ variant_name }} variant){% endif %}
- * Generated at: {{ timestamp }}
  * Generator: schema-gen Zod generator
  *
  * To regenerate this file, run:
