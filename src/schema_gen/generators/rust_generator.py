@@ -127,6 +127,11 @@ def _rust_field_ident(name: str) -> str:
     against :data:`_RUST_RESERVED_WORDS` and escaped with ``r#`` if needed
     (e.g. the schema field ``TYPE`` normalises to ``type``).
 
+    Note: :func:`_snake_case` strips leading underscores from the name before
+    converting, consistent with its struct-name behavior.  Schema field names
+    that start with ``_`` will therefore have the prefix dropped in the emitted
+    Rust identifier (the serde rename preserves the original wire key).
+
     Use :func:`_rust_field_wire_name` to determine whether a rename attribute
     is needed.
     """
@@ -140,13 +145,12 @@ def _rust_field_ident(name: str) -> str:
     # snake_case by lowercasing after word boundaries, then squash any double
     # underscores that arise when uppercase sequences are preceded or followed
     # by an existing underscore (e.g. ``ratio_CE_otm`` → ``ratio__ce_otm`` →
-    # ``ratio_ce_otm``).  Do NOT strip leading/trailing underscores: doing so
-    # can silently collapse a safe identifier (e.g. ``Type_``) into a reserved
-    # keyword (``type``).
+    # ``ratio_ce_otm``).
     if any(c.isupper() for c in name):
         snake = _snake_case(name)
         snake = re.sub(r"_+", "_", snake)
-        # Re-check: normalisation may have produced a reserved keyword.
+        # Re-check: normalisation may have produced a reserved keyword
+        # (e.g. the field ``TYPE`` normalises to ``type``).
         if snake in _RUST_RESERVED_WORDS:
             return f"r#{snake}"
         return snake
@@ -642,10 +646,10 @@ class RustGenerator(BaseGenerator):
         seen_idents: dict[str, str] = {}
         for field in fields:
             ident = _rust_field_ident(field.name)
-            # Strip the r# prefix when checking for collisions so that
+            # Strip the exact r# prefix when checking for collisions so that
             # ``r#type`` and ``type`` (impossible in practice, but defensive)
             # are treated as the same identifier.
-            bare = ident.lstrip("r#") if ident.startswith("r#") else ident
+            bare = ident[2:] if ident.startswith("r#") else ident
             if bare in seen_idents:
                 msg = (
                     f"Schema '{struct_name}': fields '{seen_idents[bare]}' and "
