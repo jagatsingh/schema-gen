@@ -117,10 +117,15 @@ def _rust_field_ident(name: str) -> str:
     """Return the Rust identifier for a field name.
 
     Handles two cases:
+
     - Reserved words (e.g. ``type``) → ``r#type`` with ``#[serde(rename)]``.
     - Non-snake_case names (e.g. ``theta_vega_ratio_CE_otm``) → lowercased
-      with underscores squashed (``theta_vega_ratio_ce_otm``); caller must
-      add ``#[serde(rename = "<original>")]`` to preserve the wire format.
+      with double-underscores squashed (``theta_vega_ratio_ce_otm``); caller
+      must add ``#[serde(rename = "<original>")]`` to preserve the wire format.
+
+    After snake_case normalization the resulting identifier is re-checked
+    against :data:`_RUST_RESERVED_WORDS` and escaped with ``r#`` if needed
+    (e.g. the schema field ``TYPE`` normalises to ``type``).
 
     Use :func:`_rust_field_wire_name` to determine whether a rename attribute
     is needed.
@@ -135,10 +140,15 @@ def _rust_field_ident(name: str) -> str:
     # snake_case by lowercasing after word boundaries, then squash any double
     # underscores that arise when uppercase sequences are preceded or followed
     # by an existing underscore (e.g. ``ratio_CE_otm`` → ``ratio__ce_otm`` →
-    # ``ratio_ce_otm``).
+    # ``ratio_ce_otm``).  Do NOT strip leading/trailing underscores: doing so
+    # can silently collapse a safe identifier (e.g. ``Type_``) into a reserved
+    # keyword (``type``).
     if any(c.isupper() for c in name):
         snake = _snake_case(name)
-        snake = re.sub(r"_+", "_", snake).strip("_")
+        snake = re.sub(r"_+", "_", snake)
+        # Re-check: normalisation may have produced a reserved keyword.
+        if snake in _RUST_RESERVED_WORDS:
+            return f"r#{snake}"
         return snake
 
     return name
@@ -624,6 +634,26 @@ class RustGenerator(BaseGenerator):
             lines.append(f"#[serde({', '.join(serde_struct_attrs)})]")
 
         lines.append(f"pub struct {struct_name} {{")
+
+        # Detect identifier collisions before generating — two schema fields
+        # can normalise to the same Rust snake_case identifier (e.g.
+        # ``ratio_CE_otm`` and ``ratio_ce_otm`` both → ``ratio_ce_otm``).
+        # Fail fast with a clear message rather than emitting invalid Rust.
+        seen_idents: dict[str, str] = {}
+        for field in fields:
+            ident = _rust_field_ident(field.name)
+            # Strip the r# prefix when checking for collisions so that
+            # ``r#type`` and ``type`` (impossible in practice, but defensive)
+            # are treated as the same identifier.
+            bare = ident.lstrip("r#") if ident.startswith("r#") else ident
+            if bare in seen_idents:
+                msg = (
+                    f"Schema '{struct_name}': fields '{seen_idents[bare]}' and "
+                    f"'{field.name}' both normalise to the Rust identifier "
+                    f"'{ident}'. Rename one field in the schema source."
+                )
+                raise ValueError(msg)
+            seen_idents[bare] = field.name
 
         field_lines: list[str] = []
         for field in fields:

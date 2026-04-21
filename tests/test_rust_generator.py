@@ -1352,3 +1352,33 @@ class TestNonSnakeCaseFieldRename:
 
         assert "pub r#type: String," in out
         assert '#[serde(rename = "type")]' in out
+
+    def test_uppercase_normalisation_to_reserved_word_is_escaped(self):
+        """A field ``TYPE`` normalises to the reserved word ``type``.
+
+        The generator must escape it as ``r#type`` and preserve the wire
+        format via ``#[serde(rename = "TYPE")]``.
+        """
+
+        @Schema
+        class ReservedAfterNorm:
+            TYPE: str
+            value: int
+
+        schema = SchemaParser().parse_schema(ReservedAfterNorm)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub r#type: String," in out
+        assert '#[serde(rename = "TYPE")]' in out
+
+    def test_colliding_idents_raise(self):
+        """Two schema fields that normalise to the same Rust identifier must raise."""
+        schema = USRSchema(
+            name="CollidingFields",
+            fields=[
+                USRField(name="ratio_ce_otm", type=FieldType.FLOAT, python_type=float),
+                USRField(name="ratio_CE_otm", type=FieldType.FLOAT, python_type=float),
+            ],
+        )
+        with pytest.raises(ValueError, match="normalise to the Rust identifier"):
+            RustGenerator().generate_file(schema)
