@@ -114,10 +114,51 @@ _VALID_RUST_FLOAT_TYPES = frozenset({"f32", "f64"})
 
 
 def _rust_field_ident(name: str) -> str:
-    """Return the Rust identifier for a field name, escaping reserved words."""
+    """Return the Rust identifier for a field name.
+
+    Handles two cases:
+    - Reserved words (e.g. ``type``) → ``r#type`` with ``#[serde(rename)]``.
+    - Non-snake_case names (e.g. ``theta_vega_ratio_CE_otm``) → lowercased
+      with underscores squashed (``theta_vega_ratio_ce_otm``); caller must
+      add ``#[serde(rename = "<original>")]`` to preserve the wire format.
+
+    Use :func:`_rust_field_wire_name` to determine whether a rename attribute
+    is needed.
+    """
+    import re  # noqa: PLC0415 — local import to avoid module-level churn
+
     if name in _RUST_RESERVED_WORDS:
         return f"r#{name}"
+
+    # If the name contains uppercase letters it is not valid Rust snake_case
+    # and ``rustc`` will emit a ``non_snake_case`` warning.  Convert to proper
+    # snake_case by lowercasing after word boundaries, then squash any double
+    # underscores that arise when uppercase sequences are preceded or followed
+    # by an existing underscore (e.g. ``ratio_CE_otm`` → ``ratio__ce_otm`` →
+    # ``ratio_ce_otm``).
+    if any(c.isupper() for c in name):
+        snake = _snake_case(name)
+        snake = re.sub(r"_+", "_", snake).strip("_")
+        return snake
+
     return name
+
+
+def _rust_field_wire_name(name: str) -> str | None:
+    """Return the original wire-format name when a ``#[serde(rename)]`` is needed.
+
+    Returns ``name`` when the Rust identifier differs from the original field
+    name (reserved-word escape or non-snake_case conversion), ``None`` when
+    no rename attribute is required.
+    """
+    ident = _rust_field_ident(name)
+    # r#foo → the Rust identifier differs; wire name is bare ``foo``.
+    if name in _RUST_RESERVED_WORDS:
+        return name
+    # Non-snake_case → the Rust ident was lowercased; wire name is original.
+    if ident != name:
+        return name
+    return None
 
 
 _DEFAULT_STRUCT_DERIVES = [
@@ -615,8 +656,9 @@ class RustGenerator(BaseGenerator):
         name = field.name
         emitted_name = _rust_field_ident(name)
 
-        if name in _RUST_RESERVED_WORDS:
-            serde_attrs.append(f'rename = "{name}"')
+        wire_name = _rust_field_wire_name(name)
+        if wire_name is not None:
+            serde_attrs.append(f'rename = "{wire_name}"')
 
         if is_optional:
             serde_attrs.append('skip_serializing_if = "Option::is_none"')
