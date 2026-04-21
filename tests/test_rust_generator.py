@@ -1282,6 +1282,9 @@ class TestNonSnakeCaseFieldRename:
     ``#[serde(rename = "<original>")]`` attribute so the JSON wire format is
     preserved while the Rust code stays ``non_snake_case``-warning-free."""
 
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
     def test_uppercase_acronym_in_snake_field_gets_rename(self):
         """Embedded uppercase acronym (CE, PE) → rename + lowercased ident."""
 

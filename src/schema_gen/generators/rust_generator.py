@@ -120,8 +120,9 @@ def _rust_field_ident(name: str) -> str:
 
     - Reserved words (e.g. ``type``) → ``r#type`` with ``#[serde(rename)]``.
     - Non-snake_case names (e.g. ``theta_vega_ratio_CE_otm``) → lowercased
-      with double-underscores squashed (``theta_vega_ratio_ce_otm``); caller
-      must add ``#[serde(rename = "<original>")]`` to preserve the wire format.
+      with consecutive underscores collapsed (``theta_vega_ratio_ce_otm``);
+      caller must add ``#[serde(rename = "<original>")]`` to preserve the
+      wire format.
 
     After snake_case normalization the resulting identifier is re-checked
     against :data:`_RUST_RESERVED_WORDS` and escaped with ``r#`` if needed
@@ -142,10 +143,10 @@ def _rust_field_ident(name: str) -> str:
 
     # If the name contains uppercase letters it is not valid Rust snake_case
     # and ``rustc`` will emit a ``non_snake_case`` warning.  Convert to proper
-    # snake_case by lowercasing after word boundaries, then squash any double
-    # underscores that arise when uppercase sequences are preceded or followed
-    # by an existing underscore (e.g. ``ratio_CE_otm`` → ``ratio__ce_otm`` →
-    # ``ratio_ce_otm``).
+    # snake_case by lowercasing after word boundaries, then collapse any run of
+    # consecutive underscores to a single underscore that arise when uppercase
+    # sequences are preceded or followed by an existing underscore
+    # (e.g. ``ratio_CE_otm`` → ``ratio__ce_otm`` → ``ratio_ce_otm``).
     if any(c.isupper() for c in name):
         snake = _snake_case(name)
         snake = re.sub(r"_+", "_", snake)
