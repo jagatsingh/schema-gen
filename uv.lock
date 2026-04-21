@@ -7,6 +7,9 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[options]
+exclude-newer = "2026-04-14T07:19:31Z"
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
@@ -2281,7 +2284,7 @@ wheels = [
 
 [[package]]
 name = "schema-gen"
-version = "0.3.4"
+version = "0.3.6"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
