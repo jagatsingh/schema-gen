@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_ZOD_CONFIG_KEYS: frozenset[str] = frozenset({"strict", "coerce"})
 
 
+def _tag_to_type_name(tag: str) -> str:
+    """Convert a tag name like ``toggleable`` to PascalCase type ``ToggleableField``."""
+    parts = tag.split("_")
+    return "".join(part.capitalize() for part in parts if part) + "Field"
+
+
 def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
     """Walk a USR schema and return the set of NESTED_SCHEMA names it
     references that are NOT the schema itself (those are self-refs and
@@ -134,6 +140,18 @@ class ZodGenerator(BaseGenerator):
                 if variant_type not in exported_type_names:
                     type_names.append(variant_type)
                     exported_type_names.add(variant_type)
+
+            # Tag constants (value exports) and tag types
+            tag_groups = schema.get_tagged_fields()
+            for tag in tag_groups:
+                const_name = f"{tag.upper()}_FIELDS"
+                if const_name not in exported_value_names:
+                    value_names.append(const_name)
+                    exported_value_names.add(const_name)
+                type_name = _tag_to_type_name(tag)
+                if type_name not in exported_type_names:
+                    type_names.append(type_name)
+                    exported_type_names.add(type_name)
 
             if value_names:
                 lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
@@ -261,6 +279,9 @@ class ZodGenerator(BaseGenerator):
             )
             all_types.append(variant_type)
 
+        # Collect tag groups from base schema fields
+        tag_groups = schema.get_tagged_fields()
+
         # Generate complete file
         return self._generate_complete_file(
             schema.name,
@@ -268,6 +289,7 @@ class ZodGenerator(BaseGenerator):
             all_types,
             schema.enums,
             external_refs=external_refs,
+            tag_groups=tag_groups,
         )
 
     def _generate_field_definition(self, field: USRField) -> str:
@@ -524,10 +546,12 @@ class ZodGenerator(BaseGenerator):
         types: list[str],
         enums: list = None,
         external_refs: set[str] | None = None,
+        tag_groups: dict[str, list[str]] | None = None,
     ) -> str:
         """Generate complete TypeScript file with header, imports, and all schemas"""
         enums = enums or []
         external_refs = external_refs or set()
+        tag_groups = tag_groups or {}
 
         lines = [
             "/**",
@@ -588,6 +612,18 @@ class ZodGenerator(BaseGenerator):
         # Add TypeScript types
         for type_def in types:
             lines.append(type_def)
+
+        # Add field-tag constants
+        if tag_groups:
+            lines.append("")
+            for tag, field_names in tag_groups.items():
+                const_name = f"{tag.upper()}_FIELDS"
+                type_name = _tag_to_type_name(tag)
+                fields_str = ", ".join(f"'{f}'" for f in field_names)
+                lines.append(f"export const {const_name} = [{fields_str}] as const;")
+                lines.append(
+                    f"export type {type_name} = (typeof {const_name})[number];"
+                )
 
         return "\n".join(lines)
 

@@ -484,6 +484,11 @@ class RustGenerator(BaseGenerator):
             external_schema_refs=external_schema_refs,
         )
 
+        # Field-tag constants (#82)
+        tag_groups = schema.get_tagged_fields()
+        if tag_groups:
+            body_parts.append(self._generate_tag_constants(tag_groups))
+
         trailing = ""
         raw_code = (custom_code.get("raw_code") or "").strip()
         if raw_code:
@@ -982,6 +987,19 @@ class RustGenerator(BaseGenerator):
                 lines.append(f'    #[serde(rename = "{tag}")]')
             lines.append(f"    {variant_ident}({variant_struct}),")
         lines.append("}")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Field-tag constants (#82)
+    # ------------------------------------------------------------------
+
+    def _generate_tag_constants(self, tag_groups: dict[str, list[str]]) -> str:
+        """Emit ``pub const <TAG>_FIELDS: &[&str]`` for each tag group."""
+        lines: list[str] = []
+        for tag, field_names in tag_groups.items():
+            wire_names = [_rust_field_wire_name(n) or n for n in field_names]
+            values = ", ".join(f'"{w}"' for w in wire_names)
+            lines.append(f"pub const {tag.upper()}_FIELDS: &[&str] = &[{values}];")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------

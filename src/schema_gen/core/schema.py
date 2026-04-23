@@ -54,6 +54,9 @@ class FieldInfo:
     # discriminated unions / Zod discriminatedUnion accordingly.
     discriminator: str | None = None
 
+    # Field tags for grouping fields into named constants in generated output.
+    tags: list[str] = field(default_factory=list)
+
     # Additional metadata
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -87,6 +90,7 @@ def Field(
     pathway: dict[str, Any] | None = None,
     rust: dict[str, Any] | None = None,
     discriminator: str | None = None,
+    tags: list[str] | None = None,
     **metadata: Any,
 ) -> FieldInfo:
     """Create a field definition for a schema
@@ -123,6 +127,10 @@ def Field(
             Every union member must be a ``@Schema`` with a matching
             ``Literal["..."]`` field. Lowered to a ``#[serde(tag=...)]``
             tagged enum by the Rust generator.
+        tags: List of string tags for grouping fields into named constants
+            in generated output. Each tag produces a ``<TAG>_FIELDS``
+            constant in Zod and Rust targets. Tag names must match
+            ``[a-zA-Z_][a-zA-Z0-9_]*``.
         **metadata: Additional metadata
 
     Returns:
@@ -156,6 +164,7 @@ def Field(
         pathway=pathway or {},
         rust=rust or {},
         discriminator=discriminator,
+        tags=tags or [],
         metadata=metadata,
     )
 

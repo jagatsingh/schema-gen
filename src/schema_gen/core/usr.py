@@ -158,6 +158,9 @@ class USRField:
     # by the parser when ``discriminator`` is set and validated.
     union_tag_values: list[str] = field(default_factory=list)
 
+    # Field tags for grouped constant emission
+    tags: list[str] = field(default_factory=list)
+
     # Metadata
     description: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -297,6 +300,18 @@ class USRSchema:
             ):
                 result.append(f)
         return result
+
+    def get_tagged_fields(self) -> dict[str, list[str]]:
+        """Return a mapping of tag name to field names for all tagged fields.
+
+        Tags are sorted alphabetically; field names within each tag preserve
+        declaration order.
+        """
+        tag_map: dict[str, list[str]] = {}
+        for f in self.fields:
+            for tag in f.tags:
+                tag_map.setdefault(tag, []).append(f.name)
+        return dict(sorted(tag_map.items()))
 
     def get_variant_fields(self, variant_name: str) -> list[USRField]:
         """Get fields for a specific variant
@@ -593,6 +608,7 @@ class TypeMapper:
                 "rust": getattr(field_info, "rust", {}),
             },
             discriminator=getattr(field_info, "discriminator", None),
+            tags=getattr(field_info, "tags", []),
             description=getattr(field_info, "description", None),
             metadata=getattr(field_info, "metadata", {}),
         )
