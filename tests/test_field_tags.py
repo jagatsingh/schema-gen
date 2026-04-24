@@ -103,6 +103,24 @@ class TestFieldTagParsing:
         for group in tag_groups.values():
             assert group == ["x"]
 
+    def test_duplicate_tags_deduplicated(self):
+        @Schema
+        class Dupes:
+            x: str = Field(tags=["toggleable", "toggleable", "premium", "toggleable"])
+
+        parser = SchemaParser()
+        schema = parser.parse_schema(Dupes)
+        assert schema.get_field("x").tags == ["toggleable", "premium"]
+
+    def test_non_string_tag_rejected(self):
+        @Schema
+        class BadType:
+            x: str = Field(tags=[123])
+
+        parser = SchemaParser()
+        with pytest.raises(ValueError, match="each tag must be a string"):
+            parser.parse_schema(BadType)
+
 
 class TestZodTagEmission:
     def setup_method(self):
@@ -166,7 +184,11 @@ class TestZodTagEmission:
         assert "MY_LONG_TAG_FIELDS" in output
         assert "MyLongTagField" in output
 
-    def test_tag_constants_in_index(self):
+    def test_tag_constants_not_in_index(self):
+        """Tag constants are per-schema; they are NOT re-exported from the
+        barrel index to avoid silent collisions when multiple schemas share
+        a tag name."""
+
         @Schema
         class MyDTO:
             id: int
@@ -177,8 +199,8 @@ class TestZodTagEmission:
         gen = ZodGenerator()
         index = gen.generate_index([schema], Path("/tmp"))
 
-        assert "TOGGLEABLE_FIELDS" in index
-        assert "ToggleableField" in index
+        assert "TOGGLEABLE_FIELDS" not in index
+        assert "ToggleableField" not in index
 
 
 class TestRustTagEmission:

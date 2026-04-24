@@ -141,18 +141,6 @@ class ZodGenerator(BaseGenerator):
                     type_names.append(variant_type)
                     exported_type_names.add(variant_type)
 
-            # Tag constants (value exports) and tag types
-            tag_groups = schema.get_tagged_fields()
-            for tag in tag_groups:
-                const_name = f"{tag.upper()}_FIELDS"
-                if const_name not in exported_value_names:
-                    value_names.append(const_name)
-                    exported_value_names.add(const_name)
-                type_name = _tag_to_type_name(tag)
-                if type_name not in exported_type_names:
-                    type_names.append(type_name)
-                    exported_type_names.add(type_name)
-
             if value_names:
                 lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
             if type_names:
