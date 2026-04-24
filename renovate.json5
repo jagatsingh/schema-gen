@@ -162,6 +162,11 @@
   pep621: {
     enabled: true,
   },
+  // pip-compile is enabled by the tradingutils preset but this project
+  // uses uv.lock — docs/requirements.txt is plain, not pip-compile output.
+  'pip-compile': {
+    enabled: false,
+  },
   customManagers: [
     {
       customType: 'regex',
