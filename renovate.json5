@@ -1,7 +1,8 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    'github>jagatsingh/tradingutils',
+    'config:recommended',
+    ':semanticCommits',
     ':separatePatchReleases',
   ],
   schedule: [
@@ -151,6 +152,7 @@
       'security',
       'dependencies',
     ],
+    minimumReleaseAge: '0 days',
   },
   osvVulnerabilityAlerts: true,
   lockFileMaintenance: {
