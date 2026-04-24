@@ -23,7 +23,7 @@ schema-gen init [OPTIONS]
 - `--input-dir TEXT` - Input directory for schemas (default: `schemas/`)
 - `--output-dir TEXT` - Output directory for generated files (default: `generated/`)
 - `--targets TEXT` - Comma-separated list of targets (default: `pydantic`)
-  Available targets: `pydantic`, `sqlalchemy`, `dataclasses`, `typeddict`, `pathway`, `zod`, `jsonschema`, `graphql`, `protobuf`, `avro`, `jackson`, `kotlin`
+  Available targets: `pydantic`, `sqlalchemy`, `dataclasses`, `typeddict`, `pathway`, `zod`, `jsonschema`, `graphql`, `protobuf`, `avro`, `jackson`, `kotlin`, `rust`, `docs`
 
 **Example:**
 ```bash

@@ -114,10 +114,66 @@ _VALID_RUST_FLOAT_TYPES = frozenset({"f32", "f64"})
 
 
 def _rust_field_ident(name: str) -> str:
-    """Return the Rust identifier for a field name, escaping reserved words."""
+    """Return the Rust identifier for a field name.
+
+    Handles two cases:
+
+    - Reserved words (e.g. ``type``) → ``r#type`` with ``#[serde(rename)]``.
+    - Non-snake_case names (e.g. ``theta_vega_ratio_CE_otm``) → lowercased
+      with consecutive underscores collapsed (``theta_vega_ratio_ce_otm``);
+      caller must add ``#[serde(rename = "<original>")]`` to preserve the
+      wire format.
+
+    After snake_case normalization the resulting identifier is re-checked
+    against :data:`_RUST_RESERVED_WORDS` and escaped with ``r#`` if needed
+    (e.g. the schema field ``TYPE`` normalises to ``type``).
+
+    Note: :func:`_snake_case` strips leading underscores from the name before
+    converting, consistent with its struct-name behavior.  Schema field names
+    that start with ``_`` will therefore have the prefix dropped in the emitted
+    Rust identifier (the serde rename preserves the original wire key).
+
+    Use :func:`_rust_field_wire_name` to determine whether a rename attribute
+    is needed.
+    """
+    import re  # noqa: PLC0415 — local import to avoid module-level churn
+
     if name in _RUST_RESERVED_WORDS:
         return f"r#{name}"
+
+    # If the name contains uppercase letters it is not valid Rust snake_case
+    # and ``rustc`` will emit a ``non_snake_case`` warning.  Convert to proper
+    # snake_case by lowercasing after word boundaries, then collapse any run of
+    # consecutive underscores to a single underscore that arise when uppercase
+    # sequences are preceded or followed by an existing underscore
+    # (e.g. ``ratio_CE_otm`` → ``ratio__ce_otm`` → ``ratio_ce_otm``).
+    if any(c.isupper() for c in name):
+        snake = _snake_case(name)
+        snake = re.sub(r"_+", "_", snake)
+        # Re-check: normalisation may have produced a reserved keyword
+        # (e.g. the field ``TYPE`` normalises to ``type``).
+        if snake in _RUST_RESERVED_WORDS:
+            return f"r#{snake}"
+        return snake
+
     return name
+
+
+def _rust_field_wire_name(name: str) -> str | None:
+    """Return the original wire-format name when a ``#[serde(rename)]`` is needed.
+
+    Returns ``name`` when the Rust identifier differs from the original field
+    name (reserved-word escape or non-snake_case conversion), ``None`` when
+    no rename attribute is required.
+    """
+    ident = _rust_field_ident(name)
+    # r#foo → the Rust identifier differs; wire name is bare ``foo``.
+    if name in _RUST_RESERVED_WORDS:
+        return name
+    # Non-snake_case → the Rust ident was lowercased; wire name is original.
+    if ident != name:
+        return name
+    return None
 
 
 _DEFAULT_STRUCT_DERIVES = [
@@ -428,6 +484,11 @@ class RustGenerator(BaseGenerator):
             external_schema_refs=external_schema_refs,
         )
 
+        # Field-tag constants (#82)
+        tag_groups = schema.get_tagged_fields()
+        if tag_groups:
+            body_parts.append(self._generate_tag_constants(tag_groups))
+
         trailing = ""
         raw_code = (custom_code.get("raw_code") or "").strip()
         if raw_code:
@@ -584,6 +645,26 @@ class RustGenerator(BaseGenerator):
 
         lines.append(f"pub struct {struct_name} {{")
 
+        # Detect identifier collisions before generating — two schema fields
+        # can normalise to the same Rust snake_case identifier (e.g.
+        # ``ratio_CE_otm`` and ``ratio_ce_otm`` both → ``ratio_ce_otm``).
+        # Fail fast with a clear message rather than emitting invalid Rust.
+        seen_idents: dict[str, str] = {}
+        for field in fields:
+            ident = _rust_field_ident(field.name)
+            # Strip the exact r# prefix when checking for collisions so that
+            # ``r#type`` and ``type`` (impossible in practice, but defensive)
+            # are treated as the same identifier.
+            bare = ident[2:] if ident.startswith("r#") else ident
+            if bare in seen_idents:
+                msg = (
+                    f"Schema '{struct_name}': fields '{seen_idents[bare]}' and "
+                    f"'{field.name}' both normalise to the Rust identifier "
+                    f"'{ident}'. Rename one field in the schema source."
+                )
+                raise ValueError(msg)
+            seen_idents[bare] = field.name
+
         field_lines: list[str] = []
         for field in fields:
             field_lines.extend(self._generate_field(field, imports))
@@ -615,8 +696,9 @@ class RustGenerator(BaseGenerator):
         name = field.name
         emitted_name = _rust_field_ident(name)
 
-        if name in _RUST_RESERVED_WORDS:
-            serde_attrs.append(f'rename = "{name}"')
+        wire_name = _rust_field_wire_name(name)
+        if wire_name is not None:
+            serde_attrs.append(f'rename = "{wire_name}"')
 
         if is_optional:
             serde_attrs.append('skip_serializing_if = "Option::is_none"')
@@ -804,7 +886,14 @@ class RustGenerator(BaseGenerator):
             if extra not in derives:
                 derives.append(extra)
 
-        lines = [f"#[derive({', '.join(derives)})]"]
+        lines: list[str] = []
+        if enum.docstring:
+            for doc_line in enum.docstring.splitlines():
+                if doc_line.strip():
+                    lines.append(f"/// {doc_line.strip()}")
+                else:
+                    lines.append("///")
+        lines.append(f"#[derive({', '.join(derives)})]")
 
         # Per-variant `#[serde(rename = "<value>")]` using the actual enum
         # value from the IR is the correct default: it's the only way to
@@ -898,6 +987,19 @@ class RustGenerator(BaseGenerator):
                 lines.append(f'    #[serde(rename = "{tag}")]')
             lines.append(f"    {variant_ident}({variant_struct}),")
         lines.append("}")
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Field-tag constants (#82)
+    # ------------------------------------------------------------------
+
+    def _generate_tag_constants(self, tag_groups: dict[str, list[str]]) -> str:
+        """Emit ``pub const <TAG>_FIELDS: &[&str]`` for each tag group."""
+        lines: list[str] = []
+        for tag, field_names in tag_groups.items():
+            wire_names = [_rust_field_wire_name(n) or n for n in field_names]
+            values = ", ".join(f'"{w}"' for w in wire_names)
+            lines.append(f"pub const {tag.upper()}_FIELDS: &[&str] = &[{values}];")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------

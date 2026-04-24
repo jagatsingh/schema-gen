@@ -529,7 +529,7 @@ Base = declarative_base()
 
         # Test that generated Pydantic models work with FastAPI
         pydantic_gen = PydanticGenerator()
-        pydantic_code = pydantic_gen.generate_model(test_schema)
+        pydantic_code = pydantic_gen.generate_file(test_schema)
 
         # This would test actual usage in a FastAPI app
         self._test_fastapi_integration(pydantic_code)

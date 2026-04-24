@@ -10,7 +10,7 @@
 
 Schema Gen eliminates schema duplication across multiple programming languages and frameworks by providing a single source of truth for your data models. Define your schemas once using Python type annotations, then automatically generate code for 13+ different targets — Python, TypeScript, Java, Kotlin, **Rust**, and multiple schema formats.
 
-This is early `Beta` version and just early implementation of my current thoughts. Please try it out and provide feedback!
+Please try it out and provide feedback!
 
 See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-examples/)
 
@@ -96,7 +96,7 @@ Create `schemas/user.py`:
 from schema_gen import Schema, Field
 from typing import Optional
 from datetime import datetime
-from enum import Enum
+from enum import Enum, nonmember
 
 
 class OrderStatus(str, Enum):
@@ -104,15 +104,23 @@ class OrderStatus(str, Enum):
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class SerdeMeta:
-        # Domain methods injected into the generated Rust enum body.
-        raw_code = """
+    # nonmember() prevents Python 3.12+ from treating the inner class
+    # as an enum member (StrEnum requires all members to be strings).
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "raw_code": """
 impl OrderStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(self, OrderStatus::Filled | OrderStatus::Cancelled)
     }
 }
 """
+            },
+        )
+    )
 
 
 @Schema

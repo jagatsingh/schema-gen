@@ -225,6 +225,47 @@ class Order:
     leg: Annotated[Union[MarketLeg, LimitLeg], Field(discriminator="type")]
 ```
 
+### Field Tags
+
+Use `tags` to annotate fields with metadata that schema-gen uses to emit
+grouped field-name constants in the generated output. Tags are
+generator metadata only and do not affect the wire format.
+
+```python
+from schema_gen import Schema, Field
+
+
+@Schema
+class MyDTO:
+    id: int
+    name: str
+    feature_a: str | None = Field(None, tags=["toggleable"])
+    feature_b: str | None = Field(None, tags=["toggleable"])
+    legacy_field: str | None = Field(None, tags=["deprecated"])
+```
+
+Tag names must match `[a-zA-Z_][a-zA-Z0-9_]*`. A field can have
+multiple tags.
+
+**Zod output:**
+```typescript
+export const TOGGLEABLE_FIELDS = ['feature_a', 'feature_b'] as const;
+export type ToggleableField = (typeof TOGGLEABLE_FIELDS)[number];
+
+export const DEPRECATED_FIELDS = ['legacy_field'] as const;
+export type DeprecatedField = (typeof DEPRECATED_FIELDS)[number];
+```
+
+**Rust output:**
+```rust
+pub const TOGGLEABLE_FIELDS: &[&str] = &["feature_a", "feature_b"];
+pub const DEPRECATED_FIELDS: &[&str] = &["legacy_field"];
+```
+
+Tag constants are emitted for the base schema only (not per-variant).
+Tags are sorted alphabetically in the output; field order within each
+tag follows declaration order.
+
 ## Complete Field Examples
 
 ### User Information Fields
@@ -538,6 +579,14 @@ inject domain methods (e.g. `OrderStatus.is_terminal()`) into the
 generated enum body on either side. See
 [docs/generators/pydantic.md](generators/pydantic.md#pydanticmeta-on-enums)
 and [docs/generators/rust.md](generators/rust.md#enum-level-serdemeta).
+
+> **Python 3.12+**: Inner classes inside `str, Enum` or `StrEnum` are
+> treated as enum members (causing `TypeError` or deprecation warnings).
+> Wrap Meta classes with `enum.nonmember()` when attaching them to enums.
+> This is **not** needed for `@Schema`-decorated classes. See the
+> [Rust](generators/rust.md#enum-level-serdemeta) and
+> [Pydantic](generators/pydantic.md#pydanticmeta-on-enums) generator docs
+> for examples.
 
 ### PydanticMeta Options
 

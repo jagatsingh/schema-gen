@@ -1,6 +1,5 @@
 """Generator to create Python TypedDict from USR schemas"""
 
-from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Template
@@ -91,7 +90,6 @@ class TypedDictGenerator(BaseGenerator):
             imports=sorted(imports),
             fields=field_definitions,
             has_optional_fields=has_optional_fields,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
     def generate_file(self, schema: USRSchema) -> str:
@@ -320,13 +318,10 @@ class TypedDictGenerator(BaseGenerator):
         self, schema_name: str, imports: set, typeddicts: list[str]
     ) -> str:
         """Generate complete file with header, imports, and all TypedDicts"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-
         lines = [
             '"""',
             "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             f"Generated from: {schema_name}",
-            f"Generated at: {timestamp}",
             "Generator: schema-gen TypedDict generator",
             "",
             "To regenerate this file, run:",
@@ -379,7 +374,6 @@ class TypedDictGenerator(BaseGenerator):
         return '''"""
 AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 Generated from: {{ schema_name }}{% if variant_name %} ({{ variant_name }} variant){% endif %}
-Generated at: {{ timestamp }}
 Generator: schema-gen TypedDict generator
 
 To regenerate this file, run:

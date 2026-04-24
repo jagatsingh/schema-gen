@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum, StrEnum
+from enum import Enum, StrEnum, nonmember
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+
+import pytest
 
 from schema_gen import Field, Schema
 from schema_gen.core.schema import SchemaRegistry
@@ -956,22 +958,28 @@ class _OrderStatus(str, Enum):
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class SerdeMeta:
-        raw_code = (
-            "impl _OrderStatus {\n"
-            "    pub fn is_terminal(&self) -> bool {\n"
-            "        matches!(self, Self::Filled | Self::Cancelled)\n"
-            "    }\n"
-            "}"
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "raw_code": (
+                    "impl _OrderStatus {\n"
+                    "    pub fn is_terminal(&self) -> bool {\n"
+                    "        matches!(self, Self::Filled | Self::Cancelled)\n"
+                    "    }\n"
+                    "}"
+                )
+            },
         )
+    )
 
 
 class _Priority(str, Enum):
     LOW = "low"
     HIGH = "high"
 
-    class SerdeMeta:
-        derives = ["Ord", "PartialOrd"]
+    SerdeMeta = nonmember(type("SerdeMeta", (), {"derives": ["Ord", "PartialOrd"]}))
 
 
 class _PlainColor(str, Enum):
@@ -983,14 +991,21 @@ class _Mode2(str, Enum):
     AUTO = "auto"
     MANUAL = "manual"
 
-    class SerdeMeta:
-        raw_code = (
-            "impl _Mode2 {\n"
-            "    pub fn is_auto(&self) -> bool {\n"
-            "        matches!(self, Self::Auto)\n"
-            "    }\n"
-            "}"
+    SerdeMeta = nonmember(
+        type(
+            "SerdeMeta",
+            (),
+            {
+                "raw_code": (
+                    "impl _Mode2 {\n"
+                    "    pub fn is_auto(&self) -> bool {\n"
+                    "        matches!(self, Self::Auto)\n"
+                    "    }\n"
+                    "}"
+                )
+            },
         )
+    )
 
 
 @Schema
@@ -1239,14 +1254,12 @@ class TestDiscriminatorErrors:
 
     def test_bad_discriminator_field_name_raises(self):
         """Typo in discriminator field name must raise, not silently degrade."""
-        import pytest
 
         with pytest.raises(ValueError, match="has no discriminator field 'typ'"):
             SchemaParser().parse_schema(_BadDiscHolder)
 
     def test_non_literal_discriminator_raises(self):
         """Discriminator field must be Literal[...], not plain str."""
-        import pytest
 
         with pytest.raises(ValueError, match="must be Literal"):
             SchemaParser().parse_schema(_NonLiteralHolder)
@@ -1256,3 +1269,119 @@ class TestDiscriminatorErrors:
         usr = SchemaParser().parse_schema(_GoodDiscHolder)
         assert usr.fields[0].discriminator == "tag"
         assert usr.fields[0].union_tag_values == ["v1", "v2"]
+
+
+# ----------------------------------------------------------------------
+# Fix: non-snake_case field names emit #[serde(rename)] + snake_case ident
+# ----------------------------------------------------------------------
+
+
+class TestNonSnakeCaseFieldRename:
+    """Fields with uppercase letters (e.g. ``theta_vega_ratio_CE_otm``) must
+    be emitted as a lowercased snake_case Rust identifier accompanied by a
+    ``#[serde(rename = "<original>")]`` attribute so the JSON wire format is
+    preserved while the Rust code stays ``non_snake_case``-warning-free."""
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_uppercase_acronym_in_snake_field_gets_rename(self):
+        """Embedded uppercase acronym (CE, PE) → rename + lowercased ident."""
+
+        @Schema
+        class GreeksRatio:
+            theta_vega_ratio_CE_otm: float
+            theta_vega_ratio_PE_otm: float
+            normal_field: float
+
+        schema = SchemaParser().parse_schema(GreeksRatio)
+        out = RustGenerator().generate_file(schema)
+
+        # CE/PE fields: rename preserves wire format, ident is lowercased.
+        assert '#[serde(rename = "theta_vega_ratio_CE_otm")]' in out
+        assert "pub theta_vega_ratio_ce_otm: f64," in out
+
+        assert '#[serde(rename = "theta_vega_ratio_PE_otm")]' in out
+        assert "pub theta_vega_ratio_pe_otm: f64," in out
+
+        # Normal field: no redundant rename attribute.
+        assert "pub normal_field: f64," in out
+        assert '#[serde(rename = "normal_field")]' not in out
+
+    def test_optional_non_snake_case_field_preserves_skip_serializing(self):
+        """Optional non-snake_case fields must have BOTH rename and skip_serializing_if."""
+
+        @Schema
+        class GreeksOpt:
+            theta_vega_ratio_CE_otm: float | None = None
+
+        schema = SchemaParser().parse_schema(GreeksOpt)
+        out = RustGenerator().generate_file(schema)
+
+        # Both serde attributes must appear together on one line.
+        assert (
+            '#[serde(rename = "theta_vega_ratio_CE_otm", skip_serializing_if = "Option::is_none")]'
+            in out
+        )
+        assert "pub theta_vega_ratio_ce_otm: Option<f64>," in out
+
+    def test_already_snake_case_no_rename(self):
+        """Fields already in valid snake_case must not gain a rename attribute."""
+
+        @Schema
+        class Clean:
+            spot_ltp: float
+            gex_total: float
+
+        schema = SchemaParser().parse_schema(Clean)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub spot_ltp: f64," in out
+        assert "pub gex_total: f64," in out
+        # No spurious renames.
+        assert '#[serde(rename = "spot_ltp")]' not in out
+        assert '#[serde(rename = "gex_total")]' not in out
+
+    def test_reserved_word_field_rename_still_works(self):
+        """Reserved-word fields (``type``) must still emit r# escape + rename."""
+
+        @Schema
+        class WithType:
+            type: str
+            value: int
+
+        schema = SchemaParser().parse_schema(WithType)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub r#type: String," in out
+        assert '#[serde(rename = "type")]' in out
+
+    def test_uppercase_normalisation_to_reserved_word_is_escaped(self):
+        """A field ``TYPE`` normalises to the reserved word ``type``.
+
+        The generator must escape it as ``r#type`` and preserve the wire
+        format via ``#[serde(rename = "TYPE")]``.
+        """
+
+        @Schema
+        class ReservedAfterNorm:
+            TYPE: str
+            value: int
+
+        schema = SchemaParser().parse_schema(ReservedAfterNorm)
+        out = RustGenerator().generate_file(schema)
+
+        assert "pub r#type: String," in out
+        assert '#[serde(rename = "TYPE")]' in out
+
+    def test_colliding_idents_raise(self):
+        """Two schema fields that normalise to the same Rust identifier must raise."""
+        schema = USRSchema(
+            name="CollidingFields",
+            fields=[
+                USRField(name="ratio_ce_otm", type=FieldType.FLOAT, python_type=float),
+                USRField(name="ratio_CE_otm", type=FieldType.FLOAT, python_type=float),
+            ],
+        )
+        with pytest.raises(ValueError, match="normalise to the Rust identifier"):
+            RustGenerator().generate_file(schema)

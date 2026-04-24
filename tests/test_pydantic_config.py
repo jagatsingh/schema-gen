@@ -13,6 +13,8 @@ no effect on generated models.
 
 from datetime import datetime
 
+import pytest
+
 from schema_gen import Field, Schema
 from schema_gen.core.config import Config
 from schema_gen.core.generator import SchemaGenerationEngine
@@ -229,7 +231,7 @@ class TestEngineThreadsConfigEndToEnd:
         assert "validate_assignment=True" in generated
 
 
-from enum import Enum  # noqa: E402
+from enum import Enum, nonmember  # noqa: E402
 
 
 class _PyOrderStatus(str, Enum):  # noqa: UP042
@@ -237,11 +239,18 @@ class _PyOrderStatus(str, Enum):  # noqa: UP042
     FILLED = "filled"
     CANCELLED = "cancelled"
 
-    class PydanticMeta:
-        methods = (
-            "def is_terminal(self) -> bool:\n"
-            "    return self in {_PyOrderStatus.FILLED, _PyOrderStatus.CANCELLED}"
+    PydanticMeta = nonmember(
+        type(
+            "PydanticMeta",
+            (),
+            {
+                "methods": (
+                    "def is_terminal(self) -> bool:\n"
+                    "    return self in {_PyOrderStatus.FILLED, _PyOrderStatus.CANCELLED}"
+                )
+            },
         )
+    )
 
 
 class _PyPlainColor(str, Enum):  # noqa: UP042
@@ -399,7 +408,6 @@ class TestPydanticDefaultFactory:
 
     def test_lambda_default_factory_raises(self):
         """Lambda factories can't be emitted as valid Python — raise a clear error."""
-        import pytest
 
         from schema_gen.core.usr import FieldType, USRField, USRSchema
 

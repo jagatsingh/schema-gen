@@ -1,6 +1,5 @@
 """Generator to create Pathway schemas from USR schemas"""
 
-from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Template
@@ -85,7 +84,6 @@ class PathwayGenerator(BaseGenerator):
             description=schema.description,
             imports=sorted(imports),
             columns=column_definitions,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
     def generate_file(self, schema: USRSchema) -> str:
@@ -271,13 +269,10 @@ class PathwayGenerator(BaseGenerator):
         self, schema_name: str, imports: set, schemas: list[str]
     ) -> str:
         """Generate complete file with header, imports, and all schemas"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-
         lines = [
             '"""',
             "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             f"Generated from: {schema_name}",
-            f"Generated at: {timestamp}",
             "Generator: schema-gen Pathway generator",
             "",
             "To regenerate this file, run:",
@@ -320,7 +315,6 @@ class PathwayGenerator(BaseGenerator):
         return '''"""
 AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
 Generated from: {{ schema_name }}{% if variant_name %} ({{ variant_name }} variant){% endif %}
-Generated at: {{ timestamp }}
 Generator: schema-gen Pathway generator
 
 To regenerate this file, run:

@@ -39,7 +39,7 @@ python scripts/publish.py --version 0.1.1 --target pypi
 ## What Gets Published
 
 - ✅ **Comprehensive testing** (>80% coverage)
-- ✅ **All 12 generators** compatibility tested
+- ✅ **All 13 generators** compatibility tested
 - ✅ **CLI functionality** verified
 - ✅ **Package validation** with twine
 - ✅ **Automatic GitHub releases**

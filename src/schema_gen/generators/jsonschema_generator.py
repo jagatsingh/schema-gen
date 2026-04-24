@@ -36,6 +36,13 @@ class JsonSchemaGenerator(BaseGenerator):
         )
         cfg_base_url = js_cfg.get("base_url")
         self.base_url = (cfg_base_url or base_url).rstrip("/")
+
+        # Set of definition names present in the current file's ``$defs``.
+        # Populated by ``generate_file()`` so that ``_add_type_info`` can
+        # decide whether a nested schema ``$ref`` should be local
+        # (``#/$defs/Foo``) or file-relative (``foo.json#/$defs/Foo``).
+        self._current_defs: set[str] = set()
+
         # Warn on unknown Config.jsonschema keys.
         for key in js_cfg:
             if key not in _SUPPORTED_JSONSCHEMA_CONFIG_KEYS:
@@ -134,32 +141,47 @@ class JsonSchemaGenerator(BaseGenerator):
             "$defs": {},
         }
 
-        # Add enum definitions to $defs
+        # Pre-compute the set of names that will appear in this file's $defs
+        # so that _add_type_info can distinguish local vs cross-file $refs.
+        self._current_defs = {schema.name}
         for enum_def in getattr(schema, "enums", []):
-            enum_values = [v for _name, v in enum_def.values]
-            enum_schema = {"type": "string", "enum": enum_values}
-            json_schema["$defs"][enum_def.name] = enum_schema
-
-        # Add base schema
-        base_fields = schema.fields
-        base_schema = self._generate_schema_definition(
-            schema.name, schema.description, base_fields
-        )
-        json_schema["$defs"][schema.name] = base_schema
-
-        # Add variants
+            self._current_defs.add(enum_def.name)
         for variant_name in schema.variants:
-            variant_fields = schema.get_variant_fields(variant_name)
-            variant_title = self._variant_to_schema_title(schema.name, variant_name)
-            variant_schema = self._generate_schema_definition(
-                variant_title, schema.description, variant_fields
+            self._current_defs.add(
+                self._variant_to_schema_title(schema.name, variant_name)
             )
-            json_schema["$defs"][variant_title] = variant_schema
 
-        # Set the main schema to reference the base schema
-        json_schema["$ref"] = f"#/$defs/{schema.name}"
+        try:
+            # Add enum definitions to $defs
+            for enum_def in getattr(schema, "enums", []):
+                enum_values = [v for _name, v in enum_def.values]
+                enum_schema: dict[str, Any] = {"type": "string", "enum": enum_values}
+                if enum_def.docstring:
+                    enum_schema["description"] = enum_def.docstring
+                json_schema["$defs"][enum_def.name] = enum_schema
 
-        return json.dumps(json_schema, indent=2)
+            # Add base schema
+            base_fields = schema.fields
+            base_schema = self._generate_schema_definition(
+                schema.name, schema.description, base_fields
+            )
+            json_schema["$defs"][schema.name] = base_schema
+
+            # Add variants
+            for variant_name in schema.variants:
+                variant_fields = schema.get_variant_fields(variant_name)
+                variant_title = self._variant_to_schema_title(schema.name, variant_name)
+                variant_schema = self._generate_schema_definition(
+                    variant_title, schema.description, variant_fields
+                )
+                json_schema["$defs"][variant_title] = variant_schema
+
+            # Set the main schema to reference the base schema
+            json_schema["$ref"] = f"#/$defs/{schema.name}"
+
+            return json.dumps(json_schema, indent=2)
+        finally:
+            self._current_defs = set()
 
     def _generate_schema_definition(
         self, title: str, description: str, fields: list[USRField]
@@ -303,7 +325,15 @@ class JsonSchemaGenerator(BaseGenerator):
             field_schema["$ref"] = f"#/$defs/{field.enum_name}"
 
         elif field.type == FieldType.NESTED_SCHEMA:
-            field_schema["$ref"] = f"#/$defs/{field.nested_schema}"
+            nested = field.nested_schema
+            if not self._current_defs or nested in self._current_defs:
+                # Local reference (same file or standalone generate_model call)
+                field_schema["$ref"] = f"#/$defs/{nested}"
+            else:
+                # Cross-file reference: point to the other schema's file
+                field_schema["$ref"] = (
+                    f"{nested.lower()}{self.file_extension}#/$defs/{nested}"
+                )
 
         else:
             # Default to allowing any type

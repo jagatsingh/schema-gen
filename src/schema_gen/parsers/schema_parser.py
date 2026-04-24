@@ -1,6 +1,7 @@
 """Parser to convert schema_gen Schema classes to USR format"""
 
 import logging
+import re
 import warnings
 from enum import Enum
 
@@ -15,6 +16,8 @@ _ENUM_META_CLASSES = {
     "pathway": "PathwayMeta",
     "rust": "SerdeMeta",
 }
+
+_TAG_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def _detect_enum_value_type(enum_cls: type) -> type | None:
@@ -45,11 +48,19 @@ def _build_usr_enum(enum_cls: type) -> USREnum:
         # enum itself (or one of its bases that is also an Enum subclass).
         if meta is not None and isinstance(meta, type):
             custom_code[target] = _extract_meta_attributes(meta)
+    # Only read __doc__ from the enum's own __dict__ to avoid picking up
+    # Python's auto-generated "An enumeration." fallback that older
+    # versions of the stdlib ``Enum`` metaclass install on subclasses.
+    raw_doc = enum_cls.__dict__.get("__doc__")
+    docstring = (
+        raw_doc.strip() if isinstance(raw_doc, str) and raw_doc.strip() else None
+    )
     return USREnum(
         name=enum_cls.__name__,
         values=[(e.name, e.value) for e in enum_cls],
         value_type=_detect_enum_value_type(enum_cls),
         custom_code=custom_code,
+        docstring=docstring,
     )
 
 
@@ -102,6 +113,31 @@ class SchemaParser:
                     ) from exc
             usr_fields.append(usr_field)
 
+        # Validate and deduplicate field tags
+        for usr_field in usr_fields:
+            if not isinstance(usr_field.tags, (list, tuple)):
+                raise ValueError(
+                    f"Schema '{schema_class.__name__}', field '{usr_field.name}': "
+                    f"tags must be a list of strings, got {type(usr_field.tags).__name__}"
+                )
+            seen_tags: set[str] = set()
+            deduped: list[str] = []
+            for tag in usr_field.tags:
+                if not isinstance(tag, str):
+                    raise ValueError(
+                        f"Schema '{schema_class.__name__}', field '{usr_field.name}': "
+                        f"each tag must be a string, got {type(tag).__name__}"
+                    )
+                if not _TAG_RE.match(tag):
+                    raise ValueError(
+                        f"Schema '{schema_class.__name__}', field '{usr_field.name}': "
+                        f"invalid tag '{tag}' — tags must match [a-zA-Z_][a-zA-Z0-9_]*"
+                    )
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    deduped.append(tag)
+            usr_field.tags = deduped
+
         # Discover enum types referenced by fields.
         #
         # Enums can appear at several nesting depths:
@@ -146,7 +182,9 @@ class SchemaParser:
         for usr_field in usr_fields:
             _collect_enum(usr_field)
 
-        enums = list(seen_enums.values())
+        # Sort by name so generated output is deterministic across
+        # runs/environments regardless of field declaration order.
+        enums = sorted(seen_enums.values(), key=lambda e: e.name)
 
         # Extract variants if defined
         variants = {}
@@ -272,6 +310,9 @@ class SchemaParser:
         if all_errors:
             raise ValueError("Schema validation failed:\n" + "\n".join(all_errors))
 
+        # Sort by schema name so downstream generators emit files and
+        # index entries in a stable, environment-independent order.
+        usr_schemas.sort(key=lambda s: s.name)
         return usr_schemas
 
     def parse_schema_by_name(self, schema_name: str) -> USRSchema:

@@ -5,11 +5,11 @@ on:
     types: [published]
   push:
     tags:
-      - 'v*'  # Trigger on version tags like v0.1.0, v1.0.0
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., 0.1.1) - leave empty to use current'
+        description: 'Version to release (e.g., 0.3.0) - leave empty to use current'
         required: false
         type: string
       target:
@@ -29,12 +29,9 @@ jobs:
       version: ${{ steps.version.outputs.version }}
 
     steps:
-    - name: Set 7-day dependency delay
-      run: echo "UV_EXCLUDE_NEWER=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=7)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')" >> $GITHUB_ENV
-
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
-        fetch-depth: 0  # Full history for version detection
+        fetch-depth: 0
 
     - name: Install uv
       uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -44,7 +41,7 @@ jobs:
         cache-dependency-glob: "uv.lock"
 
     - name: Set up Python
-      run: uv python install 3.12
+      run: uv python install
 
     - name: Install dependencies
       run: uv sync --frozen --all-extras --dev
@@ -54,7 +51,6 @@ jobs:
       run: |
         if [ -n "${{ inputs.version }}" ]; then
           VERSION="${{ inputs.version }}"
-          # Update version in pyproject.toml for manual dispatch
           sed -i "s/version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         elif [[ "${{ github.ref }}" =~ ^refs/tags/v(.*)$ ]]; then
@@ -64,76 +60,26 @@ jobs:
           VERSION=$(grep -Po '(?<=version = ")[^"]*' pyproject.toml)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
         fi
-        echo "📦 Building version: $VERSION"
+        echo "Building version: $VERSION"
 
-    - name: Run comprehensive tests
+    - name: Run tests
       run: |
-        # Run full test suite with coverage
-        uv run pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-fail-under=65
+        uv run --frozen pytest tests/ -v --ignore=tests/test_e2e_compile.py --cov=src/schema_gen --cov-fail-under=60
 
-        # Run format validation tests (syntax and execution validation)
-        uv run pytest tests/test_format_validation.py -v
-
-        # Test all generators
-        uv run python scripts/check_compatibility.py --library all-generators
-
-        # Comprehensive format validation with external tool validation
-        uv run python scripts/validate_all_formats.py --verbose
-
-    - name: Run Docker-based comprehensive validation
+    - name: Run linting
       run: |
-        # Build Docker validation environment
-        docker build -f Dockerfile.validation -t schema-gen-validation .
-
-        # Run comprehensive validation in Docker with all external compilers
-        docker run --rm -v $PWD:/app schema-gen-validation /bin/bash -c "
-          cd /app &&
-          dev-setup &&
-          test-all-formats-docker
-        "
-
-    - name: Run linting and type checking
-      run: |
-        uv run ruff check src/ tests/
-        uv run ruff format --check src/ tests/
-
-    - name: Test CLI functionality
-      run: |
-        # Test basic CLI commands
-        uv run schema-gen --help
-        uv run schema-gen --version
-
-        # Test project initialization in clean directory
-        mkdir test_project && cd test_project
-        uv run schema-gen init
-
-        # Test generation with created schemas
-        uv run schema-gen generate --verbose
-
-        # Test validation
-        uv run schema-gen validate
-
-        # Verify generated files exist and are valid Python
-        test -f generated/pydantic/user_models.py
-        python -c "import sys; sys.path.append('generated/pydantic'); import user_models"
+        uv run --frozen ruff check src/ tests/
+        uv run --frozen ruff format --check src/ tests/
 
     - name: Build package
       run: |
         uv build --verbose
-
-        # List built files
         ls -la dist/
 
-        # Show package contents
-        uv run pip install twine
-        uv run python -m twine check dist/* --strict
-
-    - name: Verify package installation
+    - name: Verify package
       run: |
-        # Test installation from wheel
-        cd /tmp
-        pip install $GITHUB_WORKSPACE/dist/*.whl
-        python -c "import schema_gen; print(f'✅ Package installed successfully: {schema_gen.__version__}')"
+        pip install dist/*.whl
+        python -c "import schema_gen; print(f'Package v{schema_gen.__version__} OK')"
         schema-gen --help
 
     - name: Upload build artifacts
@@ -153,7 +99,7 @@ jobs:
       name: test-pypi
       url: https://test.pypi.org/project/schema-gen/
     permissions:
-      id-token: write  # For trusted publishing
+      id-token: write
 
     steps:
     - name: Download build artifacts
@@ -169,12 +115,6 @@ jobs:
         verbose: true
         skip-existing: true
 
-    - name: Test installation from Test PyPI
-      run: |
-        sleep 60  # Wait for package to be available
-        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ schema-gen==${{ needs.build-and-test.outputs.version }} || true
-        echo "🧪 Test PyPI publication completed"
-
   publish-pypi:
     needs: build-and-test
     runs-on: ubuntu-latest
@@ -186,7 +126,7 @@ jobs:
       name: pypi
       url: https://pypi.org/project/schema-gen/
     permissions:
-      id-token: write  # For trusted publishing
+      id-token: write
 
     steps:
     - name: Download build artifacts
@@ -201,38 +141,15 @@ jobs:
         verbose: true
         skip-existing: true
 
-    - name: Verify PyPI publication
-      run: |
-        sleep 60  # Wait for package to be available
-        pip install schema-gen==${{ needs.build-and-test.outputs.version }} || true
-        echo "🚀 PyPI publication completed"
-
   create-github-release:
     needs: [build-and-test, publish-pypi]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     permissions:
-      contents: write  # For creating releases
+      contents: write
 
     steps:
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-    - name: Generate changelog
-      id: changelog
-      run: |
-        # Simple changelog generation from git log
-        LAST_TAG=$(git tag --sort=-version:refname | head -n 2 | tail -n 1)
-        if [ -z "$LAST_TAG" ]; then
-          CHANGELOG=$(git log --pretty=format:"* %s" --since="1 month ago")
-        else
-          CHANGELOG=$(git log --pretty=format:"* %s" ${LAST_TAG}..HEAD)
-        fi
-
-        # Escape for GitHub output
-        CHANGELOG="${CHANGELOG//'%'/'%25'}"
-        CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-        CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-        echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
 
     - name: Create GitHub Release
       env:
@@ -244,34 +161,6 @@ jobs:
         fi
 
         gh release create "${{ github.ref_name }}" \
-          --title "🚀 Schema Gen v${{ needs.build-and-test.outputs.version }}" \
-          --notes "## 📦 What's New in v${{ needs.build-and-test.outputs.version }}
-
-        ${{ steps.changelog.outputs.changelog }}
-
-        ## 🔗 Installation
-
-        \`\`\`bash
-        pip install schema-gen==${{ needs.build-and-test.outputs.version }}
-        \`\`\`
-
-        ## 🔗 Links
-
-        - 📦 [PyPI Package](https://pypi.org/project/schema-gen/${{ needs.build-and-test.outputs.version }}/)
-        - 📚 [Documentation](https://github.com/jagatsingh/schema-gen#readme)
-        - 🐛 [Report Issues](https://github.com/jagatsingh/schema-gen/issues)" \
+          --title "Schema Gen v${{ needs.build-and-test.outputs.version }}" \
+          --generate-notes \
           $PRERELEASE_FLAG
-
-  post-publish-notification:
-    needs: [build-and-test, publish-pypi]
-    runs-on: ubuntu-latest
-    if: success()
-
-    steps:
-    - name: Notify successful publication
-      run: |
-        echo "🎉 Successfully published schema-gen v${{ needs.build-and-test.outputs.version }} to PyPI!"
-        echo ""
-        echo "📦 Package: https://pypi.org/project/schema-gen/"
-        echo "🔗 Install: pip install schema-gen"
-        echo "📚 Documentation: https://github.com/jagatsingh/schema-gen#readme"

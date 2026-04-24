@@ -89,6 +89,12 @@ class USREnum:
     # Per-target configuration overrides (mirrors USRSchema.target_config).
     target_config: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    # Class-level docstring from the source Enum. Propagated verbatim to
+    # generated Pydantic enums, as ``///`` doc comments on Rust enums, and
+    # as JSDoc blocks / ``description`` fields on Zod and JSON Schema
+    # emissions so downstream maintainers see the enum's intent.
+    docstring: str | None = None
+
 
 @dataclass
 class USRField:
@@ -151,6 +157,9 @@ class USRField:
     # discriminator field on each variant (e.g. ["CE", "PE"]). Populated
     # by the parser when ``discriminator`` is set and validated.
     union_tag_values: list[str] = field(default_factory=list)
+
+    # Field tags for grouped constant emission
+    tags: list[str] = field(default_factory=list)
 
     # Metadata
     description: str | None = None
@@ -274,17 +283,35 @@ class USRSchema:
 
         A field is self-referencing if:
         - It has nested_schema == self.name (direct self-reference), or
-        - It is a LIST/SET/FROZENSET with inner_type.nested_schema == self.name
+        - It is a LIST/SET/FROZENSET/DICT with inner_type.nested_schema == self.name
         """
         result = []
         for f in self.fields:
             if f.nested_schema == self.name or (
-                f.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET)
+                f.type
+                in (
+                    FieldType.LIST,
+                    FieldType.SET,
+                    FieldType.FROZENSET,
+                    FieldType.DICT,
+                )
                 and f.inner_type
                 and f.inner_type.nested_schema == self.name
             ):
                 result.append(f)
         return result
+
+    def get_tagged_fields(self) -> dict[str, list[str]]:
+        """Return a mapping of tag name to field names for all tagged fields.
+
+        Tags are sorted alphabetically; field names within each tag preserve
+        declaration order.
+        """
+        tag_map: dict[str, list[str]] = {}
+        for f in self.fields:
+            for tag in f.tags:
+                tag_map.setdefault(tag, []).append(f.name)
+        return dict(sorted(tag_map.items()))
 
     def get_variant_fields(self, variant_name: str) -> list[USRField]:
         """Get fields for a specific variant
@@ -461,13 +488,23 @@ class TypeMapper:
         if origin is Union or origin is getattr(types, "UnionType", None):
             args = typing.get_args(python_type)
             if len(args) == 2 and type(None) in args:
-                # This is Optional[T] or T | None
+                # This is Optional[T] or T | None.
+                # Unwrap the Optional and let the container branches below
+                # (list, set, dict, tuple) handle inner_type correctly.
+                # Do NOT create inner_type here — that causes double nesting
+                # for Optional[list[T]], Optional[set[T]], etc.
                 optional = True
                 non_none_type = next(arg for arg in args if arg is not type(None))
-                actual_type = non_none_type  # Use the non-None type for field_type
-                inner_type = cls.create_usr_field_from_python(
-                    f"{name}_inner", non_none_type, None
-                )
+                actual_type = non_none_type
+                # Re-derive origin from the unwrapped type so the container
+                # branches below can fire.
+                origin = typing.get_origin(non_none_type)
+                # For scalar Optional[T] (no container origin), create inner_type
+                # so generators can access the wrapped type.
+                if origin is None and non_none_type is not type(None):
+                    inner_type = cls.create_usr_field_from_python(
+                        f"{name}_inner", non_none_type, None
+                    )
             else:
                 # This is Union[T1, T2, ...]
                 union_types = [
@@ -475,15 +512,15 @@ class TypeMapper:
                     for i, arg in enumerate(args)
                 ]
 
-        elif origin is list or origin is set or origin is frozenset:
-            args = typing.get_args(python_type)
+        if origin is list or origin is set or origin is frozenset:
+            args = typing.get_args(actual_type)
             if args:
                 inner_type = cls.create_usr_field_from_python(
                     f"{name}_item", args[0], None
                 )
 
         elif origin is tuple:
-            args = typing.get_args(python_type)
+            args = typing.get_args(actual_type)
             if args:
                 # tuple[str, ...] means variable-length homogeneous tuple -> treat as LIST
                 if len(args) == 2 and args[1] is Ellipsis:
@@ -500,7 +537,7 @@ class TypeMapper:
                     ]
 
         elif origin is dict:
-            args = typing.get_args(python_type)
+            args = typing.get_args(actual_type)
             if args and len(args) == 2:
                 # Store the value type as inner_type (e.g. dict[str, int] -> int)
                 inner_type = cls.create_usr_field_from_python(
@@ -571,6 +608,7 @@ class TypeMapper:
                 "rust": getattr(field_info, "rust", {}),
             },
             discriminator=getattr(field_info, "discriminator", None),
+            tags=getattr(field_info, "tags", []),
             description=getattr(field_info, "description", None),
             metadata=getattr(field_info, "metadata", {}),
         )

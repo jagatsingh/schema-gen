@@ -1,7 +1,6 @@
 """Generator to create Zod schemas from USR schemas"""
 
 import logging
-from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -18,12 +17,18 @@ logger = logging.getLogger(__name__)
 _SUPPORTED_ZOD_CONFIG_KEYS: frozenset[str] = frozenset({"strict", "coerce"})
 
 
+def _tag_to_type_name(tag: str) -> str:
+    """Convert a tag name like ``toggleable`` to PascalCase type ``ToggleableField``."""
+    parts = tag.split("_")
+    return "".join(part.capitalize() for part in parts if part) + "Field"
+
+
 def _collect_external_schema_refs(schema: USRSchema) -> set[str]:
     """Walk a USR schema and return the set of NESTED_SCHEMA names it
     references that are NOT the schema itself (those are self-refs and
     handled via z.lazy()). Looks through ``inner_type`` (list / set /
-    frozenset) and ``union_types`` (tuple / union) so nested container
-    types produce imports too.
+    frozenset / dict) and ``union_types`` (tuple / union) so nested
+    container types produce imports too.
     """
     refs: set[str] = set()
 
@@ -85,6 +90,10 @@ class ZodGenerator(BaseGenerator):
         types are re-exported via ``export type`` so that projects using
         ``verbatimModuleSyntax`` don't trip TS1205 on the type-only names
         (POC finding C5).
+
+        Each name is exported at most once (from the first module that
+        declares it) to avoid ``Duplicate identifier`` TS errors when
+        multiple schema files reference the same enum.
         """
         lines = [
             "/**",
@@ -94,25 +103,50 @@ class ZodGenerator(BaseGenerator):
             "",
         ]
 
+        # Track names already emitted so shared enums are only exported once.
+        exported_value_names: set[str] = set()
+        exported_type_names: set[str] = set()
+
         for schema in schemas:
             module = f"./{schema.name.lower()}"
             # Collect runtime (value) names — schemas themselves.
-            value_names = [f"{e.name}Schema" for e in schema.enums]
-            value_names.append(f"{schema.name}Schema")
-            value_names.extend(
-                f"{self._variant_to_schema_name(schema.name, v)}Schema"
-                for v in schema.variants
-            )
+            value_names: list[str] = []
+            for e in schema.enums:
+                name = f"{e.name}Schema"
+                if name not in exported_value_names:
+                    value_names.append(name)
+                    exported_value_names.add(name)
+            schema_val = f"{schema.name}Schema"
+            if schema_val not in exported_value_names:
+                value_names.append(schema_val)
+                exported_value_names.add(schema_val)
+            for v in schema.variants:
+                variant_val = f"{self._variant_to_schema_name(schema.name, v)}Schema"
+                if variant_val not in exported_value_names:
+                    value_names.append(variant_val)
+                    exported_value_names.add(variant_val)
 
             # Collect type-only names — inferred TS types.
-            type_names = [e.name for e in schema.enums]
-            type_names.append(schema.name)
-            type_names.extend(
-                self._variant_to_schema_name(schema.name, v) for v in schema.variants
-            )
+            type_names: list[str] = []
+            for e in schema.enums:
+                if e.name not in exported_type_names:
+                    type_names.append(e.name)
+                    exported_type_names.add(e.name)
+            if schema.name not in exported_type_names:
+                type_names.append(schema.name)
+                exported_type_names.add(schema.name)
+            for v in schema.variants:
+                variant_type = self._variant_to_schema_name(schema.name, v)
+                if variant_type not in exported_type_names:
+                    type_names.append(variant_type)
+                    exported_type_names.add(variant_type)
 
-            lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
-            lines.append(f"export type {{ {', '.join(type_names)} }} from '{module}';")
+            if value_names:
+                lines.append(f"export {{ {', '.join(value_names)} }} from '{module}';")
+            if type_names:
+                lines.append(
+                    f"export type {{ {', '.join(type_names)} }} from '{module}';"
+                )
 
         return "\n".join(lines) + "\n"
 
@@ -146,7 +180,6 @@ class ZodGenerator(BaseGenerator):
             variant_name=variant,
             description=schema.description,
             fields=field_definitions,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC"),
         )
 
     def generate_all_variants(self, schema: USRSchema) -> dict[str, str]:
@@ -234,6 +267,9 @@ class ZodGenerator(BaseGenerator):
             )
             all_types.append(variant_type)
 
+        # Collect tag groups from base schema fields
+        tag_groups = schema.get_tagged_fields()
+
         # Generate complete file
         return self._generate_complete_file(
             schema.name,
@@ -241,6 +277,7 @@ class ZodGenerator(BaseGenerator):
             all_types,
             schema.enums,
             external_refs=external_refs,
+            tag_groups=tag_groups,
         )
 
     def _generate_field_definition(self, field: USRField) -> str:
@@ -351,6 +388,9 @@ class ZodGenerator(BaseGenerator):
                 return "z.tuple([])"
 
         elif field.type == FieldType.DICT:
+            if field.inner_type is not None:
+                value_zod_type = self._get_zod_type(field.inner_type)
+                return f"z.record({value_zod_type})"
             return "z.record(z.any())"
 
         elif field.type == FieldType.UNION:
@@ -459,6 +499,9 @@ class ZodGenerator(BaseGenerator):
                 return f"[{', '.join(inner_types)}]"
             return "[]"
         elif field.type == FieldType.DICT:
+            if field.inner_type is not None:
+                value_ts_type = self._get_typescript_type(field.inner_type)
+                return f"Record<string, {value_ts_type}>"
             return "Record<string, any>"
         elif field.type == FieldType.UNION:
             if field.union_types:
@@ -491,17 +534,17 @@ class ZodGenerator(BaseGenerator):
         types: list[str],
         enums: list = None,
         external_refs: set[str] | None = None,
+        tag_groups: dict[str, list[str]] | None = None,
     ) -> str:
         """Generate complete TypeScript file with header, imports, and all schemas"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
         enums = enums or []
         external_refs = external_refs or set()
+        tag_groups = tag_groups or {}
 
         lines = [
             "/**",
             " * AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
             f" * Generated from: {schema_name}",
-            f" * Generated at: {timestamp}",
             " * Generator: schema-gen Zod generator",
             " *",
             " * To regenerate this file, run:",
@@ -514,19 +557,31 @@ class ZodGenerator(BaseGenerator):
         ]
 
         # Cross-file imports for nested schema references (POC finding C4).
-        # We import both the runtime schema (value) and the inferred type.
-        # `import type` avoids TS1205 in projects with verbatimModuleSyntax.
+        # We only import the runtime Zod schema (value).  The inferred TS
+        # types are derived via ``z.infer<typeof …Schema>`` so a separate
+        # ``import type`` is unnecessary and triggers TS6133 when
+        # ``noUnusedLocals`` is enabled (#38).
         for ref in sorted(external_refs):
             if ref == schema_name:
                 continue  # self-ref is handled via z.lazy()
             module = ref.lower()
             lines.append(f"import {{ {ref}Schema }} from './{module}';")
-            lines.append(f"import type {{ {ref} }} from './{module}';")
 
         lines.append("")
 
         # Add enum definitions before schemas
         for enum_def in enums:
+            if enum_def.docstring:
+                doc_lines = enum_def.docstring.splitlines()
+                # Close any */ sequences that would end the JSDoc block early.
+                safe_lines = [line.replace("*/", "*\\/") for line in doc_lines]
+                if len(safe_lines) == 1:
+                    lines.append(f"/** {safe_lines[0]} */")
+                else:
+                    lines.append("/**")
+                    for doc_line in safe_lines:
+                        lines.append(f" * {doc_line}" if doc_line else " *")
+                    lines.append(" */")
             values = ", ".join(f'"{v}"' for _name, v in enum_def.values)
             lines.append(f"export const {enum_def.name}Schema = z.enum([{values}]);")
             lines.append(
@@ -546,6 +601,18 @@ class ZodGenerator(BaseGenerator):
         for type_def in types:
             lines.append(type_def)
 
+        # Add field-tag constants
+        if tag_groups:
+            lines.append("")
+            for tag, field_names in tag_groups.items():
+                const_name = f"{tag.upper()}_FIELDS"
+                type_name = _tag_to_type_name(tag)
+                fields_str = ", ".join(f"'{f}'" for f in field_names)
+                lines.append(f"export const {const_name} = [{fields_str}] as const;")
+                lines.append(
+                    f"export type {type_name} = (typeof {const_name})[number];"
+                )
+
         return "\n".join(lines)
 
     def _get_template(self) -> str:
@@ -553,7 +620,6 @@ class ZodGenerator(BaseGenerator):
         return """/**
  * AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
  * Generated from: {{ base_schema_name }}{% if variant_name %} ({{ variant_name }} variant){% endif %}
- * Generated at: {{ timestamp }}
  * Generator: schema-gen Zod generator
  *
  * To regenerate this file, run:

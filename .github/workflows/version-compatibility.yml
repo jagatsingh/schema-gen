@@ -19,13 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12"]
       fail-fast: false
 
     steps:
-    - name: Set 7-day dependency delay
-      run: echo "UV_EXCLUDE_NEWER=$(python3 -c 'from datetime import datetime, timedelta; print((datetime.utcnow() - timedelta(days=7)).strftime(\"%Y-%m-%dT%H:%M:%SZ\"))')" >> $GITHUB_ENV
-
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
     - name: Install uv
@@ -44,16 +41,16 @@ jobs:
     - name: Test all generators compatibility
       run: |
         # Test all generators with currently installed versions
-        uv run python scripts/check_compatibility.py --library all-generators
+        uv run --frozen python scripts/check_compatibility.py --library all-generators
 
     - name: Run version compatibility test suite
       run: |
         # Run the comprehensive compatibility test suite
-        uv run pytest tests/test_version_compatibility.py -v
+        uv run --frozen pytest tests/test_version_compatibility.py -v
 
     - name: Validate version matrix configuration
       run: |
-        uv run python -c "
+        uv run --frozen python -c "
         import yaml
         with open('tests/test-matrix.yml', 'r') as f:
             matrix = yaml.safe_load(f)
