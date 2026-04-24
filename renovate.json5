@@ -166,8 +166,8 @@
     {
       customType: 'regex',
       description: 'Update versions in test matrix YAML',
-      managerFilePatterns: [
-        '/^tests/test-matrix\\.yml$/',
+      fileMatch: [
+        '^tests/test-matrix\\.yml$',
       ],
       matchStrings: [
         '\\s+-\\s+"(?<currentValue>[^"]+)"\\s*#.*(?<depName>pydantic|sqlalchemy|pathway|avro|protobuf|jsonschema|graphql-core)',
@@ -178,21 +178,22 @@
     {
       customType: 'regex',
       description: 'Update Python versions in workflows',
-      managerFilePatterns: [
-        '/^\\.github/workflows/.*\\.yml$/',
+      fileMatch: [
+        '^\\.github/workflows/.*\\.yml$',
       ],
       matchStrings: [
         'python-version:\\s*\\["(?<currentValue>[^"]+)"',
       ],
       depNameTemplate: 'python',
+      packageNameTemplate: 'python/cpython',
       datasourceTemplate: 'github-releases',
       extractVersionTemplate: '^v(?<version>.*)$',
     },
     {
       customType: 'regex',
       description: 'Update library versions in version compatibility workflow',
-      managerFilePatterns: [
-        '/^\\.github/workflows/version-compatibility\\.yml$/',
+      fileMatch: [
+        '^\\.github/workflows/version-compatibility\\.yml$',
       ],
       matchStrings: [
         '(?<depName>pydantic|sqlalchemy|pathway)-version:\\s*\\["(?<currentValue>[^"]+)"',
