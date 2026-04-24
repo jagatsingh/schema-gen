@@ -61,7 +61,7 @@ jobs:
       run: uv sync --frozen --all-extras --dev
 
     - name: Install Node.js and TypeScript
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
         node-version: '22'
 
