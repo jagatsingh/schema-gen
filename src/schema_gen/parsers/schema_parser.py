@@ -1,6 +1,7 @@
 """Parser to convert schema_gen Schema classes to USR format"""
 
 import logging
+import re
 import warnings
 from enum import Enum
 
@@ -15,6 +16,8 @@ _ENUM_META_CLASSES = {
     "pathway": "PathwayMeta",
     "rust": "SerdeMeta",
 }
+
+_TAG_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def _detect_enum_value_type(enum_cls: type) -> type | None:
@@ -109,6 +112,31 @@ class SchemaParser:
                         f"discriminator resolution failed — {exc}"
                     ) from exc
             usr_fields.append(usr_field)
+
+        # Validate and deduplicate field tags
+        for usr_field in usr_fields:
+            if not isinstance(usr_field.tags, (list, tuple)):
+                raise ValueError(
+                    f"Schema '{schema_class.__name__}', field '{usr_field.name}': "
+                    f"tags must be a list of strings, got {type(usr_field.tags).__name__}"
+                )
+            seen_tags: set[str] = set()
+            deduped: list[str] = []
+            for tag in usr_field.tags:
+                if not isinstance(tag, str):
+                    raise ValueError(
+                        f"Schema '{schema_class.__name__}', field '{usr_field.name}': "
+                        f"each tag must be a string, got {type(tag).__name__}"
+                    )
+                if not _TAG_RE.match(tag):
+                    raise ValueError(
+                        f"Schema '{schema_class.__name__}', field '{usr_field.name}': "
+                        f"invalid tag '{tag}' — tags must match [a-zA-Z_][a-zA-Z0-9_]*"
+                    )
+                if tag not in seen_tags:
+                    seen_tags.add(tag)
+                    deduped.append(tag)
+            usr_field.tags = deduped
 
         # Discover enum types referenced by fields.
         #
