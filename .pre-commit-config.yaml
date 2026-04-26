@@ -17,22 +17,29 @@ repos:
         files: 'src/schema_gen/generators/.*\.py$'
         stages: [pre-push]
 
-      # Fast generator-output safety net — runs on every commit when a
-      # generator file or its tests change. Catches:
-      #   - output-format drift vs golden snapshots
-      #   - syntactic correctness of generated code (AST-level)
-      #   - framework-execution: import + use the generated file in its
-      #     real framework (Pydantic, SQLAlchemy, dataclasses, TypedDict,
-      #     Pathway, JSON Schema, GraphQL, Avro). External-toolchain tests
-      #     (protoc, cargo, tsc, kotlinc, javac) skip cleanly when the
-      #     compiler is missing, but they ALWAYS run on CI where the
-      #     compilers are installed.
-      - id: schema-gen-generator-tests
-        name: Generator correctness + framework-execution tests
-        entry: uv run pytest tests/test_generator_output_stability.py tests/test_generator_correctness_invariants.py tests/test_generator_framework_execution.py -q --no-header
+      # Comprehensive generator validation — runs the full
+      # framework-execution suite inside the Dockerfile.validation
+      # image, which has every external compiler (protoc / cargo /
+      # tsc / kotlinc / javac) pre-installed plus the runtime jars
+      # (Jackson / kotlinx-serialization / Bean Validation API).
+      # Mirrors CI's "External Compiler Validation" job exactly.
+      #
+      # Triggers on every commit when a generator, its tests, the
+      # snapshot fixtures, or the Dockerfile change. Hard-fails when
+      # Docker isn't available so wrong non-Python code can't leave
+      # the dev box — install Docker (https://docs.docker.com/get-docker/)
+      # to use this hook.
+      #
+      # First run builds the image (~10 min, one-time); subsequent runs
+      # reuse the cached image and a named cache volume for pip/uv,
+      # finishing in ~1-2 min. Source is bind-mounted so test/code
+      # edits don't require a rebuild.
+      - id: schema-gen-docker-validation
+        name: Docker-based comprehensive generator validation
+        entry: scripts/validate-in-docker.sh
         language: system
         pass_filenames: false
-        files: '^(src/schema_gen/generators/|tests/(test_generator_|golden_outputs/))'
+        files: '^(src/schema_gen/generators/|tests/(test_generator_|golden_outputs/)|Dockerfile\.validation|scripts/validate-in-docker\.sh)'
 
   # File and content validation
   - repo: https://github.com/pre-commit/pre-commit-hooks

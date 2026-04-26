@@ -1,5 +1,11 @@
+# syntax=docker/dockerfile:1.7
 # Comprehensive validation environment for schema-gen
 # Includes all external compilers and tools needed for complete format validation
+#
+# Heredoc-style ``RUN cat > file << 'EOF' ... EOF`` blocks below require the
+# BuildKit frontend directive on the very first line (above). Without it,
+# Docker's classic parser sees ``{`` after the heredoc on the next line and
+# errors with ``unknown instruction: {`` (https://docs.docker.com/build/dockerfile/release-notes/#14-0).
 FROM python:3.12-slim
 
 LABEL maintainer="schema-gen"
@@ -46,12 +52,15 @@ RUN mkdir -p /opt/typescript-validation \
     && npm init -y \
     && npm install zod @types/node typescript
 
-# Create proper TypeScript configuration for Zod validation
-RUN cat > /opt/typescript-validation/tsconfig.json << 'EOF'
+# Create proper TypeScript configuration for Zod validation. Docker
+# BuildKit heredoc form is ``COPY <<EOF /dest`` — not ``RUN cat > ... <<EOF``,
+# which the BuildKit parser does NOT recognize as a heredoc and rejects
+# with ``unknown instruction: {`` on the next line.
+COPY <<EOF /opt/typescript-validation/tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
+    "module": "esnext",
     "lib": ["ES2020"],
     "outDir": "./dist",
     "rootDir": "./src",
@@ -60,7 +69,7 @@ RUN cat > /opt/typescript-validation/tsconfig.json << 'EOF'
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
@@ -75,7 +84,7 @@ EOF
 RUN mkdir -p /opt/typescript-validation/src
 
 # Install Kotlin compiler
-RUN wget -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip" \
+RUN wget --tries=5 --waitretry=10 -Okotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip" \
     && unzip kotlin-compiler.zip -d /opt \
     && rm kotlin-compiler.zip \
     && ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc \
@@ -83,9 +92,9 @@ RUN wget -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/do
 
 # Create directory for Kotlin dependencies and download serialization library
 RUN mkdir -p /opt/kotlin-libs \
-    && wget -O /opt/kotlin-libs/kotlinx-serialization-core.jar \
+    && wget --tries=5 --waitretry=10 -O/opt/kotlin-libs/kotlinx-serialization-core.jar \
        https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.9.0/kotlinx-serialization-core-jvm-1.9.0.jar \
-    && wget -O /opt/kotlin-libs/kotlinx-serialization-json.jar \
+    && wget --tries=5 --waitretry=10 -O/opt/kotlin-libs/kotlinx-serialization-json.jar \
        https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.9.0/kotlinx-serialization-json-jvm-1.9.0.jar
 
 # Create directory for Java dependencies
@@ -94,15 +103,15 @@ RUN mkdir -p /opt/java-libs
 # Download Jackson and validation dependencies for Java
 RUN cd /opt/java-libs && \
     # Jackson Core
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar && \
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar && \
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar && \
     # Bean Validation API
-    wget https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar && \
     # Hibernate Validator (reference implementation)
-    wget https://repo1.maven.org/maven2/org/hibernate/validator/hibernate-validator/6.2.5.Final/hibernate-validator-6.2.5.Final.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/org/hibernate/validator/hibernate-validator/6.2.5.Final/hibernate-validator-6.2.5.Final.jar && \
     # Expression Language (required by Hibernate Validator)
-    wget https://repo1.maven.org/maven2/org/glassfish/javax.el/3.0.0/javax.el-3.0.0.jar
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/org/glassfish/javax.el/3.0.0/javax.el-3.0.0.jar
 
 # Set Java classpath for validation
 ENV CLASSPATH="/opt/java-libs/*"
@@ -136,8 +145,9 @@ RUN pip install --no-cache-dir \
     typing-extensions>=4.0 \
     watchdog>=3.0
 
-# Create validation script
-RUN cat > /usr/local/bin/validate-compilers << 'EOF'
+# Create validation script. Quoted ``<<"EOF"`` prevents BuildKit from
+# expanding ``$VAR`` references (we need bash to see them at runtime).
+COPY <<"EOF" /usr/local/bin/validate-compilers
 #!/bin/bash
 # Comprehensive compiler validation script
 
@@ -189,7 +199,7 @@ EOF
 RUN chmod +x /usr/local/bin/validate-compilers
 
 # Create comprehensive test script
-RUN cat > /usr/local/bin/test-all-formats-docker << 'EOF'
+COPY <<"EOF" /usr/local/bin/test-all-formats-docker
 #!/bin/bash
 # Docker-optimized format validation script
 
@@ -229,7 +239,7 @@ EOF
 RUN chmod +x /usr/local/bin/test-all-formats-docker
 
 # Create development helper script
-RUN cat > /usr/local/bin/dev-setup << 'EOF'
+COPY <<"EOF" /usr/local/bin/dev-setup
 #!/bin/bash
 # Development environment setup
 
