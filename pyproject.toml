@@ -93,6 +93,9 @@ dev = [
 # Ruff configuration
 [tool.ruff]
 line-length = 88
+# Golden-output snapshot fixtures must match raw generator output verbatim;
+# never let ruff reformat or rewrite them.
+extend-exclude = ["tests/golden_outputs"]
 
 [tool.ruff.lint]
 select = [
