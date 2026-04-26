@@ -96,6 +96,8 @@ class TestSqlalchemyDocstringIsFirstClassStatement:
     """
 
     def test_docstring_is_first_statement_in_class_body(self):
+        # ``ast.parse`` also serves as a syntax-check; a malformed file
+        # raises ``SyntaxError`` here before we reach the docstring assert.
         out = SqlAlchemyGenerator().generate_file(_parse())
         tree = ast.parse(out)
         cls = next(
@@ -110,9 +112,3 @@ class TestSqlalchemyDocstringIsFirstClassStatement:
         )
         assert "Summary line of the schema." in docstring
         assert "Body line one, with extra detail." in docstring
-
-    def test_generated_module_imports_cleanly(self):
-        """Sanity: the generated module is at least syntactically valid Python."""
-        out = SqlAlchemyGenerator().generate_file(_parse())
-        # ``ast.parse`` raises ``SyntaxError`` on malformed Python.
-        ast.parse(out)

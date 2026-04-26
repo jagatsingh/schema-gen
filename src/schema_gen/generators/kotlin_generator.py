@@ -106,7 +106,13 @@ class KotlinGenerator(BaseGenerator):
         lines = []
 
         if description:
-            lines.extend(["/**", f" * {description}", " */"])
+            # Multi-line descriptions need every body line prefixed with
+            # ``" * "``; otherwise body lines fall outside the ``/** ... */``
+            # block and break the KDoc comment.
+            lines.append("/**")
+            for desc_line in description.splitlines():
+                lines.append(f" * {desc_line}" if desc_line else " *")
+            lines.append(" */")
 
         # Add serialization annotations if needed
         lines.append("@Serializable")

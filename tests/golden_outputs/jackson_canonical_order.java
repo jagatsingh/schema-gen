@@ -20,10 +20,10 @@ import javax.validation.constraints.NotNull;
 
 /**
  * Order placed against the matching engine.
-
-Carries the instrument identifier, the side (BUY/SELL), and an optional
-client-supplied tag. Used as a fixture for cross-generator output
-stability tests.
+ *
+ * Carries the instrument identifier, the side (BUY/SELL), and an optional
+ * client-supplied tag. Used as a fixture for cross-generator output
+ * stability tests.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"instrument", "quantity", "price", "side", "tag", "metadata", "fills"})
