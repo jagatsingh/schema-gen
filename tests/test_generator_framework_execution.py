@@ -589,6 +589,16 @@ class TestJacksonFrameworkExecution:
                 "Jackson jars not available on CLASSPATH — set CLASSPATH "
                 "to include jackson-core/databind/annotations to run this test"
             )
+        if (
+            result.returncode != 0
+            and "package javax.validation.constraints" in result.stderr
+        ):
+            pytest.skip(
+                "Bean Validation API not on CLASSPATH — the Jackson generator "
+                "emits @NotNull annotations from javax.validation.constraints; "
+                "include jakarta.validation-api (or javax.validation:validation-api) "
+                "in CLASSPATH to run this test"
+            )
         assert result.returncode == 0, (
             f"javac rejected the generated .java:\n{result.stderr}"
         )

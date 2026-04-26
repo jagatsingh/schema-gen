@@ -74,21 +74,30 @@ jobs:
         distribution: 'temurin'
         java-version: '21'
 
-    - name: Download Jackson JARs
+    - name: Download Jackson + Bean Validation JARs
       run: |
         mkdir -p /tmp/java-libs
         cd /tmp/java-libs
         wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar
         wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar
         wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar
+        # Generator emits ``import javax.validation.constraints.NotNull`` —
+        # download the legacy javax.validation API so javac resolves it.
+        wget -q https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar
         echo "CLASSPATH=/tmp/java-libs/*" >> $GITHUB_ENV
 
-    - name: Install Kotlin
+    - name: Install Kotlin and kotlinx-serialization runtime
       run: |
         wget -q -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip"
         unzip -q kotlin-compiler.zip -d /opt
         rm kotlin-compiler.zip
         echo "/opt/kotlinc/bin" >> $GITHUB_PATH
+        # kotlinx-serialization runtime jar so the @Serializable annotation
+        # in generated Kotlin resolves under kotlinc.
+        mkdir -p /tmp/kotlin-libs
+        wget -q -O /tmp/kotlin-libs/kotlinx-serialization-core.jar \
+          https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.7.3/kotlinx-serialization-core-jvm-1.7.3.jar
+        echo "KOTLIN_CLASSPATH=/tmp/kotlin-libs/*" >> $GITHUB_ENV
 
     - name: Install Protocol Buffers
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
