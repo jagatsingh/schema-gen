@@ -1,5 +1,6 @@
 """Parser to convert schema_gen Schema classes to USR format"""
 
+import inspect
 import logging
 import re
 import warnings
@@ -51,9 +52,14 @@ def _build_usr_enum(enum_cls: type) -> USREnum:
     # Only read __doc__ from the enum's own __dict__ to avoid picking up
     # Python's auto-generated "An enumeration." fallback that older
     # versions of the stdlib ``Enum`` metaclass install on subclasses.
+    # `inspect.cleandoc` strips the per-line indentation Python preserves
+    # in raw `__doc__` so emitted descriptions don't carry the source
+    # file's whitespace into JSON / Zod / Rust output.
     raw_doc = enum_cls.__dict__.get("__doc__")
     docstring = (
-        raw_doc.strip() if isinstance(raw_doc, str) and raw_doc.strip() else None
+        inspect.cleandoc(raw_doc)
+        if isinstance(raw_doc, str) and raw_doc.strip()
+        else None
     )
     return USREnum(
         name=enum_cls.__name__,
@@ -199,10 +205,20 @@ class SchemaParser:
         # Extract custom code if available
         custom_code = getattr(schema_class, "_custom_code", {})
 
+        # `inspect.cleandoc` strips the per-line indentation Python
+        # preserves in raw `__doc__` so emitted descriptions don't carry
+        # the source file's whitespace into JSON / Zod / Rust output.
+        raw_doc = schema_class.__doc__
+        description = (
+            inspect.cleandoc(raw_doc)
+            if isinstance(raw_doc, str) and raw_doc.strip()
+            else None
+        )
+
         usr_schema = USRSchema(
             name=schema_class.__name__,
             fields=usr_fields,
-            description=schema_class.__doc__,
+            description=description,
             enums=enums,
             variants=variants,
             custom_code=custom_code,
