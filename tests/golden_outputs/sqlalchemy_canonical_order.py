@@ -15,14 +15,13 @@ from ._base import Base
 
 
 class CanonicalOrder(Base):
-    __tablename__ = "canonical_order"
-    """
-    Order placed against the matching engine.
+    """Order placed against the matching engine.
 
-Carries the instrument identifier, the side (BUY/SELL), and an optional
-client-supplied tag. Used as a fixture for cross-generator output
-stability tests.
+    Carries the instrument identifier, the side (BUY/SELL), and an optional
+    client-supplied tag. Used as a fixture for cross-generator output
+    stability tests.
     """
+    __tablename__ = "canonical_order"
 
     instrument: Mapped[str] = mapped_column(Text)
     quantity: Mapped[int] = mapped_column()

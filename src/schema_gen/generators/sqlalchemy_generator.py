@@ -9,6 +9,25 @@ from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
 
+def _format_class_docstring(docstring: str, indent: str = "    ") -> list[str]:
+    '''Render ``docstring`` as the body lines of a Python class docstring.
+
+    Collapses to a single-line """...""" form when the source is a
+    single line free of embedded triple-quotes; otherwise emits the
+    PEP 257 multi-line form with the summary line attached to the
+    opening triple-quote and the closing triple-quote on its own line.
+    '''
+    doc_lines = docstring.splitlines()
+    if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
+        return [f'{indent}"""{doc_lines[0]}"""']
+    summary, *body = doc_lines
+    out = [f'{indent}"""{summary}']
+    for doc_line in body:
+        out.append(f"{indent}{doc_line}" if doc_line else "")
+    out.append(f'{indent}"""')
+    return out
+
+
 class SqlAlchemyGenerator(BaseGenerator):
     """Generates SQLAlchemy 2.0 models from USR schemas"""
 
@@ -89,12 +108,19 @@ class SqlAlchemyGenerator(BaseGenerator):
                 column_definitions.append(col_def)
                 imports.update(col_imports)
 
+        # Pre-format the class docstring as a list of indented lines so the
+        # template can drop them in as the first statement of the class body
+        # (PEP 257 form). Empty list when there is no description.
+        docstring_lines = (
+            _format_class_docstring(schema.description) if schema.description else []
+        )
+
         return self.template.render(
             model_name=model_name,
             table_name=table_name,
             schema_name=schema.name,
             variant_name=variant,
-            description=schema.description,
+            docstring_lines=docstring_lines,
             imports=sorted(imports),
             columns=column_definitions,
             relationships=relationships,
@@ -406,16 +432,16 @@ class SqlAlchemyGenerator(BaseGenerator):
         lines.append("")
         lines.append("")
 
-        # Add model class
+        # Add model class. The class docstring must be the FIRST statement
+        # in the class body — emitting it after ``__tablename__`` makes it a
+        # no-op string expression and ``ClassName.__doc__`` ends up ``None``.
         table_name = self._to_snake_case(schema_name)
         lines.append(f"class {schema_name}(Base):")
-        lines.append(f'    __tablename__ = "{table_name}"')
 
         if description:
-            lines.append('    """')
-            lines.append(f"    {description}")
-            lines.append('    """')
+            lines.extend(_format_class_docstring(description))
 
+        lines.append(f'    __tablename__ = "{table_name}"')
         lines.append("")
 
         # Add columns
@@ -457,12 +483,10 @@ class Base(DeclarativeBase):
 
 
 class {{ model_name }}(Base):
+{%- for doc_line in docstring_lines %}
+{{ doc_line }}
+{%- endfor %}
     __tablename__ = "{{ table_name }}"
-{%- if description %}
-    """
-    {{ description }}
-    """
-{%- endif %}
 
 {% for column_def in columns %}
 {{ column_def }}

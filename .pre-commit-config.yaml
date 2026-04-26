@@ -29,7 +29,6 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-json
-        exclude: '^tests/golden_outputs/'
       - id: check-xml
       - id: check-added-large-files
         args: ['--maxkb=1000']
