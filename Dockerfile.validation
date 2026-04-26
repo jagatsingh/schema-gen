@@ -117,6 +117,17 @@ RUN cd /opt/java-libs && \
 ENV CLASSPATH="/opt/java-libs/*"
 ENV JAVA_HOME="/usr/lib/jvm/default-java"
 
+# Kotlin classpath — points the test_kotlinc_accepts_output framework
+# test at the kotlinx-serialization runtime jars downloaded above so the
+# generated ``@Serializable`` annotation resolves at compile time.
+ENV KOTLIN_CLASSPATH="/opt/kotlin-libs/*"
+
+# Install Rust toolchain (cargo + rustc) for the Rust framework-execution
+# test (``cargo check`` on a generated lib.rs). ``--profile minimal``
+# skips docs/tests components to keep the layer small.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- --default-toolchain stable -y --profile minimal
+
 # Install Python package manager (uv)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
