@@ -1,0 +1,40 @@
+# AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
+# Generated from: CanonicalOrder
+# Generator: schema-gen GraphQL generator
+#
+# To regenerate this file, run:
+#     schema-gen generate --target graphql
+#
+# Changes to this file will be overwritten.
+
+scalar JSON
+
+"""
+Order placed against the matching engine.
+
+Carries the instrument identifier, the side (BUY/SELL), and an optional
+client-supplied tag. Used as a fixture for cross-generator output
+stability tests.
+"""
+type CanonicalOrder {
+  instrument: String!  # Exchange-prefixed symbol
+  quantity: Int!  # Number of contracts
+  price: Float!  # Limit price
+  side: String!  # Buy or sell
+  tag: String  # Optional client tag
+  metadata: JSON!  # Free-form metadata
+  fills: [Float]!  # Per-fill prices (FIFO)
+}
+
+"""
+Input for creating/updating
+"""
+input CanonicalOrderInput {
+  instrument: String!  # Exchange-prefixed symbol
+  quantity: Int!  # Number of contracts
+  price: Float!  # Limit price
+  side: String!  # Buy or sell
+  tag: String  # Optional client tag
+  metadata: JSON!  # Free-form metadata
+  fills: [Float]!  # Per-fill prices (FIFO)
+}

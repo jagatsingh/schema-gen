@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "generator": "schema-gen Avro generator",
+    "generated_from": "CanonicalOrder",
+    "note": "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY"
+  },
+  "schemas": [
+    {
+      "type": "record",
+      "name": "CanonicalOrder",
+      "namespace": "com.example.canonicalorder",
+      "fields": [
+        {
+          "name": "instrument",
+          "type": "string",
+          "doc": "Exchange-prefixed symbol"
+        },
+        {
+          "name": "quantity",
+          "type": "long",
+          "doc": "Number of contracts"
+        },
+        {
+          "name": "price",
+          "type": "double",
+          "doc": "Limit price"
+        },
+        {
+          "name": "side",
+          "type": {
+            "type": "enum",
+            "name": "CanonicalSide",
+            "symbols": [
+              "buy",
+              "sell"
+            ]
+          },
+          "doc": "Buy or sell"
+        },
+        {
+          "name": "tag",
+          "type": [
+            "null",
+            "string"
+          ],
+          "doc": "Optional client tag",
+          "default": null
+        },
+        {
+          "name": "metadata",
+          "type": {
+            "type": "map",
+            "values": "string"
+          },
+          "doc": "Free-form metadata"
+        },
+        {
+          "name": "fills",
+          "type": {
+            "type": "array",
+            "items": "double"
+          },
+          "doc": "Per-fill prices (FIFO)"
+        }
+      ],
+      "doc": "Order placed against the matching engine.\n\nCarries the instrument identifier, the side (BUY/SELL), and an optional\nclient-supplied tag. Used as a fixture for cross-generator output\nstability tests."
+    }
+  ]
+}

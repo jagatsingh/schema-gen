@@ -30,14 +30,20 @@ def _format_class_docstring(docstring: str, indent: str = "    ") -> list[str]:
 
     Collapses to a single-line """...""" form when the source is a
     single line free of embedded triple-quotes; otherwise emits the
-    multi-line block form. Shared between ``_enums.py`` emission and the
-    single-file ``_generate_complete_file`` path so the two can't drift.
+    PEP 257 multi-line form with the summary line attached to the
+    opening triple-quote and the closing triple-quote on its own line.
+    Shared between ``_enums.py`` emission, ``_generate_single_model``,
+    and the single-file ``_generate_complete_file`` path so the three
+    can't drift.
     '''
     doc_lines = docstring.splitlines()
     if len(doc_lines) == 1 and '"""' not in doc_lines[0]:
         return [f'{indent}"""{doc_lines[0]}"""']
-    out = [f'{indent}"""']
-    for doc_line in doc_lines:
+    # PEP 257: summary on the opening line, body lines indented to
+    # match the class body, closing triple-quote on its own line.
+    summary, *body = doc_lines
+    out = [f'{indent}"""{summary}']
+    for doc_line in body:
         out.append(f"{indent}{doc_line}" if doc_line else "")
     out.append(f'{indent}"""')
     return out
@@ -222,18 +228,27 @@ class PydanticGenerator(BaseGenerator):
 
         # Generate field definitions
         field_definitions = []
-        imports = {"pydantic", "typing"}
+        # Seed only with bare ``pydantic``; per-field imports add specific
+        # ``typing.<Name>`` markers as needed (issue #99).
+        imports = {"pydantic"}
 
         for field in fields:
             field_def, field_imports = self._generate_field_definition(field)
             field_definitions.append(field_def)
             imports.update(field_imports)
 
+        # Pre-format the class docstring so multi-line descriptions get
+        # body-line indentation and the closing ``"""`` on its own line
+        # (PEP 257 form). Empty list when there is no description.
+        docstring_lines = (
+            _format_class_docstring(schema.description) if schema.description else []
+        )
+
         return self.template.render(
             model_name=model_name,
             schema_name=schema.name,
             variant_name=variant,
-            description=schema.description,
+            docstring_lines=docstring_lines,
             imports=sorted(imports),
             fields=field_definitions,
             has_config=self._needs_config(fields),
@@ -351,8 +366,8 @@ class PydanticGenerator(BaseGenerator):
             union_types = [
                 self._get_pydantic_type(ut, imports) for ut in field.union_types
             ]
-            imports.add("typing")
             imports.add("typing.Annotated")
+            imports.add("typing.Union")
             imports.add("pydantic.Field")
             type_annotation = (
                 f"Annotated[Union[{', '.join(union_types)}], "
@@ -434,7 +449,7 @@ class PydanticGenerator(BaseGenerator):
             not in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET, FieldType.DICT)
         ):
             inner_type = self._get_pydantic_type(field.inner_type, imports)
-            imports.add("typing")
+            imports.add("typing.Optional")
             return f"Optional[{inner_type}]"
 
         base_type = ""
@@ -476,7 +491,7 @@ class PydanticGenerator(BaseGenerator):
                 inner_type = self._get_pydantic_type(field.inner_type, imports)
                 base_type = f"list[{inner_type}]"
             else:
-                imports.add("typing")
+                imports.add("typing.Any")
                 base_type = "list[Any]"
 
         elif field.type == FieldType.SET:
@@ -484,7 +499,7 @@ class PydanticGenerator(BaseGenerator):
                 inner_type = self._get_pydantic_type(field.inner_type, imports)
                 base_type = f"set[{inner_type}]"
             else:
-                imports.add("typing")
+                imports.add("typing.Any")
                 base_type = "set[Any]"
 
         elif field.type == FieldType.FROZENSET:
@@ -492,21 +507,22 @@ class PydanticGenerator(BaseGenerator):
                 inner_type = self._get_pydantic_type(field.inner_type, imports)
                 base_type = f"frozenset[{inner_type}]"
             else:
-                imports.add("typing")
+                imports.add("typing.Any")
                 base_type = "frozenset[Any]"
 
         elif field.type == FieldType.DICT:
-            imports.add("typing")
+            imports.add("typing.Any")
             base_type = "dict[str, Any]"
 
         elif field.type == FieldType.UNION:
-            imports.add("typing")
             if field.union_types:
+                imports.add("typing.Union")
                 union_types = [
                     self._get_pydantic_type(ut, imports) for ut in field.union_types
                 ]
                 base_type = f"Union[{', '.join(union_types)}]"
             else:
+                imports.add("typing.Any")
                 base_type = "Any"
 
         elif field.type == FieldType.LITERAL:
@@ -537,13 +553,13 @@ class PydanticGenerator(BaseGenerator):
             base_type = f'"{field.nested_schema}"'
 
         else:
-            imports.add("typing")
+            imports.add("typing.Any")
             base_type = "Any"
 
         # Wrap container types with Optional if the field is optional.
         # Scalar optionals are handled at the top of this method.
         if field.optional and base_type:
-            imports.add("typing")
+            imports.add("typing.Optional")
             return f"Optional[{base_type}]"
 
         return base_type
@@ -583,7 +599,11 @@ class PydanticGenerator(BaseGenerator):
         lines = [f"class {model_name}(BaseModel):"]
 
         if description:
-            lines.append(f'    """{description}"""')
+            # Reuse the shared helper so multi-line descriptions get
+            # body-line indentation and the closing ``"""`` on its own
+            # line (PEP 257 form). Single-line descriptions collapse to
+            # the one-line ``"""..."""`` form.
+            lines.extend(_format_class_docstring(description))
 
         # Add fields
         for field_def in field_defs:
@@ -686,7 +706,9 @@ class PydanticGenerator(BaseGenerator):
         if "pydantic.EmailStr" in imports:
             lines.append("from pydantic import EmailStr")
 
-        # Add typing imports
+        # Add typing imports. Each ``typing.<Name>`` marker pulls in only
+        # its own symbol so generated files don't carry unused imports
+        # (issue #99).
         typing_imports = []
         other_imports = []
 
@@ -697,12 +719,8 @@ class PydanticGenerator(BaseGenerator):
                 other_imports.append("import uuid")
             elif imp.startswith("decimal"):
                 other_imports.append("from decimal import Decimal")
-            elif imp == "typing":
-                typing_imports.extend(["Optional", "Any", "Union"])
-            elif imp == "typing.Literal":
-                typing_imports.append("Literal")
-            elif imp == "typing.Annotated":
-                typing_imports.append("Annotated")
+            elif imp.startswith("typing."):
+                typing_imports.append(imp.split(".", 1)[1])
 
         # Add typing import if needed
         if typing_imports:
@@ -783,27 +801,32 @@ Changes to this file will be overwritten.
 """
 
 from pydantic import BaseModel, ConfigDict{% if 'pydantic.Field' in imports %}, Field{% endif %}
-{% if 'pydantic.EmailStr' in imports %}from pydantic import EmailStr{% endif %}
-{% for imp in imports %}
+{%- if 'pydantic.EmailStr' in imports %}
+from pydantic import EmailStr
+{%- endif %}
+{%- set ns = namespace(typing_names=[]) %}
+{%- for imp in imports if imp.startswith('typing.') %}
+{%- set ns.typing_names = ns.typing_names + [imp.split('.', 1)[1]] %}
+{%- endfor %}
+{%- if ns.typing_names %}
+from typing import {{ ns.typing_names|sort|unique|join(', ') }}
+{%- endif %}
+{%- for imp in imports %}
 {%- if imp.startswith('datetime') %}
 from datetime import {{ imp.split('.')[-1] }}
 {%- elif imp.startswith('uuid') %}
 import uuid
 {%- elif imp.startswith('decimal') %}
 from decimal import Decimal
-{%- elif imp == 'typing' %}
-from typing import Optional, Any, Union
-{%- elif imp == 'typing.Literal' %}
-from typing import Literal
 {%- endif %}
 {%- endfor %}
 
 
 class {{ model_name }}(BaseModel):
-{%- if description %}
-    """{{ description }}"""
-{%- endif %}
-{% for field_def in fields %}
+{%- for doc_line in docstring_lines %}
+{{ doc_line }}
+{%- endfor %}
+{%- for field_def in fields %}
 {{ field_def }}
 {%- endfor %}
 {%- if has_config %}

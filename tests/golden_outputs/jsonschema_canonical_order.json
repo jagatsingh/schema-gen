@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/canonicalorder.json",
+  "title": "CanonicalOrder Schema Collection",
+  "description": "Auto-generated JSON Schema for CanonicalOrder and its variants",
+  "$defs": {
+    "CanonicalSide": {
+      "type": "string",
+      "enum": [
+        "buy",
+        "sell"
+      ],
+      "description": "Two-sided trade direction."
+    },
+    "CanonicalOrder": {
+      "type": "object",
+      "title": "CanonicalOrder",
+      "properties": {
+        "instrument": {
+          "type": "string",
+          "description": "Exchange-prefixed symbol"
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "Number of contracts"
+        },
+        "price": {
+          "type": "number",
+          "description": "Limit price"
+        },
+        "side": {
+          "$ref": "#/$defs/CanonicalSide",
+          "description": "Buy or sell"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Optional client tag"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Free-form metadata"
+        },
+        "fills": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Per-fill prices (FIFO)"
+        }
+      },
+      "required": [
+        "instrument",
+        "quantity",
+        "price",
+        "side",
+        "metadata",
+        "fills"
+      ],
+      "description": "Order placed against the matching engine.\n\nCarries the instrument identifier, the side (BUY/SELL), and an optional\nclient-supplied tag. Used as a fixture for cross-generator output\nstability tests."
+    }
+  },
+  "$ref": "#/$defs/CanonicalOrder"
+}
