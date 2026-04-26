@@ -52,8 +52,11 @@ RUN mkdir -p /opt/typescript-validation \
     && npm init -y \
     && npm install zod @types/node typescript
 
-# Create proper TypeScript configuration for Zod validation
-RUN cat > /opt/typescript-validation/tsconfig.json << 'EOF'
+# Create proper TypeScript configuration for Zod validation. Docker
+# BuildKit heredoc form is ``COPY <<EOF /dest`` — not ``RUN cat > ... <<EOF``,
+# which the BuildKit parser does NOT recognize as a heredoc and rejects
+# with ``unknown instruction: {`` on the next line.
+COPY <<EOF /opt/typescript-validation/tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2020",
@@ -142,8 +145,9 @@ RUN pip install --no-cache-dir \
     typing-extensions>=4.0 \
     watchdog>=3.0
 
-# Create validation script
-RUN cat > /usr/local/bin/validate-compilers << 'EOF'
+# Create validation script. Quoted ``<<"EOF"`` prevents BuildKit from
+# expanding ``$VAR`` references (we need bash to see them at runtime).
+COPY <<"EOF" /usr/local/bin/validate-compilers
 #!/bin/bash
 # Comprehensive compiler validation script
 
@@ -195,7 +199,7 @@ EOF
 RUN chmod +x /usr/local/bin/validate-compilers
 
 # Create comprehensive test script
-RUN cat > /usr/local/bin/test-all-formats-docker << 'EOF'
+COPY <<"EOF" /usr/local/bin/test-all-formats-docker
 #!/bin/bash
 # Docker-optimized format validation script
 
@@ -235,7 +239,7 @@ EOF
 RUN chmod +x /usr/local/bin/test-all-formats-docker
 
 # Create development helper script
-RUN cat > /usr/local/bin/dev-setup << 'EOF'
+COPY <<"EOF" /usr/local/bin/dev-setup
 #!/bin/bash
 # Development environment setup
 
