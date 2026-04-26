@@ -324,18 +324,22 @@ class FormatValidator:
                                 "Zod installation failed - module not found"
                             )
 
-                    # Create tsconfig.json with proper Zod support
+                    # Create tsconfig.json with proper Zod support.
+                    # ``moduleResolution: "node"`` (legacy ``node10``) was
+                    # deprecated in TypeScript 6 and rejected in 7; use
+                    # ``"bundler"`` which works for ESM and the toolchains
+                    # most consumers use.
                     tsconfig = {
                         "compilerOptions": {
                             "target": "ES2020",
-                            "module": "commonjs",
+                            "module": "esnext",
                             "lib": ["ES2020"],
                             "strict": True,
                             "esModuleInterop": True,
                             "allowSyntheticDefaultImports": True,
                             "skipLibCheck": True,
                             "forceConsistentCasingInFileNames": True,
-                            "moduleResolution": "node",
+                            "moduleResolution": "bundler",
                             "resolveJsonModule": True,
                             "noEmit": True,
                         }

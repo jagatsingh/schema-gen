@@ -1,0 +1,27 @@
+// AUTO-GENERATED FILE - DO NOT EDIT MANUALLY
+// Generated from: CanonicalOrder
+// Generator: schema-gen Protobuf generator
+//
+// To regenerate this file, run:
+//     schema-gen generate --target protobuf
+//
+// Changes to this file will be overwritten.
+
+syntax = "proto3";
+
+package canonicalorder;
+
+// Order placed against the matching engine.
+//
+// Carries the instrument identifier, the side (BUY/SELL), and an optional
+// client-supplied tag. Used as a fixture for cross-generator output
+// stability tests.
+message CanonicalOrder {
+  string instrument = 1;  // Exchange-prefixed symbol
+  int64 quantity = 2;  // Number of contracts
+  double price = 3;  // Limit price
+  string side = 4;  // Buy or sell
+  optional string tag = 5;  // Optional client tag
+  map<string, string> metadata = 6;  // Free-form metadata
+  repeated double fills = 7;  // Per-fill prices (FIFO)
+}

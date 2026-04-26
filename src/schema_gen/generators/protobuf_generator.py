@@ -4,6 +4,17 @@ from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
 
 
+def _format_proto_comment(description: str) -> list[str]:
+    """Render a multi-line description as ``//``-prefixed Protobuf lines.
+
+    Empty source lines become bare ``//`` separators so paragraph breaks
+    survive in the generated comment block — without this, multi-line
+    descriptions emitted as a single ``// ...`` line produce invalid
+    Protobuf syntax (the body lines fall outside any comment).
+    """
+    return [f"// {line}" if line else "//" for line in description.splitlines()]
+
+
 class ProtobufGenerator(BaseGenerator):
     """Generates Protocol Buffers (.proto) definitions from USR schemas"""
 
@@ -41,7 +52,7 @@ class ProtobufGenerator(BaseGenerator):
         lines = []
 
         if schema.description:
-            lines.append(f"// {schema.description}")
+            lines.extend(_format_proto_comment(schema.description))
 
         lines.append(f"message {message_name} {{")
 
@@ -241,7 +252,7 @@ class ProtobufGenerator(BaseGenerator):
         lines = []
 
         if description:
-            lines.append(f"// {description}")
+            lines.extend(_format_proto_comment(description))
 
         lines.append(f"message {message_name} {{")
 

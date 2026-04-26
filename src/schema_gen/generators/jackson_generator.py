@@ -112,7 +112,13 @@ class JacksonGenerator(BaseGenerator):
         lines = []
 
         if description:
-            lines.extend(["/**", f" * {description}", " */"])
+            # Multi-line descriptions need every body line prefixed with
+            # ``" * "``; otherwise body lines fall outside the ``/** ... */``
+            # Javadoc block and break the comment syntactically.
+            lines.append("/**")
+            for desc_line in description.splitlines():
+                lines.append(f" * {desc_line}" if desc_line else " *")
+            lines.append(" */")
 
         # Only the main class should be public, variants are package-private
         class_modifier = "public " if is_public else ""

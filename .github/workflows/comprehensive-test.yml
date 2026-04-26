@@ -32,7 +32,7 @@ jobs:
 
     - name: Run quick format validation
       run: |
-        uv run --frozen pytest tests/test_format_validation.py::TestFormatValidation -v
+        uv run --frozen pytest tests/test_generator_output_stability.py tests/test_generator_correctness_invariants.py tests/test_format_validation.py -v
         uv run --frozen python scripts/validate_all_formats.py --verbose
 
     - name: Run unit tests with coverage
@@ -74,21 +74,30 @@ jobs:
         distribution: 'temurin'
         java-version: '21'
 
-    - name: Download Jackson JARs
+    - name: Download Jackson + Bean Validation JARs
       run: |
         mkdir -p /tmp/java-libs
         cd /tmp/java-libs
         wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar
         wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar
         wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar
+        # Generator emits ``import javax.validation.constraints.NotNull`` —
+        # download the legacy javax.validation API so javac resolves it.
+        wget -q https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar
         echo "CLASSPATH=/tmp/java-libs/*" >> $GITHUB_ENV
 
-    - name: Install Kotlin
+    - name: Install Kotlin and kotlinx-serialization runtime
       run: |
         wget -q -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip"
         unzip -q kotlin-compiler.zip -d /opt
         rm kotlin-compiler.zip
         echo "/opt/kotlinc/bin" >> $GITHUB_PATH
+        # kotlinx-serialization runtime jar so the @Serializable annotation
+        # in generated Kotlin resolves under kotlinc.
+        mkdir -p /tmp/kotlin-libs
+        wget -q -O /tmp/kotlin-libs/kotlinx-serialization-core.jar \
+          https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.7.3/kotlinx-serialization-core-jvm-1.7.3.jar
+        echo "KOTLIN_CLASSPATH=/tmp/kotlin-libs/*" >> $GITHUB_ENV
 
     - name: Install Protocol Buffers
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
@@ -101,17 +110,33 @@ jobs:
         echo "Protobuf:" && protoc --version
         echo "Node.js:" && node --version
 
+    # Failure-swallow (`|| echo "completed with warnings"`) was removed
+    # 2026-04-26 — historically every external-compiler step would print a
+    # warning and exit 0 even when the compiler rejected the generated
+    # output. That allowed real bugs (#102 protoc/sqlalchemy/jackson)
+    # to ship undetected. These steps must now genuinely fail the workflow
+    # when the compiler errors.
+
     - name: Validate Zod/TypeScript compilation
-      run: uv run --frozen python scripts/validate_all_formats.py --format zod --verbose || echo "Zod validation completed with warnings"
+      run: uv run --frozen python scripts/validate_all_formats.py --format zod --verbose
 
     - name: Validate Jackson/Java compilation
-      run: uv run --frozen python scripts/validate_all_formats.py --format jackson --verbose || echo "Jackson validation completed with warnings"
+      run: uv run --frozen python scripts/validate_all_formats.py --format jackson --verbose
 
     - name: Validate Kotlin compilation
-      run: uv run --frozen python scripts/validate_all_formats.py --format kotlin --verbose || echo "Kotlin validation completed with warnings"
+      run: uv run --frozen python scripts/validate_all_formats.py --format kotlin --verbose
 
     - name: Validate Protocol Buffers compilation
-      run: uv run --frozen python scripts/validate_all_formats.py --format protobuf --verbose || echo "Protobuf validation completed with warnings"
+      run: uv run --frozen python scripts/validate_all_formats.py --format protobuf --verbose
+
+    # Run the full framework-execution suite — these tests are skipped
+    # locally when a toolchain is missing, but every toolchain is
+    # installed above so nothing should skip on CI.
+    - name: Run framework-execution tests
+      env:
+        # Make ``zod`` resolvable for the tsc test.
+        NODE_PATH: ${{ env.NODE_PATH }}:/usr/lib/node_modules
+      run: uv run --frozen pytest tests/test_generator_framework_execution.py -v
 
   cross-platform-validation:
     runs-on: ${{ matrix.os }}
@@ -141,8 +166,7 @@ jobs:
     - name: Test core functionality on ${{ matrix.os }}
       run: |
         uv run --frozen schema-gen --version
-        uv run --frozen pytest tests/test_format_validation.py::TestFormatValidation -v
-        uv run --frozen pytest tests/test_format_validation.py::TestGeneratedCodeExecution -v
+        uv run --frozen pytest tests/test_generator_output_stability.py tests/test_generator_correctness_invariants.py tests/test_generator_framework_execution.py tests/test_format_validation.py -v
 
   validation-summary:
     runs-on: ubuntu-latest

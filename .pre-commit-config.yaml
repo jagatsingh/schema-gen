@@ -17,12 +17,32 @@ repos:
         files: 'src/schema_gen/generators/.*\.py$'
         stages: [pre-push]
 
+      # Fast generator-output safety net — runs on every commit when a
+      # generator file or its tests change. Catches:
+      #   - output-format drift vs golden snapshots
+      #   - syntactic correctness of generated code (AST-level)
+      #   - framework-execution: import + use the generated file in its
+      #     real framework (Pydantic, SQLAlchemy, dataclasses, TypedDict,
+      #     Pathway, JSON Schema, GraphQL, Avro). External-toolchain tests
+      #     (protoc, cargo, tsc, kotlinc, javac) skip cleanly when the
+      #     compiler is missing, but they ALWAYS run on CI where the
+      #     compilers are installed.
+      - id: schema-gen-generator-tests
+        name: Generator correctness + framework-execution tests
+        entry: uv run pytest tests/test_generator_output_stability.py tests/test_generator_correctness_invariants.py tests/test_generator_framework_execution.py -q --no-header
+        language: system
+        pass_filenames: false
+        files: '^(src/schema_gen/generators/|tests/(test_generator_|golden_outputs/))'
+
   # File and content validation
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # Golden-output snapshots must match raw generator output verbatim.
+        exclude: '^tests/golden_outputs/'
       - id: end-of-file-fixer
+        exclude: '^tests/golden_outputs/'
       - id: check-yaml
       - id: check-toml
       - id: check-json
@@ -38,6 +58,7 @@ repos:
       - id: fix-byte-order-marker
       - id: mixed-line-ending
         args: [--fix=lf]
+        exclude: '^tests/golden_outputs/'
 
   # Python security and quality checks (temporarily disabled)
   # - repo: https://github.com/PyCQA/bandit
@@ -58,6 +79,8 @@ repos:
     hooks:
       - id: pyupgrade
         args: [--py312-plus]
+        # Don't rewrite raw generator-output fixtures.
+        exclude: '^tests/golden_outputs/'
 
   # Linting and formatting (Ruff replaces Black, isort, and multiple linters)
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -65,7 +88,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix, --exit-non-zero-on-fix]
+        exclude: '^tests/golden_outputs/'
       - id: ruff-format
+        exclude: '^tests/golden_outputs/'
 
   # Secrets scanning (matches tradingutils)
   - repo: https://github.com/gitleaks/gitleaks
