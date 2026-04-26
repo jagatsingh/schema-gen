@@ -84,7 +84,7 @@ EOF
 RUN mkdir -p /opt/typescript-validation/src
 
 # Install Kotlin compiler
-RUN wget -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip" \
+RUN wget --tries=5 --waitretry=10 -Okotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip" \
     && unzip kotlin-compiler.zip -d /opt \
     && rm kotlin-compiler.zip \
     && ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc \
@@ -92,9 +92,9 @@ RUN wget -O kotlin-compiler.zip "https://github.com/JetBrains/kotlin/releases/do
 
 # Create directory for Kotlin dependencies and download serialization library
 RUN mkdir -p /opt/kotlin-libs \
-    && wget -O /opt/kotlin-libs/kotlinx-serialization-core.jar \
+    && wget --tries=5 --waitretry=10 -O/opt/kotlin-libs/kotlinx-serialization-core.jar \
        https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-core-jvm/1.9.0/kotlinx-serialization-core-jvm-1.9.0.jar \
-    && wget -O /opt/kotlin-libs/kotlinx-serialization-json.jar \
+    && wget --tries=5 --waitretry=10 -O/opt/kotlin-libs/kotlinx-serialization-json.jar \
        https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-jvm/1.9.0/kotlinx-serialization-json-jvm-1.9.0.jar
 
 # Create directory for Java dependencies
@@ -103,15 +103,15 @@ RUN mkdir -p /opt/java-libs
 # Download Jackson and validation dependencies for Java
 RUN cd /opt/java-libs && \
     # Jackson Core
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar && \
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar && \
-    wget https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar && \
     # Bean Validation API
-    wget https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/javax/validation/validation-api/2.0.1.Final/validation-api-2.0.1.Final.jar && \
     # Hibernate Validator (reference implementation)
-    wget https://repo1.maven.org/maven2/org/hibernate/validator/hibernate-validator/6.2.5.Final/hibernate-validator-6.2.5.Final.jar && \
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/org/hibernate/validator/hibernate-validator/6.2.5.Final/hibernate-validator-6.2.5.Final.jar && \
     # Expression Language (required by Hibernate Validator)
-    wget https://repo1.maven.org/maven2/org/glassfish/javax.el/3.0.0/javax.el-3.0.0.jar
+    wget --tries=5 --waitretry=10 https://repo1.maven.org/maven2/org/glassfish/javax.el/3.0.0/javax.el-3.0.0.jar
 
 # Set Java classpath for validation
 ENV CLASSPATH="/opt/java-libs/*"
