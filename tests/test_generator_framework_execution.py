@@ -523,9 +523,21 @@ class TestKotlinFrameworkExecution:
         # users can do the same. When the runtime is missing, the @Serializable
         # annotation can't resolve and that's a tooling-environment issue,
         # not a generator bug — skip cleanly with a helpful message.
+        #
+        # ``kotlinc`` does NOT expand classpath wildcards (unlike ``javac``),
+        # so glob the value of ``KOTLIN_CLASSPATH`` ourselves and join with
+        # the platform-correct path separator. ``dir/*`` and explicit
+        # colon/semicolon-separated entries both work this way.
+        import glob
         import os
 
-        classpath = os.environ.get("KOTLIN_CLASSPATH", "")
+        raw_cp = os.environ.get("KOTLIN_CLASSPATH", "")
+        cp_entries: list[str] = []
+        for entry in raw_cp.split(os.pathsep):
+            if not entry:
+                continue
+            cp_entries.extend(glob.glob(entry) or [entry])
+        classpath = os.pathsep.join(cp_entries)
         cmd = ["kotlinc", "-nowarn", "-d", str(tmp_path / "out")]
         if classpath:
             cmd.extend(["-cp", classpath])

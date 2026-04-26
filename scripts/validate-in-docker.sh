@@ -43,7 +43,10 @@ if ! docker info >/dev/null 2>&1; then
   exit 2
 fi
 
-# --- Build the image if missing or --rebuild requested ----------------
+# --- Always run docker build (cached layers make it a no-op when -----
+# nothing has changed, and any Dockerfile edit is picked up
+# automatically). ``--rebuild`` adds ``--no-cache`` to force a clean
+# build from scratch. -------------------------------------------------
 
 REBUILD=0
 for arg in "$@"; do
@@ -52,10 +55,16 @@ for arg in "$@"; do
   esac
 done
 
-if [[ "$REBUILD" == 1 ]] || ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+BUILD_ARGS=()
+if [[ "$REBUILD" == 1 ]]; then
+  BUILD_ARGS+=(--no-cache)
+  echo "==> Forcing clean rebuild of $IMAGE_TAG (no-cache)..."
+elif docker image inspect "$IMAGE_TAG" >/dev/null 2>&1; then
+  echo "==> Refreshing $IMAGE_TAG from $DOCKERFILE (cached, fast if unchanged)..."
+else
   echo "==> Building $IMAGE_TAG from $DOCKERFILE (one-time, ~10 min)..."
-  DOCKER_BUILDKIT=1 docker build -f "$DOCKERFILE" -t "$IMAGE_TAG" "$REPO_ROOT"
 fi
+DOCKER_BUILDKIT=1 docker build -f "$DOCKERFILE" -t "$IMAGE_TAG" "${BUILD_ARGS[@]}" "$REPO_ROOT"
 
 # --- Run the framework-execution suite inside the container -----------
 #
