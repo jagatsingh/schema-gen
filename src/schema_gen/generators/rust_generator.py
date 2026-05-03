@@ -176,6 +176,31 @@ def _rust_field_wire_name(name: str) -> str | None:
     return None
 
 
+def _rust_string_literal(value: str) -> str:
+    """Render ``value`` as a double-quoted Rust string literal.
+
+    Escapes the four characters that would otherwise produce invalid
+    Rust source when interpolated into ``"..."``: backslash (must be
+    doubled), double-quote (must be backslash-escaped), and the two
+    common control characters that appear in user input (newline and
+    carriage return). Other control characters are unlikely in alias
+    values but pass through unchanged — Rust accepts arbitrary UTF-8
+    inside string literals.
+
+    Used for ``#[serde(rename = "<alias>")]`` and the alias-driven
+    entries in ``<TAG>_FIELDS`` constants so a user-supplied alias like
+    ``Field(alias='owner"id')`` does not break the emitted ``.rs``.
+    """
+    return (
+        '"'
+        + value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        + '"'
+    )
+
+
 _DEFAULT_STRUCT_DERIVES = [
     "Debug",
     "Clone",
@@ -704,11 +729,11 @@ class RustGenerator(BaseGenerator):
         explicit_alias = getattr(field, "alias", None)
         if explicit_alias is not None:
             if explicit_alias != emitted_name:
-                serde_attrs.append(f'rename = "{explicit_alias}"')
+                serde_attrs.append(f"rename = {_rust_string_literal(explicit_alias)}")
         else:
             wire_name = _rust_field_wire_name(name)
             if wire_name is not None:
-                serde_attrs.append(f'rename = "{wire_name}"')
+                serde_attrs.append(f"rename = {_rust_string_literal(wire_name)}")
 
         if is_optional:
             serde_attrs.append('skip_serializing_if = "Option::is_none"')
@@ -1025,7 +1050,7 @@ class RustGenerator(BaseGenerator):
                     wire_names.append(alias)
                 else:
                     wire_names.append(_rust_field_wire_name(n) or n)
-            values = ", ".join(f'"{w}"' for w in wire_names)
+            values = ", ".join(_rust_string_literal(w) for w in wire_names)
             lines.append(f"pub const {tag.upper()}_FIELDS: &[&str] = &[{values}];")
         return "\n".join(lines)
 

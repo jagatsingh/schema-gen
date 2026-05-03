@@ -348,6 +348,37 @@ def test_empty_alias_string_rejected():
         SchemaParser().parse_schema(Empty)
 
 
+def test_rust_alias_with_special_chars_is_escaped():
+    """Quotes / backslashes in an alias must not break the emitted Rust."""
+
+    @Schema
+    class Tricky:
+        owner: str = Field(alias='owner"id')
+        path: str = Field(alias=r"a\b")
+
+    out = RustGenerator().generate_file(SchemaParser().parse_schema(Tricky))
+    # The double-quote inside the alias is escaped so the rename
+    # attribute remains a syntactically valid Rust string literal.
+    assert r'#[serde(rename = "owner\"id"' in out
+    assert r'#[serde(rename = "a\\b"' in out
+
+
+def test_zod_alias_with_special_chars_is_escaped():
+    """Apostrophe / backslash in an alias must not break the emitted TS."""
+
+    @Schema
+    class Tricky:
+        owner: str = Field(alias="owner's-id")
+        path: str = Field(alias=r"a\b")
+
+    out = ZodGenerator().generate_file(SchemaParser().parse_schema(Tricky))
+    # Single-quoted JS literals require apostrophes to be backslash-
+    # escaped; backslashes must be doubled. Without escaping the
+    # generated ``z.object`` would not parse as TypeScript.
+    assert r"'owner\'s-id':" in out
+    assert r"'a\\b':" in out
+
+
 def test_alias_equal_to_own_field_name_is_no_op():
     """``alias=name`` is permitted (no-op) — the user may write it for
     documentation or as a defensive default."""
