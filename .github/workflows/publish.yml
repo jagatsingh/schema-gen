@@ -64,7 +64,7 @@ jobs:
 
     - name: Run tests
       run: |
-        uv run --frozen pytest tests/ -v --ignore=tests/test_e2e_compile.py --cov=src/schema_gen --cov-fail-under=60
+        uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-fail-under=60
 
     - name: Run linting
       run: |
