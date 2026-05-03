@@ -218,6 +218,44 @@ def test_rust_suppresses_rename_when_alias_matches_ident():
     assert "pub payload: String," in out
 
 
+def test_rust_alias_with_raw_identifier_emits_rename():
+    """``alias="r#type"`` on a field named ``type`` must NOT be suppressed.
+
+    Codex Stage-2 review (PR #109) flagged the original implementation
+    for comparing ``alias`` against the Rust identifier (``emitted_name``,
+    which would be ``r#type`` here). Serde serializes raw identifiers
+    under their bare wire key (``"type"``) by default, so the user's
+    ``alias="r#type"`` must lower to an explicit
+    ``#[serde(rename = "r#type")]`` — otherwise the serialized payload
+    would carry the bare ``"type"`` and silently drop the user's intent.
+    """
+
+    @Schema
+    class Reserved:
+        type: str = Field(alias="r#type")  # noqa: A003 — testing reserved-word handling
+
+    out = RustGenerator().generate_file(SchemaParser().parse_schema(Reserved))
+    # The struct field uses the raw-identifier form (Rust requires it).
+    assert "pub r#type: String," in out
+    # The rename attribute MUST be present because the alias doesn't
+    # match serde's default wire key (``"type"``).
+    assert '#[serde(rename = "r#type"' in out
+
+
+def test_rust_alias_equal_to_default_wire_key_for_reserved_word_is_suppressed():
+    """``alias="type"`` on a field named ``type`` is the serde default →
+    no redundant rename emitted."""
+
+    @Schema
+    class Reserved:
+        type: str = Field(alias="type")  # noqa: A003 — testing reserved-word handling
+
+    out = RustGenerator().generate_file(SchemaParser().parse_schema(Reserved))
+    assert "pub r#type: String," in out
+    # alias matches serde's default wire key, so no rename is needed.
+    assert "rename" not in out
+
+
 def test_rust_alias_overrides_default_wire_heuristic():
     """``alias`` wins over the existing camelCase auto-rename behavior."""
 

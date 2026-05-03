@@ -723,12 +723,16 @@ class RustGenerator(BaseGenerator):
 
         # Per-field alias (issue #108) wins over the name-based wire-name
         # heuristic. The user wrote ``Field(alias="...")`` precisely to
-        # override the wire key. Suppress the rename when the alias would
-        # be a no-op against the emitted Rust identifier (e.g. alias
-        # equals the snake-case ident already).
+        # override the wire key. Suppress the rename only when the alias
+        # equals serde's effective default wire key for this field —
+        # NOT the Rust identifier. The two diverge for raw identifiers:
+        # a field named ``type`` has identifier ``r#type`` but serde
+        # serializes it as ``"type"``, so a user opting in with
+        # ``alias="r#type"`` MUST emit a rename to land that wire key.
         explicit_alias = getattr(field, "alias", None)
         if explicit_alias is not None:
-            if explicit_alias != emitted_name:
+            default_wire_key = _rust_field_wire_name(name) or name
+            if explicit_alias != default_wire_key:
                 serde_attrs.append(f"rename = {_rust_string_literal(explicit_alias)}")
         else:
             wire_name = _rust_field_wire_name(name)
