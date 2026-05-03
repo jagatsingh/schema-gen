@@ -93,6 +93,7 @@ def test_pydantic_emits_field_alias_and_populate_by_name():
     out = PydanticGenerator().generate_file(_build_alias_schema())
     assert 'alias="_coalesce_reasoning"' in out
     assert "populate_by_name=True" in out
+    assert "serialize_by_alias=True" in out
     # The rename must NOT clobber the unrelated field.
     assert re.search(r"\bname:\s*str\s*=\s*Field\(", out)
     # ``from_attributes=True`` must still be present (pre-existing behavior).
@@ -184,9 +185,9 @@ def test_pydantic_alias_works_in_generated_module(tmp_path, monkeypatch):
     )
     assert inst2.coalesce_reasoning == "via_python"
 
-    # Round-trip serialization uses the alias by default? No — Pydantic
-    # serializes by Python name unless ``by_alias=True`` is requested.
-    # Confirm both modes work.
+    # With serialize_by_alias=True in ConfigDict, model_dump() defaults to
+    # alias keys. Explicit by_alias=False overrides back to Python names.
+    assert inst.model_dump()["_coalesce_reasoning"] == "because"
     assert inst.model_dump(by_alias=True)["_coalesce_reasoning"] == "because"
     assert "coalesce_reasoning" in inst.model_dump(by_alias=False)
 

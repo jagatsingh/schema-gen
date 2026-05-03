@@ -25,6 +25,7 @@ _SUPPORTED_PYDANTIC_CONFIG_KEYS: tuple[str, ...] = (
     "strict",
     "str_strip_whitespace",
     "populate_by_name",
+    "serialize_by_alias",
 )
 
 
@@ -111,6 +112,8 @@ class PydanticGenerator(BaseGenerator):
                     "will reject input under the Python attribute name; only "
                     "the alias key will be accepted."
                 )
+            if "serialize_by_alias" not in emitted_keys:
+                cfg_items.append("serialize_by_alias=True")
         return f"    model_config = ConfigDict({', '.join(cfg_items)})"
 
     @property
