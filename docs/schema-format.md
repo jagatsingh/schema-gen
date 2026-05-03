@@ -155,6 +155,44 @@ Field(
 )
 ```
 
+### Wire-Format Alias
+
+Use `alias=` to keep the in-language attribute name distinct from the
+serialized key — the standard escape hatch for underscore-prefixed
+"metadata" keys, camelCase external APIs, or any contract where the
+JSON wire name must differ from the Python identifier.
+
+```python
+@Schema
+class StrategyDef:
+    coalesce_reasoning: str | None = Field(
+        default=None,
+        alias="_coalesce_reasoning",
+        description="Compiler metadata, not consumed at runtime.",
+    )
+```
+
+Lowering by target:
+
+* **Pydantic** — `Field(alias="_coalesce_reasoning")` plus
+  `populate_by_name=True` on the model so input under either the
+  Python name OR the alias is accepted.
+* **Rust serde** — `#[serde(rename = "_coalesce_reasoning")]`. The
+  rename is suppressed when the alias already matches the emitted Rust
+  identifier.
+* **JSON Schema** — the property is emitted under the alias key, and
+  the alias propagates into `required` if the field is required.
+* **Zod** — the alias is the `z.object` property key (quoted only when
+  not a valid bare JS identifier).
+
+Two fields with the same alias, or an alias that shadows a sibling's
+Python name, are rejected at parse time.
+
+Other generators (SQLAlchemy, Pathway, Avro, Protobuf, GraphQL,
+Jackson, Kotlin, dataclasses, TypedDict) currently ignore `alias=` and
+keep emitting the Python attribute name; honoring `alias` for those
+targets is tracked separately.
+
 ### Target-Specific Configuration
 
 ```python

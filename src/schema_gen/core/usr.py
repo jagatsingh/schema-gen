@@ -161,6 +161,12 @@ class USRField:
     # Field tags for grouped constant emission
     tags: list[str] = field(default_factory=list)
 
+    # Wire-format key override. When set, generators emit this string as
+    # the serialized field key (e.g. JSON property name, serde rename
+    # target) while keeping ``name`` as the in-language attribute name.
+    # See issue #108.
+    alias: str | None = None
+
     # Metadata
     description: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -229,6 +235,19 @@ class USRField:
                     message=f"enum_name '{self.enum_name}' is set but enum_values is empty",
                 )
             )
+
+        # alias must be a non-empty string when set
+        if self.alias is not None:
+            if not isinstance(self.alias, str) or not self.alias:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        field_name=self.name,
+                        message=(
+                            f"alias must be a non-empty string, got {self.alias!r}"
+                        ),
+                    )
+                )
 
         # foreign_key set but no relationship defined
         if self.foreign_key and not self.relationship:
@@ -342,6 +361,40 @@ class USRSchema:
         # Validate each field individually
         for usr_field in self.fields:
             issues.extend(usr_field.validate())
+
+        # Alias collision detection. Two fields with the same alias, or
+        # an alias that shadows another field's Python name, would yield
+        # ambiguous wire output — reject at parse time so the bug is
+        # caught before it reaches the generators.
+        wire_keys: dict[str, str] = {}  # wire-key -> source field name
+        for f in self.fields:
+            if f.alias is None:
+                continue
+            existing = wire_keys.get(f.alias)
+            if existing is not None:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        field_name=f.name,
+                        message=(
+                            f"alias '{f.alias}' collides with field '{existing}' "
+                            f"which already uses the same wire key"
+                        ),
+                    )
+                )
+            elif f.alias != f.name and f.alias in field_names:
+                issues.append(
+                    ValidationIssue(
+                        severity="error",
+                        field_name=f.name,
+                        message=(
+                            f"alias '{f.alias}' collides with another field's "
+                            f"Python attribute name on this schema"
+                        ),
+                    )
+                )
+            else:
+                wire_keys[f.alias] = f.name
 
         # Validate variant references
         for variant_name, variant_field_names in self.variants.items():
@@ -609,6 +662,7 @@ class TypeMapper:
             },
             discriminator=getattr(field_info, "discriminator", None),
             tags=getattr(field_info, "tags", []),
+            alias=getattr(field_info, "alias", None),
             description=getattr(field_info, "description", None),
             metadata=getattr(field_info, "metadata", {}),
         )

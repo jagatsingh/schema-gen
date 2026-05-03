@@ -59,6 +59,25 @@ class User(BaseModel):
     ...
 ```
 
+## Field aliases (issue #108)
+
+`Field(alias="<wire-key>")` lets a schema author keep one Python
+attribute name while serializing under a different wire-format key:
+
+```python
+@Schema
+class StrategyDef:
+    coalesce_reasoning: str | None = Field(
+        default=None,
+        alias="_coalesce_reasoning",
+    )
+```
+
+The Pydantic generator emits `Field(alias="_coalesce_reasoning")` and
+auto-enables `populate_by_name=True` on the model so consumers can
+construct/parse using either name. `populate_by_name` is added on
+demand — schemas without any aliased fields don't acquire it.
+
 ## `PydanticMeta` on schemas
 
 `PydanticMeta` inner classes inject custom validators, instance methods,

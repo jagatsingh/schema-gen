@@ -167,6 +167,31 @@ class SerdeMeta:
     json_schema_derive = False
 ```
 
+## Per-field wire-name override (issue #108)
+
+Use `Field(alias="<wire-key>")` to pin a serialized key independent of
+the Python attribute name. The Rust generator lowers it to a
+`#[serde(rename = "...")]` attribute on the field:
+
+```python
+@Schema
+class StrategyDef:
+    coalesce_reasoning: str | None = Field(
+        default=None,
+        alias="_coalesce_reasoning",
+    )
+```
+
+```rust
+#[serde(rename = "_coalesce_reasoning", skip_serializing_if = "Option::is_none")]
+pub coalesce_reasoning: Option<String>,
+```
+
+`alias=` takes precedence over the existing name-based wire heuristic
+(uppercase / reserved-word handling). When the alias already matches
+the emitted Rust identifier (e.g. `alias="payload"` on a field named
+`payload`) the redundant rename attribute is suppressed.
+
 ## Per-field type overrides
 
 Use `Field(rust={"type": "..."})` to pick a specific integer or float

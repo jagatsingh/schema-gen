@@ -1,6 +1,7 @@
 """Generator to create Zod schemas from USR schemas"""
 
 import logging
+import re
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,20 @@ from jinja2 import Template
 from ..core.config import Config
 from ..core.usr import FieldType, USRField, USRSchema
 from .base import BaseGenerator
+
+#: Bare property keys in ``z.object({...})`` must be valid JS identifiers
+#: (Unicode letter / ``_`` / ``$`` start, then letters / digits / ``_`` /
+#: ``$``). Anything outside that set — most notably leading underscores
+#: combined with hyphens, or pure digit prefixes — must be quoted.
+#: Conservative ASCII subset is sufficient because alias values are
+#: explicit strings the user wrote in Python source.
+_JS_IDENT_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+
+
+def _is_valid_js_identifier(name: str) -> bool:
+    """Return True if ``name`` is safe as a bare JS object property key."""
+    return bool(_JS_IDENT_RE.match(name))
+
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +293,7 @@ class ZodGenerator(BaseGenerator):
             schema.enums,
             external_refs=external_refs,
             tag_groups=tag_groups,
+            base_fields=schema.fields,
         )
 
     def _generate_field_definition(self, field: USRField) -> str:
@@ -312,8 +328,17 @@ class ZodGenerator(BaseGenerator):
             if field.max_value is not None:
                 validations.append(f".max({field.max_value})")
 
-        # Build complete field definition
-        field_def = f"  {field.name}: {zod_type}{''.join(validations)}"
+        # Build complete field definition. ``alias`` (issue #108)
+        # overrides the wire-format key so the Zod object property is
+        # serialized under the alias rather than the Python attribute
+        # name. Quote keys that aren't valid bare JS identifiers (the
+        # alias may contain leading underscores or hyphens) so the
+        # emitted ``z.object`` is parseable TypeScript.
+        wire_name = getattr(field, "alias", None) or field.name
+        emitted_key = (
+            wire_name if _is_valid_js_identifier(wire_name) else f"'{wire_name}'"
+        )
+        field_def = f"  {emitted_key}: {zod_type}{''.join(validations)}"
 
         # Add optional if needed
         if field.optional:
@@ -535,11 +560,15 @@ class ZodGenerator(BaseGenerator):
         enums: list = None,
         external_refs: set[str] | None = None,
         tag_groups: dict[str, list[str]] | None = None,
+        base_fields: list[USRField] | None = None,
     ) -> str:
         """Generate complete TypeScript file with header, imports, and all schemas"""
         enums = enums or []
         external_refs = external_refs or set()
         tag_groups = tag_groups or {}
+        # Map field name -> USRField so tag-constant emission can resolve
+        # ``alias`` (issue #108) for each tagged field.
+        fields_by_name: dict[str, USRField] = {f.name: f for f in (base_fields or [])}
 
         lines = [
             "/**",
@@ -601,13 +630,20 @@ class ZodGenerator(BaseGenerator):
         for type_def in types:
             lines.append(type_def)
 
-        # Add field-tag constants
+        # Add field-tag constants. Each entry uses the wire-format name
+        # (alias when set, otherwise the Python attribute) so the
+        # exported tuple matches the keys consumers actually parse.
         if tag_groups:
             lines.append("")
             for tag, field_names in tag_groups.items():
                 const_name = f"{tag.upper()}_FIELDS"
                 type_name = _tag_to_type_name(tag)
-                fields_str = ", ".join(f"'{f}'" for f in field_names)
+                wire_names = []
+                for n in field_names:
+                    f = fields_by_name.get(n)
+                    alias = getattr(f, "alias", None) if f is not None else None
+                    wire_names.append(alias or n)
+                fields_str = ", ".join(f"'{w}'" for w in wire_names)
                 lines.append(f"export const {const_name} = [{fields_str}] as const;")
                 lines.append(
                     f"export type {type_name} = (typeof {const_name})[number];"

@@ -487,7 +487,7 @@ class RustGenerator(BaseGenerator):
         # Field-tag constants (#82)
         tag_groups = schema.get_tagged_fields()
         if tag_groups:
-            body_parts.append(self._generate_tag_constants(tag_groups))
+            body_parts.append(self._generate_tag_constants(tag_groups, schema.fields))
 
         trailing = ""
         raw_code = (custom_code.get("raw_code") or "").strip()
@@ -696,9 +696,19 @@ class RustGenerator(BaseGenerator):
         name = field.name
         emitted_name = _rust_field_ident(name)
 
-        wire_name = _rust_field_wire_name(name)
-        if wire_name is not None:
-            serde_attrs.append(f'rename = "{wire_name}"')
+        # Per-field alias (issue #108) wins over the name-based wire-name
+        # heuristic. The user wrote ``Field(alias="...")`` precisely to
+        # override the wire key. Suppress the rename when the alias would
+        # be a no-op against the emitted Rust identifier (e.g. alias
+        # equals the snake-case ident already).
+        explicit_alias = getattr(field, "alias", None)
+        if explicit_alias is not None:
+            if explicit_alias != emitted_name:
+                serde_attrs.append(f'rename = "{explicit_alias}"')
+        else:
+            wire_name = _rust_field_wire_name(name)
+            if wire_name is not None:
+                serde_attrs.append(f'rename = "{wire_name}"')
 
         if is_optional:
             serde_attrs.append('skip_serializing_if = "Option::is_none"')
@@ -993,11 +1003,28 @@ class RustGenerator(BaseGenerator):
     # Field-tag constants (#82)
     # ------------------------------------------------------------------
 
-    def _generate_tag_constants(self, tag_groups: dict[str, list[str]]) -> str:
-        """Emit ``pub const <TAG>_FIELDS: &[&str]`` for each tag group."""
+    def _generate_tag_constants(
+        self,
+        tag_groups: dict[str, list[str]],
+        fields: list[USRField],
+    ) -> str:
+        """Emit ``pub const <TAG>_FIELDS: &[&str]`` for each tag group.
+
+        Wire names prefer ``field.alias`` (issue #108) over the
+        name-based heuristic so the constant matches the serialized
+        keys consumers actually see.
+        """
+        by_name: dict[str, USRField] = {f.name: f for f in fields}
         lines: list[str] = []
         for tag, field_names in tag_groups.items():
-            wire_names = [_rust_field_wire_name(n) or n for n in field_names]
+            wire_names: list[str] = []
+            for n in field_names:
+                f = by_name.get(n)
+                alias = getattr(f, "alias", None) if f is not None else None
+                if alias is not None:
+                    wire_names.append(alias)
+                else:
+                    wire_names.append(_rust_field_wire_name(n) or n)
             values = ", ".join(f'"{w}"' for w in wire_names)
             lines.append(f"pub const {tag.upper()}_FIELDS: &[&str] = &[{values}];")
         return "\n".join(lines)
