@@ -23,6 +23,7 @@ keys are silently ignored so typos don't spuriously enable
 | `strict`               | `bool`      | Enable strict-mode coercion rules. |
 | `str_strip_whitespace` | `bool`      | Auto-strip whitespace from all string fields. |
 | `populate_by_name`     | `bool`      | Allow populating fields by their declared name even when an alias is set. |
+| `serialize_by_alias`   | `bool`      | Serialize using alias keys by default (affects `model_dump()` / `model_dump_json()`). Auto-enabled when any field has `alias=`. |
 
 String values are properly `repr()`-escaped, so `extra="forbid"` emits
 `extra='forbid'` in the generated `ConfigDict(...)`.
@@ -74,9 +75,11 @@ class StrategyDef:
 ```
 
 The Pydantic generator emits `Field(alias="_coalesce_reasoning")` and
-auto-enables `populate_by_name=True` on the model so consumers can
-construct/parse using either name. `populate_by_name` is added on
-demand — schemas without any aliased fields don't acquire it.
+auto-enables both `populate_by_name=True` (so the model accepts either
+the alias or the Python attribute name on input) and `serialize_by_alias=True`
+(so `model_dump()` / `model_dump_json()` return alias keys by default,
+without needing `by_alias=True` at every call site — issue #111).
+Both flags are added on demand — schemas without any aliased fields don't acquire them.
 
 ## `PydanticMeta` on schemas
 
