@@ -119,9 +119,10 @@ def test_pydantic_no_alias_no_populate_by_name_drift():
     # Bare schema → no ConfigDict at all (current pre-#108 behavior).
     assert "model_config = ConfigDict" not in out
     assert "populate_by_name" not in out
+    assert "serialize_by_alias" not in out
 
     # Schema that DOES emit a config block (relationship triggers it)
-    # must still not carry populate_by_name when no alias is present.
+    # must still not carry populate_by_name or serialize_by_alias when no alias is present.
     @Schema
     class Related:
         owner_id: int = Field(relationship="many_to_one", foreign_key="users.id")
@@ -129,6 +130,7 @@ def test_pydantic_no_alias_no_populate_by_name_drift():
     out2 = PydanticGenerator().generate_file(SchemaParser().parse_schema(Related))
     assert "model_config = ConfigDict" in out2
     assert "populate_by_name" not in out2
+    assert "serialize_by_alias" not in out2
 
 
 def test_pydantic_warns_when_config_disables_populate_by_name(caplog):

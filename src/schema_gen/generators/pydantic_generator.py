@@ -68,24 +68,23 @@ class PydanticGenerator(BaseGenerator):
     def _get_model_config_line(self, force_populate_by_name: bool = False) -> str:
         """Build the ``model_config = ConfigDict(...)`` line.
 
-        Honors keys in ``Config.pydantic`` such as ``extra``,
-        ``validate_assignment``, ``frozen``, ``strict``,
-        ``str_strip_whitespace`` and ``populate_by_name``. When no
-        Pydantic config is supplied, falls back to the historical
+        Honors keys in ``Config.pydantic`` (see ``_SUPPORTED_PYDANTIC_CONFIG_KEYS``).
+        When no Pydantic config is supplied, falls back to the historical
         hardcoded output (``from_attributes=True`` only) so existing
         callers see no change.
 
         ``force_populate_by_name`` is set when at least one field on the
-        model carries an ``alias=`` (issue #108) — Pydantic v2 requires
-        ``populate_by_name=True`` for the model to accept input under
-        the Python attribute name as well as the alias.
+        model carries an ``alias=`` (issue #108/#111) — the generator
+        auto-emits BOTH ``populate_by_name=True`` (so the Python attribute
+        name is accepted on input) AND ``serialize_by_alias=True`` (so
+        ``model_dump()`` / ``model_dump_json()`` default to alias wire keys).
 
-        Precedence: ``Config.pydantic["populate_by_name"]`` wins when
-        explicitly set. If the user opts the model out
-        (``populate_by_name=False``) while alias-bearing fields are
-        present, the generator logs a warning so the contract conflict
-        is visible — Pydantic will then reject input under the Python
-        name even though the schema author set ``alias=``.
+        Precedence: explicit ``Config.pydantic`` values win over the
+        auto-emitted defaults. If the user sets ``populate_by_name=False``
+        while alias-bearing fields are present, the generator logs a warning
+        — Pydantic will then reject input under the Python attribute name.
+        Setting ``serialize_by_alias=False`` explicitly suppresses alias-key
+        serialization without a warning (the user opted out deliberately).
         """
         cfg_items: list[str] = ["from_attributes=True"]
         pyd_cfg: dict[str, Any] = {}
@@ -452,9 +451,9 @@ class PydanticGenerator(BaseGenerator):
         if field.description:
             field_params.append(f"description={json.dumps(field.description)}")
 
-        # Wire-format key override (issue #108). Lowers to ``alias=...``
-        # on the Pydantic Field plus ``populate_by_name=True`` on the
-        # model (handled by ``_get_model_config_line``).
+        # Wire-format key override (issue #108/#111). Lowers to ``alias=...``
+        # on the Pydantic Field plus ``populate_by_name=True`` and
+        # ``serialize_by_alias=True`` on the model (via ``_get_model_config_line``).
         if getattr(field, "alias", None):
             field_params.append(f"alias={json.dumps(field.alias)}")
 
@@ -611,9 +610,10 @@ class PydanticGenerator(BaseGenerator):
 
         1. Any field has a database relationship (the historical reason
            ``from_attributes=True`` was needed),
-        2. Any field carries an ``alias=`` (issue #108) — the model
-           must opt into ``populate_by_name=True`` so the Python
-           attribute name remains accepted on input, OR
+        2. Any field carries an ``alias=`` (issue #108/#111) — the model
+           auto-enables ``populate_by_name=True`` and ``serialize_by_alias=True``
+           so the Python attribute name is accepted on input and ``model_dump()``
+           defaults to alias wire keys, OR
         3. ``Config.pydantic`` contains at least one key that this
            generator actually honors (see ``_SUPPORTED_PYDANTIC_CONFIG_KEYS``).
 
