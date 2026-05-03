@@ -37,7 +37,7 @@ jobs:
 
     - name: Run unit tests with coverage
       run: |
-        uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-report=term --ignore=tests/test_e2e_compile.py
+        uv run --frozen pytest tests/ -v --cov=src/schema_gen --cov-report=xml --cov-report=term
 
   compiler-validation:
     runs-on: ubuntu-latest
