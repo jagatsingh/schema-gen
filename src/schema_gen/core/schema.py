@@ -14,6 +14,13 @@ class FieldInfo:
     default_factory: Callable | None = None
     description: str | None = None
 
+    # Wire-format key override. When set, generators emit the field's
+    # serialized key as ``alias`` rather than the Python attribute name.
+    # Lowers to ``Field(alias=...)`` + ``populate_by_name=True`` for
+    # Pydantic, ``#[serde(rename=...)]`` for Rust, and the property key
+    # for JSON Schema / Zod. See issue #108.
+    alias: str | None = None
+
     # Type constraints
     min_length: int | None = None
     max_length: int | None = None
@@ -66,6 +73,7 @@ def Field(
     *,
     default_factory: Callable | None = None,
     description: str | None = None,
+    alias: str | None = None,
     min_length: int | None = None,
     max_length: int | None = None,
     min_value: float | None = None,
@@ -99,6 +107,12 @@ def Field(
         default: Default value for the field
         default_factory: Factory function for default values
         description: Human-readable description
+        alias: Wire-format key override. When set, the generated
+            schemas serialize the field under ``alias`` instead of the
+            Python attribute name. Lowers to ``Field(alias=...)`` plus
+            ``populate_by_name=True`` for Pydantic, ``#[serde(rename=...)]``
+            for Rust, and the property key for JSON Schema / Zod. See
+            issue #108.
         min_length/max_length: String length constraints
         min_value/max_value: Numeric value constraints
         regex: Regular expression validation pattern
@@ -140,6 +154,7 @@ def Field(
         default=default,
         default_factory=default_factory,
         description=description,
+        alias=alias,
         min_length=min_length,
         max_length=max_length,
         min_value=min_value,

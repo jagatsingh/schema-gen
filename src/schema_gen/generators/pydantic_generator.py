@@ -1,6 +1,7 @@
 """Generator to create Pydantic models from USR schemas"""
 
 import json
+import logging
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from jinja2 import Template
 from ..core.config import Config
 from ..core.usr import FieldType, USREnum, USRField, USRSchema
 from .base import BaseGenerator
+
+logger = logging.getLogger(__name__)
 
 #: Pydantic ``ConfigDict`` keys honored by ``Config.pydantic``. Any other
 #: keys are ignored (and must NOT cause ``_needs_config`` to return True,
@@ -61,7 +64,7 @@ class PydanticGenerator(BaseGenerator):
         #: re-declaring the enum inline.
         self._shared_enum_names: set[str] = set()
 
-    def _get_model_config_line(self) -> str:
+    def _get_model_config_line(self, force_populate_by_name: bool = False) -> str:
         """Build the ``model_config = ConfigDict(...)`` line.
 
         Honors keys in ``Config.pydantic`` such as ``extra``,
@@ -70,11 +73,24 @@ class PydanticGenerator(BaseGenerator):
         Pydantic config is supplied, falls back to the historical
         hardcoded output (``from_attributes=True`` only) so existing
         callers see no change.
+
+        ``force_populate_by_name`` is set when at least one field on the
+        model carries an ``alias=`` (issue #108) — Pydantic v2 requires
+        ``populate_by_name=True`` for the model to accept input under
+        the Python attribute name as well as the alias.
+
+        Precedence: ``Config.pydantic["populate_by_name"]`` wins when
+        explicitly set. If the user opts the model out
+        (``populate_by_name=False``) while alias-bearing fields are
+        present, the generator logs a warning so the contract conflict
+        is visible — Pydantic will then reject input under the Python
+        name even though the schema author set ``alias=``.
         """
         cfg_items: list[str] = ["from_attributes=True"]
         pyd_cfg: dict[str, Any] = {}
         if self.config is not None and getattr(self.config, "pydantic", None):
             pyd_cfg = self.config.pydantic
+        emitted_keys: set[str] = set()
         for key in _SUPPORTED_PYDANTIC_CONFIG_KEYS:
             if key in pyd_cfg:
                 val = pyd_cfg[key]
@@ -84,6 +100,17 @@ class PydanticGenerator(BaseGenerator):
                     cfg_items.append(f"{key}={val!r}")
                 else:
                     cfg_items.append(f"{key}={val}")
+                emitted_keys.add(key)
+        if force_populate_by_name:
+            if "populate_by_name" not in emitted_keys:
+                cfg_items.append("populate_by_name=True")
+            elif pyd_cfg.get("populate_by_name") is False:
+                logger.warning(
+                    "Pydantic generator: Config.pydantic[populate_by_name]=False "
+                    "conflicts with Field(alias=...) on this model. Pydantic v2 "
+                    "will reject input under the Python attribute name; only "
+                    "the alias key will be accepted."
+                )
         return f"    model_config = ConfigDict({', '.join(cfg_items)})"
 
     @property
@@ -252,7 +279,9 @@ class PydanticGenerator(BaseGenerator):
             imports=sorted(imports),
             fields=field_definitions,
             has_config=self._needs_config(fields),
-            model_config_line=self._get_model_config_line(),
+            model_config_line=self._get_model_config_line(
+                force_populate_by_name=self._fields_have_alias(fields),
+            ),
         )
 
     def generate_all_variants(self, schema: USRSchema) -> dict[str, str]:
@@ -306,6 +335,7 @@ class PydanticGenerator(BaseGenerator):
             self._needs_config(base_fields),
             is_base_model=True,
             custom_code=pydantic_custom_code,
+            force_populate_by_name=self._fields_have_alias(base_fields),
         )
         all_models.append(base_model)
 
@@ -326,6 +356,7 @@ class PydanticGenerator(BaseGenerator):
                 variant_field_defs,
                 self._needs_config(variant_fields),
                 is_base_model=False,  # Variants don't get custom code
+                force_populate_by_name=self._fields_have_alias(variant_fields),
             )
             all_models.append(variant_model)
 
@@ -417,6 +448,12 @@ class PydanticGenerator(BaseGenerator):
         # as a double-quoted string for tooling consistency.
         if field.description:
             field_params.append(f"description={json.dumps(field.description)}")
+
+        # Wire-format key override (issue #108). Lowers to ``alias=...``
+        # on the Pydantic Field plus ``populate_by_name=True`` on the
+        # model (handled by ``_get_model_config_line``).
+        if getattr(field, "alias", None):
+            field_params.append(f"alias={json.dumps(field.alias)}")
 
         # Pydantic-specific configurations
         pydantic_config = field.target_config.get("pydantic", {})
@@ -567,11 +604,14 @@ class PydanticGenerator(BaseGenerator):
     def _needs_config(self, fields: list[USRField]) -> bool:
         """Check if the model needs a ``model_config`` block.
 
-        Emits a ``model_config = ConfigDict(...)`` block when either:
+        Emits a ``model_config = ConfigDict(...)`` block when any of:
 
         1. Any field has a database relationship (the historical reason
-           ``from_attributes=True`` was needed), OR
-        2. ``Config.pydantic`` contains at least one key that this
+           ``from_attributes=True`` was needed),
+        2. Any field carries an ``alias=`` (issue #108) — the model
+           must opt into ``populate_by_name=True`` so the Python
+           attribute name remains accepted on input, OR
+        3. ``Config.pydantic`` contains at least one key that this
            generator actually honors (see ``_SUPPORTED_PYDANTIC_CONFIG_KEYS``).
 
         A dict containing only unknown keys must NOT trigger emission —
@@ -581,10 +621,17 @@ class PydanticGenerator(BaseGenerator):
         """
         if any(field.relationship is not None for field in fields):
             return True
+        if self._fields_have_alias(fields):
+            return True
         if self.config is None:
             return False
         pyd_cfg = getattr(self.config, "pydantic", None) or {}
         return any(key in pyd_cfg for key in _SUPPORTED_PYDANTIC_CONFIG_KEYS)
+
+    @staticmethod
+    def _fields_have_alias(fields: list[USRField]) -> bool:
+        """Return True if any field on the model carries an ``alias``."""
+        return any(getattr(f, "alias", None) for f in fields)
 
     def _generate_single_model(
         self,
@@ -594,6 +641,7 @@ class PydanticGenerator(BaseGenerator):
         has_config: bool,
         is_base_model: bool = False,
         custom_code: dict[str, Any] = None,
+        force_populate_by_name: bool = False,
     ) -> str:
         """Generate a single model class definition"""
         lines = [f"class {model_name}(BaseModel):"]
@@ -646,7 +694,11 @@ class PydanticGenerator(BaseGenerator):
         # Add config if needed
         if has_config:
             lines.append("")
-            lines.append(self._get_model_config_line())
+            lines.append(
+                self._get_model_config_line(
+                    force_populate_by_name=force_populate_by_name,
+                )
+            )
 
         return "\n".join(lines)
 

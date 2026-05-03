@@ -102,13 +102,16 @@ class JsonSchemaGenerator(BaseGenerator):
         if schema.description:
             json_schema["description"] = schema.description
 
-        # Add properties and required fields
+        # Add properties and required fields. ``alias`` (issue #108)
+        # overrides the wire-format key so the property name lands under
+        # the alias instead of the Python attribute name.
         for field in fields:
             field_schema = self._generate_field_schema(field)
-            json_schema["properties"][field.name] = field_schema
+            wire_name = getattr(field, "alias", None) or field.name
+            json_schema["properties"][wire_name] = field_schema
 
             if not field.optional and field.default is None:
-                json_schema["required"].append(field.name)
+                json_schema["required"].append(wire_name)
 
         # Remove empty required array
         if not json_schema["required"]:
@@ -199,10 +202,11 @@ class JsonSchemaGenerator(BaseGenerator):
 
         for field in fields:
             field_schema = self._generate_field_schema(field)
-            schema_def["properties"][field.name] = field_schema
+            wire_name = getattr(field, "alias", None) or field.name
+            schema_def["properties"][wire_name] = field_schema
 
             if not field.optional and field.default is None:
-                schema_def["required"].append(field.name)
+                schema_def["required"].append(wire_name)
 
         # Remove empty required array
         if not schema_def["required"]:
