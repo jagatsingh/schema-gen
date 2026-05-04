@@ -101,6 +101,20 @@ class E2EOrder:
     leg: Annotated[E2ECeLeg | E2EPeLeg, Field(discriminator="option_type")]
 
 
+@Schema
+class E2EEventConfig:
+    """Schema with non-trivial defaults (issue #115).
+
+    Validates that the Rust generator emits serde default helper functions
+    for string, integer, and boolean fields with non-zero defaults.
+    """
+
+    policy: str = Field(default="drop_and_audit")
+    window_ms: int = Field(default=5000)
+    enabled: bool = Field(default=True)
+    name: str
+
+
 # -----------------------------------------------------------------------
 # Rust Box<T> test — uses USR directly (no forward-ref issue)
 # -----------------------------------------------------------------------
@@ -155,6 +169,7 @@ class TestE2ECompile:
             E2ECeLeg,
             E2EPeLeg,
             E2EOrder,
+            E2EEventConfig,
         ):
             SchemaRegistry.register(cls)
 
