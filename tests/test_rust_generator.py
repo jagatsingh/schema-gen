@@ -1385,3 +1385,131 @@ class TestNonSnakeCaseFieldRename:
         )
         with pytest.raises(ValueError, match="normalise to the Rust identifier"):
             RustGenerator().generate_file(schema)
+
+
+# ----------------------------------------------------------------------
+# Issue #115: non-trivial defaults → serde(default = "helper_fn")
+# ----------------------------------------------------------------------
+
+
+def test_non_trivial_string_default_emits_helper_fn():
+    """String field with a non-empty default emits a free helper function
+    and #[serde(default = "...")] instead of the incorrect #[serde(default)]."""
+
+    @Schema
+    class EventDslConfig:
+        late_event_policy: str = Field(default="drop_and_audit")
+        name: str
+
+    schema = SchemaParser().parse_schema(EventDslConfig)
+    out = RustGenerator().generate_file(schema)
+
+    assert (
+        'fn default_event_dsl_config_late_event_policy() -> String { "drop_and_audit".to_string() }'
+        in out
+    )
+    assert '#[serde(default = "default_event_dsl_config_late_event_policy")]' in out
+    assert "pub late_event_policy: String," in out
+    # Plain #[serde(default)] must NOT appear (it would give "" not "drop_and_audit").
+    assert "#[serde(default)]" not in out
+
+
+def test_non_trivial_int_default_emits_helper_fn():
+    """Integer field with a non-zero default emits a helper function."""
+
+    @Schema
+    class Window:
+        size_ms: int = Field(default=5000)
+
+    schema = SchemaParser().parse_schema(Window)
+    out = RustGenerator().generate_file(schema)
+
+    assert "fn default_window_size_ms() -> i64 { 5000 }" in out
+    assert '#[serde(default = "default_window_size_ms")]' in out
+
+
+def test_non_trivial_bool_default_emits_helper_fn():
+    """Boolean field with default=True emits a helper function."""
+
+    @Schema
+    class Config:
+        enabled: bool = Field(default=True)
+
+    schema = SchemaParser().parse_schema(Config)
+    out = RustGenerator().generate_file(schema)
+
+    assert "fn default_config_enabled() -> bool { true }" in out
+    assert '#[serde(default = "default_config_enabled")]' in out
+
+
+def test_zero_value_defaults_still_use_serde_default():
+    """Zero-value defaults must still emit plain #[serde(default)], not helpers."""
+
+    @Schema
+    class Counter:
+        count: int = Field(default=0)
+        label: str = Field(default="")
+        active: bool = Field(default=False)
+
+    schema = SchemaParser().parse_schema(Counter)
+    out = RustGenerator().generate_file(schema)
+
+    assert "#[serde(default)]" in out
+    # No helper functions should be emitted for zero-value defaults.
+    assert "fn default_counter_count" not in out
+    assert "fn default_counter_label" not in out
+    assert "fn default_counter_active" not in out
+
+
+def test_helper_fn_name_qualified_by_struct():
+    """Helper function names are qualified with the struct name to prevent
+    collisions when multiple structs in the same file share a field name."""
+
+    @Schema
+    class Alpha:
+        mode: str = Field(default="fast")
+        # extra is base-only so slim is a strict subset → From impl generated
+        extra: str
+
+        class Variants:
+            slim = ["mode"]
+
+    schema = SchemaParser().parse_schema(Alpha)
+    out = RustGenerator().generate_file(schema)
+
+    # Base struct helper uses "alpha" prefix.
+    assert "fn default_alpha_mode() -> String" in out
+    # Variant struct (AlphaSlim) also has mode and gets its own prefixed helper.
+    assert "fn default_alpha_slim_mode() -> String" in out
+
+
+def test_string_default_with_special_chars():
+    """Special characters in string defaults are correctly escaped in the helper."""
+
+    @Schema
+    class Escaped:
+        path: str = Field(default='say "hello"')
+
+    schema = SchemaParser().parse_schema(Escaped)
+    out = RustGenerator().generate_file(schema)
+
+    assert r'"say \"hello\""' in out
+    assert '#[serde(default = "default_escaped_path")]' in out
+
+
+def test_reserved_word_field_with_non_trivial_default():
+    """Reserved-word fields with non-trivial defaults generate correct helper names."""
+
+    @Schema
+    class WithType:
+        type: str = Field(default="limit")
+        value: int
+
+    schema = SchemaParser().parse_schema(WithType)
+    out = RustGenerator().generate_file(schema)
+
+    # Helper uses bare "type" (not "r#type") in the function name.
+    assert "fn default_with_type_type() -> String" in out
+    assert '"limit".to_string()' in out
+    # The field still gets rename + default attrs.
+    assert '#[serde(rename = "type", default = "default_with_type_type")]' in out

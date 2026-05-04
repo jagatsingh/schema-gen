@@ -690,9 +690,19 @@ class RustGenerator(BaseGenerator):
                 raise ValueError(msg)
             seen_idents[bare] = field.name
 
+        # Pre-compute helper fn names for fields with non-trivial defaults
+        # (issue #115). Done before field generation so the name is available
+        # to _generate_field without relying on mutable instance state.
+        field_helper_names: dict[str, str] = {}
+        for f in fields:
+            if _needs_default_helper(f):
+                field_helper_names[f.name] = _default_helper_fn_name(struct_name, f)
+
         field_lines: list[str] = []
         for field in fields:
-            field_lines.extend(self._generate_field(field, imports))
+            field_lines.extend(
+                self._generate_field(field, imports, field_helper_names.get(field.name))
+            )
 
         # Join fields with blank lines between each for readability. Each
         # field may contain doc comments + serde attrs + the field itself.
@@ -702,9 +712,29 @@ class RustGenerator(BaseGenerator):
             lines.extend("    " + line if line else "" for line in block)
 
         lines.append("}")
-        return "\n".join(lines)
+        struct_str = "\n".join(lines)
 
-    def _generate_field(self, field: USRField, imports: set[str]) -> list[str]:
+        # Emit helper functions (if any) before the struct definition so
+        # serde can resolve ``default = "fn_name"`` in the current module.
+        helper_fns: list[str] = []
+        for f in fields:
+            fn_name = field_helper_names.get(f.name)
+            if fn_name:
+                rust_type = self._rust_type_for(f, imports)
+                fn_str = _generate_default_helper_fn(fn_name, f, rust_type)
+                if fn_str:
+                    helper_fns.append(fn_str)
+
+        if helper_fns:
+            return "\n".join(helper_fns) + "\n\n" + struct_str
+        return struct_str
+
+    def _generate_field(
+        self,
+        field: USRField,
+        imports: set[str],
+        default_helper_name: str | None = None,
+    ) -> list[str]:
         """Generate doc comments, serde attrs, and the field declaration."""
         out: list[str] = []
 
@@ -741,17 +771,16 @@ class RustGenerator(BaseGenerator):
 
         if is_optional:
             serde_attrs.append('skip_serializing_if = "Option::is_none"')
-        elif _field_has_explicit_default(field) and _rust_type_has_native_default(
-            field
-        ):
-            # Non-optional field with an explicit default AND a Rust type that
-            # implements Default natively — emit serde(default) so that
-            # deserializing JSON which omits the field (because the sender applies
-            # its own skip_serializing_if) does not fail with "missing field".
-            # We restrict to types with native Default (primitives, String, Vec,
-            # serde_json::Value) to avoid emitting serde(default) for enum or
-            # nested-struct fields whose generated Rust type may not implement it.
-            serde_attrs.append("default")
+        elif _field_has_explicit_default(field):
+            if _rust_type_has_native_default(field):
+                # Zero-value default matches Rust's Default::default() — serde
+                # can call Default::default() directly when the field is absent.
+                serde_attrs.append("default")
+            elif default_helper_name is not None:
+                # Non-trivial default (e.g. String "drop_and_audit", int 42,
+                # bool True) — serde calls a named free function instead of
+                # Default::default() so the correct value is used.
+                serde_attrs.append(f'default = "{default_helper_name}"')
 
         if serde_attrs:
             out.append(f"#[serde({', '.join(serde_attrs)})]")
@@ -1343,6 +1372,67 @@ def _rust_type_has_native_default(field: USRField) -> bool:
     if field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
         return isinstance(default, (list, set, frozenset)) and len(default) == 0
     return False
+
+
+def _needs_default_helper(field: USRField) -> bool:
+    """Return True when a field needs a serde default helper function.
+
+    This applies to non-optional fields whose explicit default is a non-zero
+    value — i.e. cases where ``#[serde(default)]`` would call the wrong
+    ``Default::default()`` instead of the intended value.  Only STRING,
+    INTEGER, FLOAT, and BOOLEAN are handled; other types (ENUM, NESTED_SCHEMA,
+    datetime, …) need a hand-written impl or derive(Default) and are out of
+    scope for auto-generation.
+    """
+    if field.optional or field.type == FieldType.OPTIONAL:
+        return False
+    if not _field_has_explicit_default(field):
+        return False
+    if _rust_type_has_native_default(field):
+        return False  # zero-value → serde(default) is sufficient
+    return field.type in (
+        FieldType.STRING,
+        FieldType.INTEGER,
+        FieldType.FLOAT,
+        FieldType.BOOLEAN,
+    )
+
+
+def _default_helper_fn_name(struct_name: str, field: USRField) -> str:
+    """Return the serde default helper function name for ``field``.
+
+    Uses ``default_<struct_snake>_<field_bare_ident>`` so that multiple
+    structs in the same ``.rs`` file (e.g. base + variant) can each have a
+    field with the same name without producing duplicate free-function
+    definitions.
+    """
+    struct_snake = _snake_case(struct_name)
+    field_ident = _rust_field_ident(field.name)
+    bare_ident = field_ident[2:] if field_ident.startswith("r#") else field_ident
+    return f"default_{struct_snake}_{bare_ident}"
+
+
+def _generate_default_helper_fn(fn_name: str, field: USRField, rust_type: str) -> str:
+    """Emit a free function used as ``#[serde(default = "<fn_name>")]``.
+
+    The function returns the field's Python-side default as a Rust literal.
+    Returns an empty string when the default cannot be represented (should
+    not occur given ``_needs_default_helper`` guards the call site).
+    """
+    default = getattr(field, "default", None)
+    if default is None:
+        return ""
+    if field.type == FieldType.STRING:
+        body = f"{_rust_string_literal(str(default))}.to_string()"
+    elif field.type == FieldType.INTEGER:
+        body = str(int(default))
+    elif field.type == FieldType.FLOAT:
+        body = str(float(default))
+    elif field.type == FieldType.BOOLEAN:
+        body = "true" if default else "false"
+    else:
+        return ""
+    return f"fn {fn_name}() -> {rust_type} {{ {body} }}"
 
 
 def _variant_is_from_eligible(
