@@ -1513,3 +1513,71 @@ def test_reserved_word_field_with_non_trivial_default():
     assert '"limit".to_string()' in out
     # The field still gets rename + default attrs.
     assert '#[serde(rename = "type", default = "default_with_type_type")]' in out
+
+
+def test_has_default_without_default_value_does_not_produce_dangling_ref():
+    """A field with has_default=True but default=None must not emit
+    #[serde(default = "...")] pointing to a nonexistent helper function."""
+    schema = USRSchema(
+        name="Guarded",
+        fields=[
+            USRField(
+                name="mode",
+                type=FieldType.STRING,
+                python_type=str,
+                # Simulate has_default=True (from a parser) but no concrete default.
+                metadata={"has_default": True},
+                # default stays None — the critical case
+            ),
+        ],
+    )
+    out = RustGenerator().generate_file(schema)
+    # No dangling serde(default = "...") reference.
+    assert 'default = "default_' not in out
+    # No orphaned helper function.
+    assert "fn default_guarded_mode" not in out
+
+
+def test_float_default_nan_emits_nan_constant():
+    """NaN float defaults must emit f64::NAN, not the Python string 'nan'."""
+
+    schema = USRSchema(
+        name="Floaty",
+        fields=[
+            USRField(
+                name="sentinel",
+                type=FieldType.FLOAT,
+                python_type=float,
+                default=float("nan"),
+            ),
+        ],
+    )
+    out = RustGenerator().generate_file(schema)
+    assert "f64::NAN" in out
+    # "nan" as a bare identifier must not appear — it's not a Rust literal.
+    assert " nan }" not in out
+
+
+def test_float_default_inf_emits_infinity_constant():
+    """Infinite float defaults must emit f64::INFINITY / f64::NEG_INFINITY."""
+
+    schema = USRSchema(
+        name="Floaty2",
+        fields=[
+            USRField(
+                name="pos",
+                type=FieldType.FLOAT,
+                python_type=float,
+                default=float("inf"),
+            ),
+            USRField(
+                name="neg",
+                type=FieldType.FLOAT,
+                python_type=float,
+                default=float("-inf"),
+            ),
+        ],
+    )
+    out = RustGenerator().generate_file(schema)
+    assert "f64::INFINITY" in out
+    assert "f64::NEG_INFINITY" in out

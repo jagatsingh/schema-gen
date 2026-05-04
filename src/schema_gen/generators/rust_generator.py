@@ -1383,8 +1383,18 @@ def _needs_default_helper(field: USRField) -> bool:
     INTEGER, FLOAT, and BOOLEAN are handled; other types (ENUM, NESTED_SCHEMA,
     datetime, …) need a hand-written impl or derive(Default) and are out of
     scope for auto-generation.
+
+    Requires ``field.default`` to be non-None so that
+    ``_generate_default_helper_fn`` can emit a concrete Rust literal.
+    Fields where ``has_default=True`` / ``schema_default`` / ``default_value``
+    is set but ``field.default is None`` fall through without a helper; the
+    struct field will have no serde default attribute, which is the safest
+    fallback (missing JSON key → deserialization error with a clear message
+    rather than silently referencing a missing free function).
     """
     if field.optional or field.type == FieldType.OPTIONAL:
+        return False
+    if getattr(field, "default", None) is None:
         return False
     if not _field_has_explicit_default(field):
         return False
@@ -1419,6 +1429,8 @@ def _generate_default_helper_fn(fn_name: str, field: USRField, rust_type: str) -
     Returns an empty string when the default cannot be represented (should
     not occur given ``_needs_default_helper`` guards the call site).
     """
+    import math  # noqa: PLC0415
+
     default = getattr(field, "default", None)
     if default is None:
         return ""
@@ -1427,7 +1439,13 @@ def _generate_default_helper_fn(fn_name: str, field: USRField, rust_type: str) -
     elif field.type == FieldType.INTEGER:
         body = str(int(default))
     elif field.type == FieldType.FLOAT:
-        body = str(float(default))
+        val = float(default)
+        if math.isnan(val):
+            body = f"{rust_type}::NAN"
+        elif math.isinf(val):
+            body = f"{rust_type}::INFINITY" if val > 0 else f"{rust_type}::NEG_INFINITY"
+        else:
+            body = str(val)
     elif field.type == FieldType.BOOLEAN:
         body = "true" if default else "false"
     else:
