@@ -741,6 +741,17 @@ class RustGenerator(BaseGenerator):
 
         if is_optional:
             serde_attrs.append('skip_serializing_if = "Option::is_none"')
+        elif _field_has_explicit_default(field) and _rust_type_has_native_default(
+            field
+        ):
+            # Non-optional field with an explicit default AND a Rust type that
+            # implements Default natively — emit serde(default) so that
+            # deserializing JSON which omits the field (because the sender applies
+            # its own skip_serializing_if) does not fail with "missing field".
+            # We restrict to types with native Default (primitives, String, Vec,
+            # serde_json::Value) to avoid emitting serde(default) for enum or
+            # nested-struct fields whose generated Rust type may not implement it.
+            serde_attrs.append("default")
 
         if serde_attrs:
             out.append(f"#[serde({', '.join(serde_attrs)})]")
@@ -1262,6 +1273,76 @@ def _field_has_explicit_default(field: USRField) -> bool:
             return True
     default = getattr(field, "default", None)
     return default is not None
+
+
+def _rust_type_has_native_default(field: USRField) -> bool:
+    """Return True if the field's Rust type implements ``Default`` natively AND
+    the Python-side default value matches what ``Default::default()`` would produce.
+
+    Used to guard ``#[serde(default)]`` emission — only types that implement
+    ``Default`` without a hand-written impl can be annotated this way. Emitting
+    it on an ``ENUM`` or ``NESTED_SCHEMA`` field whose generated Rust type does
+    not derive/impl ``Default`` causes a compile error.
+
+    Additionally, we only emit ``#[serde(default)]`` when the Python default
+    matches Rust's zero-value default for the type. If the Python default is a
+    non-trivial value (e.g. ``default="drop_and_audit"`` for a String field), the
+    ``Default::default()`` impl would produce ``""`` instead, creating a mismatch
+    between what the contract deserializes and what the runtime expects.
+
+    Types with native ``Default`` in Rust and their zero-value defaults:
+    - Primitives: INTEGER → 0/0.0, BOOLEAN → false
+    - String (DEFAULT = "")
+    - LIST / SET / FROZENSET (Vec<T> — Default = empty vec, requires T: Default)
+    - JSON / DICT (serde_json::Value — Default = Value::Null)
+
+    Unsafe types (may not have Default):
+    - ENUM — only if ``#[derive(Default)]`` is explicitly added
+    - NESTED_SCHEMA — only if all fields have defaults or derive(Default)
+    - UNION, OPTIONAL (handled by the is_optional path)
+    """
+    safe_types = frozenset(
+        {
+            FieldType.STRING,
+            FieldType.INTEGER,
+            FieldType.FLOAT,
+            FieldType.BOOLEAN,
+            FieldType.LIST,
+            FieldType.SET,
+            FieldType.FROZENSET,
+            FieldType.JSON,  # serde_json::Value (Default = Value::Null)
+            FieldType.DICT,  # serde_json::Value when inner_type is None/JSON
+        }
+    )
+    if field.type not in safe_types:
+        return False
+
+    # Verify the Python default matches the Rust Default::default() value.
+    # If the Python default is non-trivial (e.g. a non-empty string or non-zero int),
+    # emitting #[serde(default)] would produce the WRONG value when the JSON field
+    # is absent — Rust's Default::default() would kick in instead of the intended
+    # Python default. Only emit for fields whose Python default IS the zero-value.
+    default = getattr(field, "default", None)
+    # default_factory always maps to Rust's container Default (empty Vec/Value)
+    if getattr(field, "default_factory", None) is not None:
+        return True
+    if default is None:
+        # No explicit default — default_factory must be set; covered above.
+        return False
+    # Check that the Python default matches the Rust zero-value for the type.
+    if field.type == FieldType.STRING:
+        return default == ""
+    if field.type in (FieldType.INTEGER, FieldType.FLOAT):
+        return default == 0 or default == 0.0
+    if field.type == FieldType.BOOLEAN:
+        return default is False or default == False  # noqa: E712
+    # JSON/DICT: Python None (null) maps to serde_json::Value::Null
+    if field.type in (FieldType.JSON, FieldType.DICT):
+        return default is None
+    # LIST/SET/FROZENSET: empty sequence (but should be default_factory, caught above)
+    if field.type in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
+        return isinstance(default, (list, set, frozenset)) and len(default) == 0
+    return False
 
 
 def _variant_is_from_eligible(

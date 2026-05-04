@@ -41,8 +41,10 @@ pub struct CanonicalOrder {
     pub tag: Option<String>,
 
     /// Free-form metadata
+    #[serde(default)]
     pub metadata: serde_json::Value,
 
     /// Per-fill prices (FIFO)
+    #[serde(default)]
     pub fills: Vec<f64>,
 }
