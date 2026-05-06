@@ -38,6 +38,8 @@ dev = [
     "mypy>=1.14",
     "pre-commit>=4.0.0",
     "twine>=6.0.0",
+    # Security: minimum versions for transitive deps with CVEs
+    "GitPython>=3.1.49",
 ]
 sqlalchemy = ["sqlalchemy>=2.0.40"]
 pathway = ["pathway>=0.8.0"]
