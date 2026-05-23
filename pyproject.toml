@@ -63,9 +63,11 @@ Issues = "https://github.com/jagatsingh/schema-gen/issues"
 
 # Security: minimum versions for transitive deps with CVEs
 # urllib3>=2.7.0: high CVE fix (CVE-2026-44431 cross-origin headers; CVE-2026-44432 decompression-bomb safeguard bypass)
+# idna>=3.15: IDNA specially crafted inputs bypass CVE-2024-3651 fix
 [tool.uv]
 constraint-dependencies = [
     "urllib3>=2.7.0",
+    "idna>=3.15",
 ]
 
 [build-system]
@@ -93,7 +95,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.18",
     "mkdocstrings[python]>=0.30.0",
-    "pymdown-extensions>=10.16.1",
+    "pymdown-extensions>=10.21.3",
     "pytest>=8.4.2",
     "pytest-cov>=6.3.0",
     "setuptools<83",  # Pin setuptools to avoid pkg_resources deprecation warnings

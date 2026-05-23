@@ -928,11 +928,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.11"
+version = "3.16"
 source = { registry = "http://localhost:5081/repository/pypi-group/simple" }
-sdist = { url = "http://localhost:5081/repository/pypi-group/packages/idna/3.11/idna-3.11.tar.gz", hash = "sha256:795dafcc9c04ed0c1fb032c2aa73654d8e8c5023a7df64a53f39190ada629902" }
+sdist = { url = "http://localhost:5081/repository/pypi-group/packages/idna/3.16/idna-3.16.tar.gz", hash = "sha256:d7a6da03db833450fca25d2358ac9ff06cd624577a4aea3a596d5c0f77b8e03d" }
 wheels = [
-    { url = "http://localhost:5081/repository/pypi-group/packages/idna/3.11/idna-3.11-py3-none-any.whl", hash = "sha256:771a87f49d9defaf64091e6e6fe9c18d4833f140bd19464795bc32d966ca37ea" },
+    { url = "http://localhost:5081/repository/pypi-group/packages/idna/3.16/idna-3.16-py3-none-any.whl", hash = "sha256:cc246e3a3f89580c3a951b5ad298ca4638078b2cdd4f115654332b5c26daded5" },
 ]
 
 [[package]]
@@ -2003,15 +2003,15 @@ wheels = [
 
 [[package]]
 name = "pymdown-extensions"
-version = "10.21.2"
+version = "10.21.3"
 source = { registry = "http://localhost:5081/repository/pypi-group/simple" }
 dependencies = [
     { name = "markdown" },
     { name = "pyyaml" },
 ]
-sdist = { url = "http://localhost:5081/repository/pypi-group/packages/pymdown-extensions/10.21.2/pymdown_extensions-10.21.2.tar.gz", hash = "sha256:c3f55a5b8a1d0edf6699e35dcbea71d978d34ff3fa79f3d807b8a5b3fa90fbdc" }
+sdist = { url = "http://localhost:5081/repository/pypi-group/packages/pymdown-extensions/10.21.3/pymdown_extensions-10.21.3.tar.gz", hash = "sha256:72cfcf55f07aea0d4af2c4f11dd4e52466ddfb1bb819673146398e0bd3a77354" }
 wheels = [
-    { url = "http://localhost:5081/repository/pypi-group/packages/pymdown-extensions/10.21.2/pymdown_extensions-10.21.2-py3-none-any.whl", hash = "sha256:5c0fd2a2bea14eb39af8ff284f1066d898ab2187d81b889b75d46d4348c01638" },
+    { url = "http://localhost:5081/repository/pypi-group/packages/pymdown-extensions/10.21.3/pymdown_extensions-10.21.3-py3-none-any.whl", hash = "sha256:d7a5d08014fc571e80ca21dd6f854e31f94c489800350564d55d15b3c41e76b6" },
 ]
 
 [[package]]
