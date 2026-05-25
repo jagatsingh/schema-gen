@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.23
+# syntax=docker/dockerfile:1.24
 # Comprehensive validation environment for schema-gen
 # Includes all external compilers and tools needed for complete format validation
 #
