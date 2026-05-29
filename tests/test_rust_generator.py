@@ -1124,6 +1124,43 @@ class _PlainUnionOrder:
     leg: _CeLeg | _PeLeg
 
 
+@Schema
+class _NonDefaultNested:
+    """A nested struct with NO ``Default`` (required enum field)."""
+
+    mode: Literal["x"]  # a required field; the struct is not Default-able
+    note: str
+
+
+@Schema
+class _VariantWithNonDefaultField:
+    """Union variant carrying a required non-Default nested struct.
+
+    The discriminator-tag round-trip fix marks ``kind`` ``#[serde(skip)]``;
+    serde reconstructs it via ``String::default()`` (only the tag field's
+    type must be ``Default``). Deriving struct-level ``Default`` here would
+    NOT compile because ``nested`` is non-Default — the regression this
+    fixture guards against.
+    """
+
+    kind: Literal["with_nested"]
+    nested: _NonDefaultNested
+
+
+@Schema
+class _PlainVariant:
+    kind: Literal["plain"]
+    value: int
+
+
+@Schema
+class _UnionWithNonDefaultVariant:
+    spec: Annotated[
+        _VariantWithNonDefaultField | _PlainVariant,
+        Field(discriminator="kind"),
+    ]
+
+
 class TestRustDiscriminatedUnion:
     """Annotated[Union[A, B], Field(discriminator="...")] → serde tagged enum."""
 
@@ -1139,6 +1176,10 @@ class TestRustDiscriminatedUnion:
             _DiscriminatedOrder,
             _DiscriminatedThreeWay,
             _PlainUnionOrder,
+            _NonDefaultNested,
+            _VariantWithNonDefaultField,
+            _PlainVariant,
+            _UnionWithNonDefaultVariant,
         ):
             SchemaRegistry.register(cls)
 
@@ -1178,6 +1219,34 @@ class TestRustDiscriminatedUnion:
             out = RustGenerator().generate_file(usr)
         assert "pub leg: serde_json::Value," in out
         assert any("union field 'leg'" in rec.message for rec in caplog.records)
+
+    def test_variant_with_non_default_field_skips_tag_without_struct_default(self):
+        """A union variant carrying a required non-Default nested struct must
+        still emit ``#[serde(skip)]`` on the tag field but must NOT derive
+        struct-level ``Default`` — the skip only needs the tag field's type
+        (String) to be Default, and a whole-struct Default would fail to
+        compile against the non-Default nested field.
+        """
+        # parse_all_schemas() runs the post-pass that marks discriminator-tag
+        # fields (is_discriminator_tag) across the full registry — the singular
+        # parse_schema() does not, so the skip would not appear.
+        schemas = SchemaParser().parse_all_schemas()
+        gen = RustGenerator()
+        variant_usr = next(
+            s for s in schemas if s.name == "_VariantWithNonDefaultField"
+        )
+        out = gen.generate_file(variant_usr)
+        # The tag field is serde-skipped (round-trip fix preserved).
+        assert "#[serde(skip)]" in out
+        assert "pub kind: String," in out
+        # But the struct must NOT carry a Default derive (would not compile).
+        derive_line = next(
+            line for line in out.splitlines() if line.strip().startswith("#[derive(")
+        )
+        assert "Default" not in derive_line, (
+            f"struct-level Default leaked onto a variant with a non-Default "
+            f"nested field: {derive_line!r}"
+        )
 
 
 # ------------------------------------------------------------------
