@@ -632,13 +632,17 @@ class RustGenerator(BaseGenerator):
                     derives.append(extra)
 
         # Discriminated-union variant structs carry a ``#[serde(skip)]`` tag
-        # field (#18 round-trip fix). A skipped field is reconstructed via
-        # ``Default::default()`` on deserialize, so the struct must derive
-        # ``Default``. Added here (not in _DEFAULT_STRUCT_DERIVES) so only
-        # the affected structs pick it up.
-        if any(getattr(f, "is_discriminator_tag", False) for f in fields):
-            if "Default" not in derives:
-                derives.append("Default")
+        # field (#18 round-trip fix). serde reconstructs a skipped field on
+        # deserialize via ``<FieldType as Default>::default()`` — i.e. it
+        # needs only the *tag field's type* (always ``String`` here) to be
+        # ``Default``, NOT the whole struct. Deriving struct-level ``Default``
+        # was over-reach: it happens to be satisfiable when every non-tag
+        # field is itself ``Default`` (e.g. all-``String`` variants like
+        # EventBufferSource*/StateDef*), but breaks the moment a variant
+        # carries a required non-``Default`` nested field (e.g.
+        # ``OptionsSpec { expiry: ExpirySelector, .. }``). The skip already
+        # provides everything round-trip needs, so no struct-level ``Default``
+        # is emitted. See jagatsingh/tradingcore T1b regression.
 
         lines: list[str] = []
         if schema.description and is_base:
