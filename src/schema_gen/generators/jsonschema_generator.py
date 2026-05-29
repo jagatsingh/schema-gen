@@ -312,7 +312,18 @@ class JsonSchemaGenerator(BaseGenerator):
                     union_schema = {}
                     self._add_type_info(union_type, union_schema)
                     union_schemas.append(union_schema)
-                field_schema["anyOf"] = union_schemas
+                # Discriminated union (#18): emit oneOf + an OpenAPI-style
+                # discriminator object so the variants are mutually
+                # exclusive and consumers can dispatch on the tag field.
+                # This matches the serde internally-tagged Rust enum and
+                # the Zod z.discriminatedUnion on the wire.
+                if field.discriminator and field.union_tag_values:
+                    field_schema["oneOf"] = union_schemas
+                    field_schema["discriminator"] = {
+                        "propertyName": field.discriminator
+                    }
+                else:
+                    field_schema["anyOf"] = union_schemas
 
         elif field.type == FieldType.LITERAL:
             if field.literal_values:

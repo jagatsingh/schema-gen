@@ -631,6 +631,15 @@ class RustGenerator(BaseGenerator):
                 if extra not in derives:
                     derives.append(extra)
 
+        # Discriminated-union variant structs carry a ``#[serde(skip)]`` tag
+        # field (#18 round-trip fix). A skipped field is reconstructed via
+        # ``Default::default()`` on deserialize, so the struct must derive
+        # ``Default``. Added here (not in _DEFAULT_STRUCT_DERIVES) so only
+        # the affected structs pick it up.
+        if any(getattr(f, "is_discriminator_tag", False) for f in fields):
+            if "Default" not in derives:
+                derives.append("Default")
+
         lines: list[str] = []
         if schema.description and is_base:
             for doc_line in schema.description.strip().splitlines():
@@ -750,6 +759,21 @@ class RustGenerator(BaseGenerator):
         serde_attrs: list[str] = []
         name = field.name
         emitted_name = _rust_field_ident(name)
+
+        # Discriminated-union tag field (#18 round-trip fix). When this
+        # struct is a variant of a serde internally-tagged enum, serde owns
+        # the discriminator key on the wire: it is consumed on deserialize
+        # and re-emitted from the enum variant identity on serialize. The
+        # variant struct must therefore NOT (de)serialize the field itself,
+        # or serde double-emits / fails on the missing key. ``skip`` drops
+        # it from both directions; the value is reconstructed via the
+        # struct's ``Default`` derive on deserialize. This branch is
+        # mutually exclusive with rename/default/alias handling below.
+        if getattr(field, "is_discriminator_tag", False):
+            out.append("#[serde(skip)]")
+            out.append(f"pub {emitted_name}: {rust_type},")
+            out.append("")
+            return out
 
         # Per-field alias (issue #108) wins over the name-based wire-name
         # heuristic. The user wrote ``Field(alias="...")`` precisely to

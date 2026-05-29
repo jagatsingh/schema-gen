@@ -236,9 +236,20 @@ Field(
 Use `Annotated[Union[...], Field(discriminator="<tag>")]` to mark a
 field as a discriminated union. Every union member must be a `@Schema`
 class with a `Literal["..."]` tag field matching the discriminator name.
-The Rust generator lowers this to a `#[serde(tag = "...")]` tagged enum.
-Pydantic and Zod discriminated-union lowering is planned — see
-[docs/generators/rust.md](generators/rust.md#discriminated-unions).
+All four targets lower this to their idiomatic discriminated-union
+construct on one shared **internally-tagged** wire format
+(`{"<tag>": "...", ...}`):
+
+| Target      | Lowering |
+|-------------|----------|
+| Rust        | `#[serde(tag = "<tag>")]` enum (internally tagged) |
+| Pydantic v2 | `Annotated[Union[...], Field(discriminator="<tag>")]` |
+| Zod         | `z.discriminatedUnion("<tag>", [...])` |
+| JSON Schema | `oneOf` + `{"discriminator": {"propertyName": "<tag>"}}` |
+
+See [docs/generators/rust.md](generators/rust.md#discriminated-unions)
+for the Rust wire-format details (including why variant tag fields are
+serde-skipped) and the cross-language round-trip test.
 
 ```python
 from typing import Annotated, Literal, Union

@@ -450,6 +450,15 @@ class ZodGenerator(BaseGenerator):
 
         elif field.type == FieldType.UNION:
             if field.union_types:
+                # Discriminated union (#18): when the field carries a
+                # discriminator and the parser resolved a tag value per
+                # variant, emit z.discriminatedUnion so the wire format
+                # matches the serde internally-tagged Rust enum and the
+                # Pydantic Annotated[Union, Field(discriminator=...)].
+                if field.discriminator and field.union_tag_values:
+                    member_types = [self._get_zod_type(ut) for ut in field.union_types]
+                    members = ", ".join(member_types)
+                    return f'z.discriminatedUnion("{field.discriminator}", [{members}])'
                 union_types = [self._get_zod_type(ut) for ut in field.union_types]
                 return f"z.union([{', '.join(union_types)}])"
             else:

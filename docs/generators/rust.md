@@ -319,6 +319,48 @@ pub struct Order {
 }
 ```
 
+### Wire format: internally tagged
+
+The enum uses serde's **internally-tagged** representation
+(`#[serde(tag = "...")]`): the discriminator key lives *inside* the
+variant object alongside its other fields, e.g.
+`{"type": "market", "qty": 5}`. This matches exactly what Pydantic v2's
+`Annotated[Union[...], Field(discriminator=...)]` and Zod's
+`z.discriminatedUnion(...)` emit, so a payload round-trips
+byte-for-byte (key order aside) across Python ↔ Rust ↔ TypeScript.
+This interop is enforced by
+`tests/test_discriminated_union_roundtrip.py`, which feeds one canonical
+JSON payload through every generated artefact and asserts identical
+re-serialization.
+
+### Variant tag field is serde-skipped
+
+serde's internally-tagged enum **owns** the discriminator key on the
+wire: it consumes the tag on deserialize and re-emits it from the enum
+variant identity on serialize. A variant struct must therefore not
+(de)serialize its own `Literal` tag field, or serde double-emits the key
+(serialize) or fails with "missing field" (deserialize).
+
+schema-gen handles this automatically: when a struct is used as a
+discriminated-union variant, its tag field is emitted as
+`#[serde(skip)]` and the struct gains a `Default` derive (a skipped
+field is reconstructed via `Default::default()` on deserialize):
+
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
+pub struct MarketLeg {
+    #[serde(skip)]
+    pub r#type: String,
+    pub qty: i64,
+}
+```
+
+This detection requires whole-set knowledge (the variant struct is a
+*different* schema from the one declaring the union), so it is applied
+during a parser post-pass over all schemas — i.e. via the CLI / full
+`generate_all()` run, which is how generation always happens in
+practice.
+
 Plain `Union[A, B]` without a discriminator is emitted as
 `serde_json::Value` and logs a warning. See the [Known limitations](#known-limitations)
 section.
@@ -412,6 +454,16 @@ the top of the referencing file. No manual wiring is needed.
   `HashMap<String, serde_json::Value>` — the value type is not yet
   threaded through USR. Tracked with
   [jagatsingh/schema-gen#19](https://github.com/jagatsingh/schema-gen/issues/19).
-- **Pydantic / Zod discriminated-union emit** is not yet implemented;
-  only the Rust side honors `Field(discriminator=...)` today. Tracked
-  in [jagatsingh/schema-gen#20](https://github.com/jagatsingh/schema-gen/issues/20).
+- **Discriminated-union emit is wired across all four targets**: Rust
+  (internally-tagged enum), Pydantic v2
+  (`Annotated[Union[...], Field(discriminator=...)]`), Zod
+  (`z.discriminatedUnion(...)`), and JSON Schema (`oneOf` + an
+  OpenAPI-style `discriminator` object). Cross-language round-trip is
+  covered by `tests/test_discriminated_union_roundtrip.py`.
+- **`Default`-derive requirement for variants**: because the tag field is
+  `#[serde(skip)]`, a discriminated-union variant struct derives
+  `Default`, which requires every *other* field on that variant to be
+  `Default` too. A variant carrying a non-`Default` field type (e.g. a
+  nested struct that itself lacks `Default`) will not compile. Keep
+  variant payloads to scalar / `Option` / `Default`-able fields, or add a
+  `Default` derive to the nested type.

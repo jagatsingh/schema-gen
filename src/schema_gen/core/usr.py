@@ -158,6 +158,17 @@ class USRField:
     # by the parser when ``discriminator`` is set and validated.
     union_tag_values: list[str] = field(default_factory=list)
 
+    # Set True by the parser's post-pass when THIS field is the
+    # discriminator (Literal tag) of a struct that is used as a variant of
+    # some internally-tagged discriminated union. serde's internally-tagged
+    # enum owns the tag key on the wire (it is consumed on deserialize and
+    # re-emitted on serialize from the enum variant identity), so the Rust
+    # generator must NOT emit this field as a normally (de)serialized field
+    # — it emits ``#[serde(skip)]`` and requires the struct to derive
+    # ``Default``. Pydantic / Zod / JSON Schema keep the field as-is because
+    # their wire format carries the tag inside the variant object.
+    is_discriminator_tag: bool = False
+
     # Field tags for grouped constant emission
     tags: list[str] = field(default_factory=list)
 
