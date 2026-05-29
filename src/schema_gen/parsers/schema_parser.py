@@ -326,10 +326,39 @@ class SchemaParser:
         if all_errors:
             raise ValueError("Schema validation failed:\n" + "\n".join(all_errors))
 
+        # Discriminated-union post-pass (#18 round-trip fix). A struct used
+        # as a variant of a serde internally-tagged enum must NOT serialize
+        # its own discriminator field — serde owns the tag key. Mark the
+        # discriminator (Literal) field on every variant schema so the Rust
+        # generator emits ``#[serde(skip)]`` + ``Default``. This requires
+        # cross-schema knowledge, hence the post-pass over the full set.
+        self._mark_discriminator_tag_fields(usr_schemas)
+
         # Sort by schema name so downstream generators emit files and
         # index entries in a stable, environment-independent order.
         usr_schemas.sort(key=lambda s: s.name)
         return usr_schemas
+
+    @staticmethod
+    def _mark_discriminator_tag_fields(usr_schemas: list[USRSchema]) -> None:
+        """Flag each variant schema's discriminator field as serde-owned.
+
+        For every field that is a discriminated union (``discriminator`` set
+        and ``union_tag_values`` resolved), find each variant schema by name
+        and set ``is_discriminator_tag=True`` on its matching tag field.
+        """
+        by_name = {s.name: s for s in usr_schemas}
+        for schema in usr_schemas:
+            for fld in schema.fields:
+                if not (fld.discriminator and fld.union_tag_values):
+                    continue
+                for variant in fld.union_types:
+                    variant_schema = by_name.get(variant.nested_schema or "")
+                    if variant_schema is None:
+                        continue
+                    tag_field = variant_schema.get_field(fld.discriminator)
+                    if tag_field is not None:
+                        tag_field.is_discriminator_tag = True
 
     def parse_schema_by_name(self, schema_name: str) -> USRSchema:
         """Parse a specific schema by name
