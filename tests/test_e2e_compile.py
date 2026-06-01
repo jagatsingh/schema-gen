@@ -120,6 +120,33 @@ class E2EEventConfig:
 # -----------------------------------------------------------------------
 
 
+def _make_object_map_schema() -> USRSchema:
+    """Object-map override (#130): dict[str, Any] → serde_json::Map.
+
+    Rust-only fixture (kept out of the @Schema registry so it doesn't flow
+    into the Zod/Pydantic/JSON-Schema e2e targets). Proves the object-map
+    override emits Rust that actually compiles under cargo.
+    """
+    return USRSchema(
+        name="E2EObjectMap",
+        fields=[
+            USRField(
+                name="payload",
+                type=FieldType.DICT,
+                python_type=dict,
+                inner_type=USRField(
+                    name="payload_value",
+                    type=FieldType.JSON,
+                    python_type=object,
+                ),
+                target_config={
+                    "rust": {"type": "serde_json::Map<String, serde_json::Value>"}
+                },
+            ),
+        ],
+    )
+
+
 def _make_tree_node_schema() -> USRSchema:
     """Direct self-reference: parent: Optional[TreeNode] → Box<T>."""
     return USRSchema(
@@ -198,10 +225,20 @@ class TestE2ECompile:
         tree_content = gen.generate_file(tree_schema)
         (rust_dir / "e2e_tree_node.rs").write_text(tree_content)
 
-        # Add TreeNode module to lib.rs
+        # Object-map override (#130): dict[str, Any] → serde_json::Map.
+        # USR-level fixture, Rust-only — write it manually like TreeNode.
+        object_map_content = gen.generate_file(_make_object_map_schema())
+        assert (
+            "pub payload: serde_json::Map<String, serde_json::Value>,"
+            in object_map_content
+        )
+        (rust_dir / "e2e_object_map.rs").write_text(object_map_content)
+
+        # Add TreeNode + ObjectMap modules to lib.rs
         lib_rs = rust_dir / "lib.rs"
         lib_content = lib_rs.read_text()
         lib_content += "pub mod e2e_tree_node;\npub use e2e_tree_node::*;\n"
+        lib_content += "pub mod e2e_object_map;\npub use e2e_object_map::*;\n"
         lib_rs.write_text(lib_content)
 
         # Add missing dependencies the generated code may reference.

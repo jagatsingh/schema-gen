@@ -86,7 +86,7 @@ schemars = "0.8"
 | `time`                       | `chrono::NaiveTime`             |
 | `UUID`                       | `uuid::Uuid`                    |
 | `Decimal`                    | `rust_decimal::Decimal`         |
-| `dict[str, Any]`             | `serde_json::Value`             |
+| `dict[str, Any]`             | `serde_json::Value` (object-map override available) |
 | `dict[str, T]`               | `HashMap<String, T>`            |
 | `list[T]` / `set[T]`         | `Vec<T>`                        |
 | `tuple[A, B, ...]`           | `(A, B, ...)`                   |
@@ -206,6 +206,32 @@ ratio: float = Field(rust={"type": "f32"})
 
 Valid integer types: `i8`, `i16`, `i32`, `i64`, `i128`, `isize`, `u8`,
 `u16`, `u32`, `u64`, `u128`, `usize`. Valid float types: `f32`, `f64`.
+
+### Object-map override on `dict[str, Any]`
+
+By default a `dict[str, Any]` (or plain `dict`) lowers to
+`serde_json::Value`, which also admits non-object JSON (`null`, arrays,
+scalars). To constrain the Rust type to objects only — making non-object
+payloads unrepresentable rather than runtime-validated — apply an
+object-map override:
+
+```python
+payload: dict[str, Any] = Field(
+    rust={"type": "serde_json::Map<String, serde_json::Value>"}
+)
+```
+
+```rust
+pub payload: serde_json::Map<String, serde_json::Value>,
+```
+
+Valid object-map types: `serde_json::Map<String, serde_json::Value>`
+(object-only, no extra import) and `HashMap<String, serde_json::Value>`
+(adds `use std::collections::HashMap;`). Pass the exact string shown above;
+any other value logs a warning and falls back to `serde_json::Value`. The
+override is only consulted on `dict[str, Any]` / plain `dict` fields —
+`dict[str, T]` with a concrete value type still lowers to
+`HashMap<String, T>`.
 
 ## Enums
 
@@ -450,10 +476,10 @@ the top of the referencing file. No manual wiring is needed.
 - **Nested `Optional` inside collections** (`list[Optional[T]]`) is not
   special-cased; it lowers to `Vec<Option<T>>` only when the USR layer
   retains the `Optional` wrapper on the inner type.
-- **`dict[str, T]`** always lowers to
-  `HashMap<String, serde_json::Value>` — the value type is not yet
-  threaded through USR. Tracked with
-  [jagatsingh/schema-gen#19](https://github.com/jagatsingh/schema-gen/issues/19).
+- **`dict[str, Any]`** (object-map at the JSON level) lowers to
+  `serde_json::Value` by default; apply a
+  [`Field(rust={"type": ...})` object-map override](#object-map-override-on-dictstr-any)
+  to emit an object-only `serde_json::Map<String, serde_json::Value>`.
 - **Discriminated-union emit is wired across all four targets**: Rust
   (internally-tagged enum), Pydantic v2
   (`Annotated[Union[...], Field(discriminator=...)]`), Zod

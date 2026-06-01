@@ -947,6 +947,98 @@ class TestRustWidthOverride:
 
 
 # ----------------------------------------------------------------------
+# Per-field object-map override on dict[str, Any] fields (#130)
+# ----------------------------------------------------------------------
+
+
+class TestRustDictTypeOverride:
+    """Field(rust={"type": ...}) lowers dict[str, Any] to an object-map.
+
+    Without an override ``dict[str, Any]`` lowers to ``serde_json::Value``
+    (which also admits null/array/scalar JSON). An object-map override
+    constrains the Rust type to objects only — see schema-gen#130.
+    """
+
+    def setup_method(self):
+        SchemaRegistry._schemas.clear()
+
+    def test_dict_any_serde_json_map_override(self):
+        @Schema
+        class OmsCommand:
+            payload: dict[str, Any] = Field(
+                rust={"type": "serde_json::Map<String, serde_json::Value>"}
+            )
+
+        usr = SchemaParser().parse_schema(OmsCommand)
+        out = RustGenerator().generate_file(usr)
+        assert "pub payload: serde_json::Map<String, serde_json::Value>," in out
+        assert "pub payload: serde_json::Value," not in out
+        # serde_json::Map is fully qualified — no HashMap import.
+        assert "use std::collections::HashMap;" not in out
+
+    def test_dict_any_hashmap_override_adds_import(self):
+        @Schema
+        class Bag:
+            attrs: dict[str, Any] = Field(
+                rust={"type": "HashMap<String, serde_json::Value>"}
+            )
+
+        usr = SchemaParser().parse_schema(Bag)
+        out = RustGenerator().generate_file(usr)
+        assert "pub attrs: HashMap<String, serde_json::Value>," in out
+        assert "use std::collections::HashMap;" in out
+
+    def test_optional_dict_any_override_wraps_in_option(self):
+        @Schema
+        class OptCommand:
+            payload: dict[str, Any] | None = Field(
+                default=None,
+                rust={"type": "serde_json::Map<String, serde_json::Value>"},
+            )
+
+        usr = SchemaParser().parse_schema(OptCommand)
+        out = RustGenerator().generate_file(usr)
+        assert "pub payload: Option<serde_json::Map<String, serde_json::Value>>," in out
+
+    def test_dict_any_invalid_override_falls_back_with_warning(self, caplog):
+        @Schema
+        class BadMap:
+            data: dict[str, Any] = Field(rust={"type": "BTreeMap<String, Value>"})
+
+        usr = SchemaParser().parse_schema(BadMap)
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            out = RustGenerator().generate_file(usr)
+        assert "pub data: serde_json::Value," in out
+        assert any("BTreeMap<String, Value>" in rec.message for rec in caplog.records)
+
+    def test_dict_any_no_override_still_serde_json_value(self):
+        @Schema
+        class Plain:
+            settings: dict[str, Any]
+
+        usr = SchemaParser().parse_schema(Plain)
+        out = RustGenerator().generate_file(usr)
+        assert "pub settings: serde_json::Value," in out
+
+    def test_concrete_value_dict_ignores_override(self):
+        """The override only applies to dict[str, Any] / plain dict — a
+        concrete-value dict still threads its value type into HashMap<…>."""
+
+        @Schema
+        class Scores:
+            values: dict[str, int] = Field(
+                rust={"type": "HashMap<String, serde_json::Value>"}
+            )
+
+        usr = SchemaParser().parse_schema(Scores)
+        out = RustGenerator().generate_file(usr)
+        assert "pub values: HashMap<String, i64>," in out
+        assert "serde_json::Value" not in out
+
+
+# ----------------------------------------------------------------------
 # Enum-level SerdeMeta support
 # ----------------------------------------------------------------------
 

@@ -224,10 +224,14 @@ EOF
         (cd "$temp_ts_dir" && npm install --silent) 2>/dev/null
     fi
 
-    # Create tsconfig.json
-    echo '{"compilerOptions":{"target":"ES2020","module":"commonjs","strict":true,"esModuleInterop":true,"skipLibCheck":true,"noEmit":true}}' > "$temp_ts_dir/tsconfig.json"
+    # Create tsconfig.json. ``include`` lists the source file so a bare
+    # ``tsc`` invocation drives compilation from the project config. Passing
+    # the file on the command line instead would make TypeScript 6.0+ reject
+    # the run with TS5112 ("tsconfig.json is present but will not be loaded
+    # if files are specified on commandline").
+    echo '{"compilerOptions":{"target":"ES2020","module":"commonjs","strict":true,"esModuleInterop":true,"skipLibCheck":true,"noEmit":true},"include":["test.ts"]}' > "$temp_ts_dir/tsconfig.json"
 
-    if (cd "$temp_ts_dir" && npx tsc test.ts --noEmit); then
+    if (cd "$temp_ts_dir" && npx tsc); then
         print_success "TypeScript compilation works"
         external_passed=$((external_passed + 1))
     else
