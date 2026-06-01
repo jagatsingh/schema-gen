@@ -235,6 +235,7 @@ class RustGenerator(BaseGenerator):
     """
 
     index_filename = "lib.rs"
+    supports_root_union = True  # #131: emits a serde internally-tagged enum
 
     # Keys honored from ``Config.rust``. Any other key triggers a warning.
     _SUPPORTED_RUST_CONFIG_KEYS: frozenset[str] = frozenset(
@@ -398,6 +399,29 @@ class RustGenerator(BaseGenerator):
         # (POC finding C2). Collected before struct emission so the header
         # can render the correct ``use`` lines.
         external_schema_refs = _collect_external_schema_refs(schema)
+
+        # Standalone discriminated union (#131): emit a top-level serde
+        # internally-tagged enum named after the alias, then return. No
+        # struct/variant emission — the variant structs live in their own
+        # files and are pulled in via the external-ref ``use`` lines.
+        if schema.is_root_union and schema.root_union_field is not None:
+            f = schema.root_union_field
+            enum_body = self._generate_discriminated_union_enum(
+                helper_name=schema.name,
+                discriminator=f.discriminator,
+                variants=f.union_types,
+                tag_values=f.union_tag_values,
+                json_schema_derive=json_schema_derive,
+                imports=imports,
+            )
+            header = self._generate_header(
+                schema=schema,
+                imports=imports,
+                custom_code=custom_code,
+                json_schema_derive=json_schema_derive,
+                external_schema_refs=external_schema_refs,
+            )
+            return header + enum_body + "\n"
 
         # Schema-level rename_all (from SerdeMeta) — if set and valid, it
         # applies uniformly across both the struct and every emitted enum

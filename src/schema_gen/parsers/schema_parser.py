@@ -6,7 +6,7 @@ import re
 import warnings
 from enum import Enum
 
-from ..core.schema import SchemaRegistry, _extract_meta_attributes
+from ..core.schema import Field, SchemaRegistry, _extract_meta_attributes
 from ..core.usr import FieldType, TypeMapper, USREnum, USRField, USRSchema
 
 # Mapping from target name to the inner meta class name on Enum/Schema
@@ -305,11 +305,56 @@ class SchemaParser:
             tags.append(tag)
         return tags
 
+    def parse_union(self, name: str, annotated_union) -> USRSchema:
+        """Convert a standalone discriminated union to a root-union USRSchema.
+
+        Reuses the field-level discriminated-union machinery: the
+        ``Annotated[Union[...], Field(discriminator=...)]`` alias is turned
+        into a single USRField (carrying ``discriminator`` + ``union_types``),
+        the tag values are resolved per variant, and the result is wrapped in
+        a USRSchema flagged ``is_root_union``. See ``register_union`` (#131).
+
+        Args:
+            name: The emitted type name.
+            annotated_union: ``Annotated[Union[...], Field(discriminator=...)]``.
+
+        Returns:
+            A root-union USRSchema with exactly one field.
+
+        Raises:
+            ValueError: If the alias is not a discriminated union or its
+                variants do not satisfy the discriminator contract.
+        """
+        union_field = self.type_mapper.create_usr_field_from_python(
+            name=name,
+            python_type=annotated_union,
+            field_info=Field(),
+        )
+        if not union_field.union_types:
+            raise ValueError(
+                f"register_union('{name}', ...): expected "
+                f"Annotated[Union[...], Field(discriminator=...)], "
+                f"got a non-union type"
+            )
+        if not union_field.discriminator:
+            raise ValueError(
+                f"register_union('{name}', ...): the Union must be annotated "
+                f"with Field(discriminator='<tag>') — none found"
+            )
+        try:
+            union_field.union_tag_values = self._resolve_discriminator_tags(union_field)
+        except ValueError as exc:
+            raise ValueError(
+                f"Union '{name}': discriminator resolution failed — {exc}"
+            ) from exc
+        return USRSchema(name=name, fields=[union_field], is_root_union=True)
+
     def parse_all_schemas(self) -> list[USRSchema]:
         """Parse all registered schemas to USR format
 
         Returns:
-            List of USRSchema objects for all registered schemas
+            List of USRSchema objects for all registered schemas and
+            standalone discriminated unions.
 
         Raises:
             ValueError: If any schema has validation errors
@@ -320,6 +365,13 @@ class SchemaParser:
             try:
                 usr_schema = self.parse_schema(schema_class)
                 usr_schemas.append(usr_schema)
+            except ValueError as e:
+                all_errors.append(str(e))
+
+        # Standalone discriminated unions (#131).
+        for union_name, annotated_union in SchemaRegistry.get_all_unions().items():
+            try:
+                usr_schemas.append(self.parse_union(union_name, annotated_union))
             except ValueError as e:
                 all_errors.append(str(e))
 

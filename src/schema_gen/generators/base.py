@@ -52,6 +52,14 @@ class BaseGenerator(ABC):
     #: ``index.ts``. Defaults to ``__init__.py`` for Python targets.
     index_filename: str = "__init__.py"
 
+    #: Whether this generator emits a standalone discriminated union
+    #: registered via ``register_union`` (#131) as a first-class tagged
+    #: union. Generators that can't express a tagged union opt out (the
+    #: default) and the engine skips root-union schemas for them, rather
+    #: than emitting a misleading struct with a single self-named field.
+    #: Set True on the Rust, Pydantic, Zod, and JSON Schema generators.
+    supports_root_union: bool = False
+
     def get_schema_filename(self, schema: USRSchema) -> str:
         """Return the output filename for a given schema.
 

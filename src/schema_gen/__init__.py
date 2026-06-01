@@ -15,7 +15,7 @@ Example:
 """
 
 from .core.config import Config
-from .core.schema import Field, Schema
+from .core.schema import Field, Schema, register_union
 
 __version__ = "0.3.22"
-__all__ = ["Schema", "Field", "Config", "__version__"]
+__all__ = ["Schema", "Field", "Config", "register_union", "__version__"]

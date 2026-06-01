@@ -365,6 +365,48 @@ Plain `Union[A, B]` without a discriminator is emitted as
 `serde_json::Value` and logs a warning. See the [Known limitations](#known-limitations)
 section.
 
+### Standalone / top-level discriminated unions
+
+When a discriminated union is a wire type in its own right — not a field
+on a `@Schema` — declare it with `register_union` so it emits a
+**top-level** tagged enum named after the alias (rather than nothing):
+
+```python
+from typing import Annotated, Union
+from schema_gen import Field, register_union
+
+FuturesOrderRequest = register_union(
+    "FuturesOrderRequest",
+    Annotated[
+        Union[FuturesMarketOrder, FuturesLimitOrder],
+        Field(discriminator="order_type"),
+    ],
+)
+```
+
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "order_type")]
+pub enum FuturesOrderRequest {
+    #[serde(rename = "market")]
+    Market(FuturesMarketOrder),
+    #[serde(rename = "limit")]
+    Limit(FuturesLimitOrder),
+}
+```
+
+`register_union` returns the alias unchanged, so the symbol stays usable
+as a normal Python type hint. The same registration drives the Pydantic
+(`Annotated[Union, Field(discriminator=...)]` alias), Zod
+(`z.discriminatedUnion`), and JSON Schema (`oneOf` + discriminator)
+generators — the four targets that can express a tagged union. Targets
+that cannot (`sqlalchemy`, `dataclasses`, `typeddict`, `avro`,
+`protobuf`, `graphql`, `kotlin`, `jackson`, `pathway`) skip the union
+(with a warning) rather than emit a misleading struct. The variant
+structs and the serde-skip tag-field handling are identical to the
+field-level case above. Cross-language round-trip is covered by
+`tests/test_standalone_union.py`.
+
 ## Variants
 
 `class Variants:` blocks still work: each variant is emitted as a separate

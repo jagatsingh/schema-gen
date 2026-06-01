@@ -141,6 +141,21 @@ class SchemaGenerationEngine:
         target_dir = output_dir / target
         target_dir.mkdir(parents=True, exist_ok=True)
 
+        # Standalone discriminated unions (#131) only emit for generators
+        # that can express a tagged union. For the rest, skip them rather
+        # than emit a misleading struct with one self-named field. The
+        # filtered list feeds extra files, per-schema emission, and the
+        # index so nothing references a type that was never written.
+        if not generator.supports_root_union:
+            skipped = [s for s in schemas if s.is_root_union]
+            if skipped:
+                schemas = [s for s in schemas if not s.is_root_union]
+                names = ", ".join(s.name for s in skipped)
+                print(
+                    f"  ⚠ {target}: skipping standalone discriminated "
+                    f"union(s) not supported by this target: {names}"
+                )
+
         print(f"\nGenerating {target} models...")
 
         # 1. Write extra files (e.g. _base.py for SQLAlchemy)
