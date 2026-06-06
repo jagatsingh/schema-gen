@@ -63,9 +63,19 @@ Issues = "https://github.com/jagatsingh/schema-gen/issues"
 
 # Security: minimum versions for transitive deps with CVEs
 # urllib3>=2.7.0: high CVE fix (CVE-2026-44431 cross-origin headers; CVE-2026-44432 decompression-bomb safeguard bypass)
+# aiohttp>=3.14.0: CVE-2026-34993, CVE-2026-47265
+# idna>=3.15: CVE-2026-45409
+# starlette>=1.0.1: CVE-2026-48710
+# NOTE: pyarrow HIGH CVE-2026-25087 (needs >=23.0.1) cannot be pinned here:
+#   pathway>=0.26.1 (direct dep) requires pyarrow>=10.0.0,<19.0.0, so the
+#   constraint is unsatisfiable. Tracked as a known limitation pending an
+#   upstream pathway release that allows pyarrow>=23.
 [tool.uv]
 constraint-dependencies = [
     "urllib3>=2.7.0",
+    "aiohttp>=3.14.0",
+    "idna>=3.15",
+    "starlette>=1.0.1",
 ]
 
 [build-system]
@@ -93,7 +103,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.18",
     "mkdocstrings[python]>=0.30.0",
-    "pymdown-extensions>=10.16.1",
+    "pymdown-extensions>=10.21.3",  # Security: CVE-2026-46338
     "pytest>=8.4.2",
     "pytest-cov>=6.3.0",
     "setuptools<83",  # Pin setuptools to avoid pkg_resources deprecation warnings
@@ -133,3 +143,10 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["schema_gen"]
+
+[tool.uv-secure.vulnerability_criteria]
+ignore_unfixed = true
+# pyarrow CVE-2026-25087: fix (>=23.0.1) unreachable — pathway pins pyarrow<19.
+# Same blocker as trading-platform#298. Remove once pathway allows pyarrow>=23
+# (uv-secure exits 4 on unused ignores).
+ignore_vulnerabilities = ["PYSEC-2026-113", "GHSA-rgxp-2hwp-jwgg"]
