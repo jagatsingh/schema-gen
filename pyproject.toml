@@ -143,3 +143,10 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["schema_gen"]
+
+[tool.uv-secure.vulnerability_criteria]
+ignore_unfixed = true
+# pyarrow CVE-2026-25087: fix (>=23.0.1) unreachable — pathway pins pyarrow<19.
+# Same blocker as trading-platform#298. Remove once pathway allows pyarrow>=23
+# (uv-secure exits 4 on unused ignores).
+ignore_vulnerabilities = ["PYSEC-2026-113", "GHSA-rgxp-2hwp-jwgg"]
