@@ -274,6 +274,35 @@ class Order:
     leg: Annotated[Union[MarketLeg, LimitLeg], Field(discriminator="type")]
 ```
 
+#### Standalone (top-level) discriminated unions
+
+When the union is a wire type in its own right — not a field on a
+`@Schema` — register it with `register_union(name, annotated_union)` so it
+generates a **named** tagged union of its own (rather than nothing):
+
+```python
+from typing import Annotated, Union
+from schema_gen import Field, register_union
+
+FuturesOrderRequest = register_union(
+    "FuturesOrderRequest",
+    Annotated[
+        Union[MarketLeg, LimitLeg],
+        Field(discriminator="type"),
+    ],
+)
+```
+
+The variant contract is identical to the field-level form (each member a
+`@Schema` with a `Literal[...]` tag). It lowers to the same four
+constructs in the table above — a top-level Rust enum, a Pydantic
+`Annotated[Union, Field(discriminator=...)]` alias, a Zod
+`z.discriminatedUnion` export, and a JSON Schema `oneOf` + discriminator
+document — each named after the alias. `register_union` returns the alias
+unchanged so it remains usable as a Python type hint. Targets without a
+tagged-union construct (SQLAlchemy, dataclasses, TypedDict, Avro,
+Protobuf, GraphQL, Kotlin, Jackson, Pathway) skip it with a warning.
+
 ### Field Tags
 
 Use `tags` to annotate fields with metadata that schema-gen uses to emit

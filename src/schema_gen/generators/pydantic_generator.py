@@ -56,6 +56,8 @@ def _format_class_docstring(docstring: str, indent: str = "    ") -> list[str]:
 class PydanticGenerator(BaseGenerator):
     """Generates Pydantic models from USR schemas"""
 
+    supports_root_union = True  # #131: emits Annotated[Union, Field(discriminator)]
+
     def __init__(self, config: Config | None = None) -> None:
         super().__init__(config=config)
         self.template = Template(self._get_template())
@@ -238,6 +240,45 @@ class PydanticGenerator(BaseGenerator):
 
         return "\n".join(lines) + "\n"
 
+    def _generate_root_union_file(self, schema: USRSchema) -> str:
+        """Emit a module-level discriminated-union alias file (#131)."""
+        f = schema.root_union_field
+        variant_names = [
+            v.nested_schema or getattr(v.python_type, "__name__", None)
+            for v in f.union_types
+        ]
+        lines = [
+            '"""',
+            "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",
+            f"Generated from: {schema.name}",
+            "Generator: schema-gen Pydantic generator",
+            "",
+            "To regenerate this file, run:",
+            "    schema-gen generate --target pydantic",
+            "",
+            "Changes to this file will be overwritten.",
+            '"""',
+            "",
+            "from typing import Annotated, Union",
+            "",
+            "from pydantic import Field",
+            "",
+        ]
+        # Import each variant class directly so the alias references real
+        # classes (no forward-ref resolution needed).
+        for variant in variant_names:
+            lines.append(f"from .{variant.lower()}_models import {variant}")
+        lines.append("")
+        lines.append("")
+        union_expr = ", ".join(variant_names)
+        lines.append(
+            f"{schema.name} = Annotated[\n"
+            f"    Union[{union_expr}],\n"
+            f'    Field(discriminator="{f.discriminator}"),\n'
+            f"]"
+        )
+        return "\n".join(lines) + "\n"
+
     def generate_model(self, schema: USRSchema, variant: str | None = None) -> str:
         """Generate a Pydantic model for a schema variant
 
@@ -315,6 +356,15 @@ class PydanticGenerator(BaseGenerator):
         Returns:
             Complete file content with all models
         """
+        # Standalone discriminated union (#131): emit a module-level
+        # ``Annotated[Union[...], Field(discriminator=...)]`` alias. Unlike a
+        # field-level union (which uses string forward-refs resolved via
+        # ``model_rebuild``), a standalone alias has no owning model, so the
+        # variant classes are imported for real and referenced directly —
+        # making the alias usable with ``TypeAdapter`` out of the box.
+        if schema.is_root_union and schema.root_union_field is not None:
+            return self._generate_root_union_file(schema)
+
         # Collect all imports needed
         all_imports = {"pydantic"}
         all_fields = []

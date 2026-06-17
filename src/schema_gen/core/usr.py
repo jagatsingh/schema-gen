@@ -296,6 +296,23 @@ class USRSchema:
     # Schema-level metadata
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Standalone / top-level discriminated union (#131). When True this
+    # schema is NOT a struct but a tagged-union *alias*: it has exactly one
+    # field (``fields[0]``) carrying ``discriminator`` + ``union_types`` +
+    # ``union_tag_values``, and generators emit a standalone tagged enum /
+    # discriminated union named ``self.name`` (Rust enum, Zod
+    # ``z.discriminatedUnion``, Pydantic ``Annotated[Union, Field(
+    # discriminator=...)]``, JSON Schema ``oneOf`` + discriminator) instead
+    # of a struct. See ``register_union`` in ``core/schema.py``.
+    is_root_union: bool = False
+
+    @property
+    def root_union_field(self) -> "USRField | None":
+        """The single union field for a root-union schema, else ``None``."""
+        if self.is_root_union and self.fields:
+            return self.fields[0]
+        return None
+
     def get_field(self, name: str) -> USRField | None:
         """Get a field by name"""
         return next((f for f in self.fields if f.name == name), None)

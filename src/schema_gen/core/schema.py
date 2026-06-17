@@ -188,11 +188,23 @@ class SchemaRegistry:
     """Global registry of all schema definitions"""
 
     _schemas: dict[str, type] = {}
+    # Standalone / top-level discriminated unions (#131), keyed by name.
+    # Each value is the ``Annotated[Union[...], Field(discriminator=...)]``
+    # alias passed to :func:`register_union`. Kept separate from
+    # ``_schemas`` because a union is not a struct-bearing @Schema class.
+    _unions: dict[str, Any] = {}
 
     @classmethod
     def register(cls, schema_class: type) -> type:
         """Register a schema class"""
-        cls._schemas[schema_class.__name__] = schema_class
+        name = schema_class.__name__
+        if name in cls._unions:
+            raise ValueError(
+                f"name '{name}' is already registered as a standalone "
+                f"discriminated union (register_union); names must be unique "
+                f"across @Schema classes and unions"
+            )
+        cls._schemas[name] = schema_class
         return schema_class
 
     @classmethod
@@ -204,6 +216,21 @@ class SchemaRegistry:
     def get_all_schemas(cls) -> dict[str, type]:
         """Get all registered schemas"""
         return cls._schemas.copy()
+
+    @classmethod
+    def register_union(cls, name: str, annotated_union: Any) -> None:
+        """Register a standalone discriminated union by name (#131)."""
+        if name in cls._schemas:
+            raise ValueError(
+                f"name '{name}' is already registered as a @Schema class; "
+                f"names must be unique across @Schema classes and unions"
+            )
+        cls._unions[name] = annotated_union
+
+    @classmethod
+    def get_all_unions(cls) -> dict[str, Any]:
+        """Get all registered standalone discriminated unions"""
+        return cls._unions.copy()
 
 
 def Schema(cls: type) -> type:
@@ -263,6 +290,44 @@ def Schema(cls: type) -> type:
             cls._custom_code[target] = _extract_meta_attributes(meta_class)
 
     return cls
+
+
+def register_union(name: str, annotated_union: Any) -> Any:
+    """Register a top-level / standalone discriminated union (#131).
+
+    Use this when a discriminated union is a wire type in its own right —
+    not a field on a ``@Schema`` class — so the generators emit a real
+    tagged union (Rust internally-tagged enum, Zod ``z.discriminatedUnion``,
+    Pydantic ``Annotated[Union, Field(discriminator=...)]``, JSON Schema
+    ``oneOf`` + discriminator) named ``name`` rather than nothing.
+
+    Each union variant must be a registered ``@Schema`` class carrying a
+    ``Literal[...]`` discriminator field — exactly the same contract as a
+    field-level discriminated union.
+
+    Usage::
+
+        from typing import Annotated, Union
+        from schema_gen import Field, register_union
+
+        FuturesOrderRequest = register_union(
+            "FuturesOrderRequest",
+            Annotated[
+                Union[FuturesMarketOrder, FuturesLimitOrder],
+                Field(discriminator="order_type"),
+            ],
+        )
+
+    Args:
+        name: The emitted type name (the alias name).
+        annotated_union: An ``Annotated[Union[...], Field(discriminator=...)]``.
+
+    Returns:
+        ``annotated_union`` unchanged, so the symbol stays usable as a normal
+        Python type hint.
+    """
+    SchemaRegistry.register_union(name, annotated_union)
+    return annotated_union
 
 
 def _extract_meta_attributes(meta_class) -> dict:

@@ -48,6 +48,26 @@ def build_registry_index(
 
     for schema in sorted(schemas, key=lambda s: s.name):
         domain = _detect_domain(schema, config)
+
+        # Standalone discriminated union (#131): render as a union entry
+        # (discriminator + variant list) rather than a struct with one
+        # self-named field.
+        if schema.is_root_union and schema.root_union_field:
+            f = schema.root_union_field
+            variants = [
+                ut.nested_schema or getattr(ut.python_type, "__name__", "")
+                for ut in f.union_types
+            ]
+            types_index[schema.name] = {
+                "domain": domain,
+                "kind": "discriminated_union",
+                "description": schema.description or "",
+                "discriminator": f.discriminator,
+                "variants": sorted(variants),
+                "nested_types": sorted(variants),
+            }
+            continue
+
         enums_referenced: list[str] = []
         nested_types: list[str] = []
         fields_index: dict[str, dict[str, Any]] = {}
