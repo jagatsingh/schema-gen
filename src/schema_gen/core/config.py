@@ -60,7 +60,7 @@ class Config:
     type_mappings: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
-    def from_file(cls, config_path: str = ".schema-gen.config.py") -> "Config":
+    def from_file(cls, config_path: str = ".schema-gen.config.py") -> Config:
         """Load configuration from a Python file
 
         Args:

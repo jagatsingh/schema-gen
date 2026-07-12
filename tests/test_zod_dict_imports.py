@@ -1,7 +1,5 @@
 """Zod dict value-type generation and unused-import tests (#67)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from schema_gen import Schema

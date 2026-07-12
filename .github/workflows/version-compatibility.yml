@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.14"]
       fail-fast: false
 
     steps:
@@ -36,7 +36,7 @@ jobs:
       run: uv python install ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: uv sync --frozen --all-extras --dev --python ${{ matrix.python-version }}
+      run: uv sync --frozen --extra all --dev --python ${{ matrix.python-version }}
 
     - name: Test all generators compatibility
       run: |

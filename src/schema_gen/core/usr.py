@@ -5,7 +5,7 @@ import typing
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 
 @dataclass
@@ -110,8 +110,8 @@ class USRField:
     default_factory: Callable | None = None
 
     # Type-specific properties
-    inner_type: Optional["USRField"] = None  # For List, Optional, etc.
-    union_types: list["USRField"] = field(default_factory=list)  # For Union
+    inner_type: USRField | None = None  # For List, Optional, etc.
+    union_types: list[USRField] = field(default_factory=list)  # For Union
     literal_values: list[Any] = field(default_factory=list)  # For Literal
     nested_schema: str | None = None  # Schema name for nested types
     enum_name: str | None = None  # Enum class name for ENUM types
@@ -512,7 +512,7 @@ class TypeMapper:
                 and typing.get_origin(python_type) is typing.Literal
             ):
                 return FieldType.LITERAL
-        except (AttributeError, TypeError, ValueError):
+        except AttributeError, TypeError, ValueError:
             pass
 
         # Check for Enum types
@@ -618,7 +618,7 @@ class TypeMapper:
         if field_type == FieldType.LITERAL:
             try:
                 literal_values = list(typing.get_args(actual_type))
-            except (AttributeError, TypeError, ValueError):
+            except AttributeError, TypeError, ValueError:
                 literal_values = []
 
         elif field_type == FieldType.ENUM:

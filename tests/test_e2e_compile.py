@@ -9,8 +9,6 @@ __init__.py vs lib.rs bug, missing use statements, duplicate enums, and
 Box<T> omission that only surfaced in downstream POC consumers.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import json
 import shutil

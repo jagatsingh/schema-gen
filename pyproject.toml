@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Jagat Singh", email = "jagatsingh@gmail.com" }
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "click>=8.3",
     "pydantic>=2.12",
@@ -17,7 +17,11 @@ dependencies = [
     "pyyaml>=6.0.2",
     "jsonschema>=4.25.1",
     "graphql-core>=3.2.6",
-    "pathway>=0.26.1",
+    # NOTE: pathway is intentionally NOT a core dependency. schema-gen only
+    # *emits* pathway code (Jinja templates in generators/pathway_generator.py)
+    # — it never imports pathway at runtime. pathway pins pyarrow<19, which has
+    # no cp314 wheel and blocks Python 3.14. Install the optional `[pathway]`
+    # extra only if you need to validate generated pathway schemas.
 ]
 keywords = ["schema", "pydantic", "sqlalchemy", "fastapi", "code-generation"]
 classifiers = [
@@ -25,7 +29,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Code Generators",
 ]
@@ -49,8 +53,8 @@ avro = ["avro>=1.12.0"]
 protobuf = ["protobuf>=5.29.0"]
 testing = ["pytest-xdist>=3.0.0"]
 schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf]"]
-compatibility = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]
-all = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]
+compatibility = ["schema-gen[sqlalchemy,schema-libs,testing]"]
+all = ["schema-gen[sqlalchemy,schema-libs,testing]"]
 
 [project.scripts]
 schema-gen = "schema_gen.cli:main"
@@ -66,10 +70,10 @@ Issues = "https://github.com/jagatsingh/schema-gen/issues"
 # aiohttp>=3.14.0: CVE-2026-34993, CVE-2026-47265
 # idna>=3.15: CVE-2026-45409
 # starlette>=1.0.1: CVE-2026-48710
-# NOTE: pyarrow HIGH CVE-2026-25087 (needs >=23.0.1) cannot be pinned here:
-#   pathway>=0.26.1 (direct dep) requires pyarrow>=10.0.0,<19.0.0, so the
-#   constraint is unsatisfiable. Tracked as a known limitation pending an
-#   upstream pathway release that allows pyarrow>=23.
+# NOTE: pyarrow is no longer pulled by the base package (pathway dropped from
+#   core deps — see above). It only enters via the optional `[pathway]` extra,
+#   which pins pyarrow>=10.0.0,<19.0.0; that extra is unavailable on Python 3.14
+#   until an upstream pathway release allows pyarrow>=23 (CVE-2026-25087).
 [tool.uv]
 constraint-dependencies = [
     "urllib3>=2.7.0",

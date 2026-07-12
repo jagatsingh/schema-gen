@@ -1,7 +1,5 @@
 """Tests for the Rust Serde generator (#12)."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum, StrEnum, nonmember

@@ -1,6 +1,6 @@
 # Version compatibility matrix for testing schema generators
 # This file defines the latest supported versions for each target library
-# Testing is focused on Python 3.12+ with current latest versions
+# Testing is focused on Python 3.14+ with current latest versions
 
 version_matrix:
   # Python libraries with version dependencies (latest versions only)
@@ -46,10 +46,10 @@ version_matrix:
     graphql:     # For GraphQL generator
       - "16.9.0"   # Latest
 
-# Test scenarios for Python 3.12+ with modern syntax
+# Test scenarios for Python 3.14+ with modern syntax
 test_scenarios:
   basic_schema:
-    description: "Basic schema with common field types using modern Python 3.12+ syntax"
+    description: "Basic schema with common field types using modern Python 3.14+ syntax"
     fields:
       - "id: int"
       - "name: str"
