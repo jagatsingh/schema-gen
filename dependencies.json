@@ -30,12 +30,6 @@
         "current_constraint": ">=1.11",
         "description": "Apache Avro serialization library",
         "critical": true
-      },
-      "pathway": {
-        "min_version": "0.7",
-        "current_constraint": ">=0.7",
-        "description": "Pathway data processing framework",
-        "critical": true
       }
     },
     "development_tools": {

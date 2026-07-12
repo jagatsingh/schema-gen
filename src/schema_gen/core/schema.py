@@ -51,7 +51,6 @@ class FieldInfo:
     # Target-specific overrides
     pydantic: dict[str, Any] = field(default_factory=dict)
     sqlalchemy: dict[str, Any] = field(default_factory=dict)
-    pathway: dict[str, Any] = field(default_factory=dict)
     rust: dict[str, Any] = field(default_factory=dict)
 
     # Discriminated-union tag field name. When set, the field's annotation
@@ -95,7 +94,6 @@ def Field(
     include_only: list[str] | None = None,
     pydantic: dict[str, Any] | None = None,
     sqlalchemy: dict[str, Any] | None = None,
-    pathway: dict[str, Any] | None = None,
     rust: dict[str, Any] | None = None,
     discriminator: str | None = None,
     tags: list[str] | None = None,
@@ -130,7 +128,7 @@ def Field(
         through_table: Many-to-many join table name
         exclude_from: List of variants to exclude from
         include_only: List of variants to include in
-        pydantic/sqlalchemy/pathway: Target-specific options
+        pydantic/sqlalchemy: Target-specific options
         rust: Rust-specific overrides. Supports ``{"type": "<rust-type>"}``
             to pick a specific integer or float width (``u8``/``u16``/
             ``u32``/``u64``/``i8``/.../``i128``/``isize``/``usize``,
@@ -176,7 +174,6 @@ def Field(
         include_only=include_only or [],
         pydantic=pydantic or {},
         sqlalchemy=sqlalchemy or {},
-        pathway=pathway or {},
         rust=rust or {},
         discriminator=discriminator,
         tags=tags or [],
@@ -252,7 +249,6 @@ def Schema(cls: type) -> type:
     target_meta_classes = {
         "pydantic": "PydanticMeta",
         "sqlalchemy": "SQLAlchemyMeta",
-        "pathway": "PathwayMeta",
         "rust": "SerdeMeta",
     }
 
@@ -278,9 +274,6 @@ def _extract_meta_attributes(meta_class) -> dict:
         "table_name",
         "indexes",
         "constraints",
-        # Pathway specific
-        "table_properties",
-        "transformations",
         # Rust / Serde specific
         "derives",
         "deny_unknown_fields",

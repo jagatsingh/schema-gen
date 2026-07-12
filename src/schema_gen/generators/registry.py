@@ -7,7 +7,6 @@ from .graphql_generator import GraphQLGenerator
 from .jackson_generator import JacksonGenerator
 from .jsonschema_generator import JsonSchemaGenerator
 from .kotlin_generator import KotlinGenerator
-from .pathway_generator import PathwayGenerator
 from .protobuf_generator import ProtobufGenerator
 from .pydantic_generator import PydanticGenerator
 from .rust_generator import RustGenerator
@@ -19,7 +18,6 @@ GENERATOR_REGISTRY: dict[str, type] = {
     "pydantic": PydanticGenerator,
     "sqlalchemy": SqlAlchemyGenerator,
     "zod": ZodGenerator,
-    "pathway": PathwayGenerator,
     "dataclasses": DataclassesGenerator,
     "typeddict": TypedDictGenerator,
     "jsonschema": JsonSchemaGenerator,

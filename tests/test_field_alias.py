@@ -448,7 +448,6 @@ def test_other_generators_do_not_crash_on_alias():
     from schema_gen.generators.graphql_generator import GraphQLGenerator
     from schema_gen.generators.jackson_generator import JacksonGenerator
     from schema_gen.generators.kotlin_generator import KotlinGenerator
-    from schema_gen.generators.pathway_generator import PathwayGenerator
     from schema_gen.generators.protobuf_generator import ProtobufGenerator
     from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
     from schema_gen.generators.typeddict_generator import TypedDictGenerator
@@ -459,7 +458,6 @@ def test_other_generators_do_not_crash_on_alias():
         GraphQLGenerator,
         JacksonGenerator,
         KotlinGenerator,
-        PathwayGenerator,
         ProtobufGenerator,
         SqlAlchemyGenerator,
         TypedDictGenerator,

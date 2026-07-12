@@ -33,7 +33,7 @@ jobs:
 
       - name: Install validation dependencies
         run: |
-          pip install pydantic>=2.0 sqlalchemy>=2.0 jsonschema>=4.0 graphql-core>=3.2 avro-python3>=1.11 pathway>=0.7
+          pip install pydantic>=2.0 sqlalchemy>=2.0 jsonschema>=4.0 graphql-core>=3.2 avro-python3>=1.11
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6

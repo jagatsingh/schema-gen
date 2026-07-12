@@ -14,14 +14,13 @@ Please try it out and provide feedback!
 
 See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-examples/)
 
-## 🎯 Supported Generators (13)
+## 🎯 Supported Generators (12)
 
 ### Python Ecosystem
 - **Pydantic** - Python models with validation
 - **SQLAlchemy** - Database ORM models
 - **Dataclasses** - Python standard library dataclasses
 - **TypedDict** - Python typing dictionaries
-- **Pathway** - Data processing schemas
 
 ### TypeScript/JavaScript
 - **Zod** - TypeScript runtime validation
@@ -278,7 +277,6 @@ class PydanticMeta:
 
 Future generators will use their own meta classes:
 - `SQLAlchemyMeta` for database-specific customizations
-- `PathwayMeta` for streaming data processing
 
 ### Version Controlled Output
 Generated files are committed to your repository, ensuring:
@@ -371,7 +369,6 @@ config = Config(
         "sqlalchemy",
         "dataclasses",
         "typeddict",
-        "pathway",
         # TypeScript/JavaScript
         "zod",
         # Systems languages
@@ -418,7 +415,6 @@ config = Config(
 - **API Documentation** - Auto-generated OpenAPI/GraphQL specs
 
 ### Data Engineering
-- **ETL Pipelines** - Pathway schemas for data processing
 - **Analytics** - Type-safe data structures across languages
 - **ML Models** - Feature definitions and model inputs/outputs
 - **Data Validation** - JSON Schema and Great Expectations rules

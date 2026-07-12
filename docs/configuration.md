@@ -18,7 +18,6 @@ config = Config(
         "sqlalchemy",
         "dataclasses",
         "typeddict",
-        "pathway",
         # TypeScript/JavaScript
         "zod",
         # Schema formats
@@ -69,7 +68,6 @@ List of code generation targets to run.
 - `"pydantic"` - Pydantic v2 models
 - `"sqlalchemy"` - SQLAlchemy ORM models
 - `"zod"` - Zod validation schemas (TypeScript)
-- `"pathway"` - Pathway schemas (planned)
 
 **Default:** `["pydantic"]`
 
@@ -223,19 +221,6 @@ config = Config(
 | Nested `@Schema` | `SchemaNameSchema` (cross-file import) |
 | `Enum` subclass | `z.enum([...])` (inline) |
 
-### Pathway Settings (Planned)
-
-```python
-config = Config(
-    targets=["pathway"],
-    pathway={
-        "column_type": "pw.Column",  # Column type to use
-        "table_type": "pw.Table",  # Table type to use
-        "optional_handling": "Union",  # How to handle Optional types
-    },
-)
-```
-
 ## Environment-Specific Configuration
 
 ### Multiple Config Files
@@ -384,11 +369,6 @@ config = Config(
         "strict_mode": True,
         "export_schemas": True,
         "file_extension": ".ts",
-    },
-    # Future: Pathway settings
-    pathway={
-        "column_type": "pw.Column",
-        "table_type": "pw.Table",
     },
 )
 ```

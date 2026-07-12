@@ -13,7 +13,6 @@ The validation system ensures that **all 12 supported formats** generate syntact
 - SQLAlchemy ORM Models (with Table/Column validation)
 - Python Dataclasses (with proper field ordering)
 - TypedDict Definitions (with type checking)
-- Pathway Schemas (with connector validation)
 
 ✅ **External Language Formats**
 - **Zod TypeScript Schemas** → Validated with TypeScript compiler (tsc)
@@ -223,7 +222,6 @@ Validating pydantic... ✅ VALID
 Validating sqlalchemy... ✅ VALID
 Validating dataclasses... ✅ VALID
 Validating typeddict... ✅ VALID
-Validating pathway... ✅ VALID
 Validating zod... ✅ VALID
 Validating jsonschema... ✅ VALID
 Validating graphql... ✅ VALID

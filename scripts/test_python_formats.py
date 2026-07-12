@@ -478,58 +478,6 @@ def test_graphql_format(code: str) -> dict[str, Any]:
         return {"success": False, "error": f"GraphQL validation failed: {e}"}
 
 
-def test_pathway_format(code: str) -> dict[str, Any]:
-    """Test Pathway schema functionality"""
-    try:
-        import pathway as pw
-
-        # Create a temporary module
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(code)
-            f.flush()
-
-        # Import and test the module
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("test_module", f.name)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["test_module"] = module
-        spec.loader.exec_module(module)
-
-        # Find Pathway schemas
-        pathway_schemas = []
-        for name in dir(module):
-            obj = getattr(module, name)
-            if isinstance(obj, type) and hasattr(obj, "__annotations__"):
-                pathway_schemas.append(obj)
-
-        test_results = {}
-        for schema in pathway_schemas:
-            try:
-                annotations = getattr(schema, "__annotations__", {})
-                test_results[schema.__name__] = {
-                    "found": True,
-                    "fields": list(annotations.keys()),
-                    "annotations": {k: str(v) for k, v in annotations.items()},
-                }
-            except Exception as e:
-                test_results[schema.__name__] = {"found": False, "error": str(e)}
-
-        Path(f.name).unlink()  # Clean up
-
-        return {
-            "success": True,
-            "details": {
-                "pathway_version": pw.__version__,
-                "schemas_found": len(pathway_schemas),
-                "schemas": test_results,
-            },
-        }
-
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
 def generate_sample_schemas() -> dict[str, str]:
     """Generate sample schemas for testing"""
     return {
@@ -660,18 +608,6 @@ type Query {
     users: [User!]!
 }
 """,
-        "pathway": """
-import pathway as pw
-from datetime import datetime
-
-class User(pw.Table):
-    id: pw.ColumnExpression  # int
-    name: pw.ColumnExpression  # str
-    email: pw.ColumnExpression  # str
-    age: pw.ColumnExpression  # int | None
-    is_active: pw.ColumnExpression  # bool
-    created_at: pw.ColumnExpression  # datetime
-""",
     }
 
 
@@ -689,7 +625,6 @@ def main():
         "avro": test_avro_format,
         "jsonschema": test_json_schema_format,
         "graphql": test_graphql_format,
-        "pathway": test_pathway_format,
     }
 
     # Not yet implemented formats (none currently)

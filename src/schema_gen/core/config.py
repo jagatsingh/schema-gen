@@ -29,7 +29,6 @@ class Config:
     pydantic: dict[str, Any] = field(default_factory=dict)
     sqlalchemy: dict[str, Any] = field(default_factory=dict)
     zod: dict[str, Any] = field(default_factory=dict)
-    pathway: dict[str, Any] = field(default_factory=dict)
     dataclasses: dict[str, Any] = field(default_factory=dict)
     typeddict: dict[str, Any] = field(default_factory=dict)
     jsonschema: dict[str, Any] = field(default_factory=dict)

@@ -36,7 +36,6 @@ from schema_gen.generators.graphql_generator import GraphQLGenerator
 from schema_gen.generators.jackson_generator import JacksonGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
 from schema_gen.generators.kotlin_generator import KotlinGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.protobuf_generator import ProtobufGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.rust_generator import RustGenerator
@@ -158,7 +157,6 @@ _GENERATORS = [
     ("sqlalchemy_canonical_order.py", SqlAlchemyGenerator),
     ("dataclasses_canonical_order.py", DataclassesGenerator),
     ("typeddict_canonical_order.py", TypedDictGenerator),
-    ("pathway_canonical_order.py", PathwayGenerator),
     ("avro_canonical_order.avsc", AvroGenerator),
     ("protobuf_canonical_order.proto", ProtobufGenerator),
     ("graphql_canonical_order.graphql", GraphQLGenerator),
