@@ -21,7 +21,6 @@ from schema_gen.generators.graphql_generator import GraphQLGenerator
 from schema_gen.generators.jackson_generator import JacksonGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
 from schema_gen.generators.kotlin_generator import KotlinGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.protobuf_generator import ProtobufGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
@@ -228,22 +227,6 @@ class FormatValidator:
             result["details"]["has_typeddict"] = "TypedDict" in code
             result["details"]["has_imports"] = (
                 "from typing" in code or "from typing_extensions" in code
-            )
-
-        return result
-
-    def validate_pathway(self) -> dict[str, Any]:
-        """Validate Pathway generation"""
-        generator = PathwayGenerator()
-        code = generator.generate_file(self.test_schema)
-
-        result = self.validate_python_syntax(code, "pathway")
-
-        # Additional Pathway-specific checks
-        if result["valid"]:
-            result["details"]["has_pathway_import"] = "pathway" in code
-            result["details"]["has_schema"] = (
-                "pw.Schema" in code or "pathway.Schema" in code
             )
 
         return result
@@ -737,7 +720,6 @@ class FormatValidator:
             "sqlalchemy": self.validate_sqlalchemy,
             "dataclasses": self.validate_dataclasses,
             "typeddict": self.validate_typeddict,
-            "pathway": self.validate_pathway,
             "zod": self.validate_zod,
             "jsonschema": self.validate_jsonschema,
             "graphql": self.validate_graphql,

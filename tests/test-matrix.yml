@@ -10,9 +10,6 @@ version_matrix:
   sqlalchemy:
     - "2.0.43"  # Current latest
 
-  pathway:
-    - "0.26.1"  # Current latest
-
   # Schema/serialization libraries with Python packages (latest versions only)
   avro:
     - "1.12.0"  # Latest

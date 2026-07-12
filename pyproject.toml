@@ -1,6 +1,6 @@
 [project]
 name = "schema-gen"
-version = "0.3.22"
+version = "0.4.0"
 description = "Universal schema converter - define once, generate everywhere"
 readme = "README.md"
 authors = [
@@ -17,11 +17,6 @@ dependencies = [
     "pyyaml>=6.0.2",
     "jsonschema>=4.25.1",
     "graphql-core>=3.2.6",
-    # NOTE: pathway is intentionally NOT a core dependency. schema-gen only
-    # *emits* pathway code (Jinja templates in generators/pathway_generator.py)
-    # — it never imports pathway at runtime. pathway pins pyarrow<19, which has
-    # no cp314 wheel and blocks Python 3.14. Install the optional `[pathway]`
-    # extra only if you need to validate generated pathway schemas.
 ]
 keywords = ["schema", "pydantic", "sqlalchemy", "fastapi", "code-generation"]
 classifiers = [
@@ -46,7 +41,6 @@ dev = [
     "GitPython>=3.1.49",
 ]
 sqlalchemy = ["sqlalchemy>=2.0.40"]
-pathway = ["pathway>=0.8.0"]
 jsonschema = ["jsonschema>=4.17.0"]
 graphql = ["graphql-core>=3.2.0"]
 avro = ["avro>=1.12.0"]
@@ -70,10 +64,6 @@ Issues = "https://github.com/jagatsingh/schema-gen/issues"
 # aiohttp>=3.14.0: CVE-2026-34993, CVE-2026-47265
 # idna>=3.15: CVE-2026-45409
 # starlette>=1.0.1: CVE-2026-48710
-# NOTE: pyarrow is no longer pulled by the base package (pathway dropped from
-#   core deps — see above). It only enters via the optional `[pathway]` extra,
-#   which pins pyarrow>=10.0.0,<19.0.0; that extra is unavailable on Python 3.14
-#   until an upstream pathway release allows pyarrow>=23 (CVE-2026-25087).
 [tool.uv]
 constraint-dependencies = [
     "urllib3>=2.7.0",
@@ -150,7 +140,3 @@ known-first-party = ["schema_gen"]
 
 [tool.uv-secure.vulnerability_criteria]
 ignore_unfixed = true
-# pyarrow CVE-2026-25087: fix (>=23.0.1) unreachable — pathway pins pyarrow<19.
-# Same blocker as trading-platform#298. Remove once pathway allows pyarrow>=23
-# (uv-secure exits 4 on unused ignores).
-ignore_vulnerabilities = ["PYSEC-2026-113", "GHSA-rgxp-2hwp-jwgg"]

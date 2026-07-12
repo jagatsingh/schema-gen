@@ -83,7 +83,6 @@ field = Field(
 #### Target-Specific Configuration
 - **`pydantic`** (`Dict[str, Any]`, optional) - Pydantic-specific options
 - **`sqlalchemy`** (`Dict[str, Any]`, optional) - SQLAlchemy-specific options
-- **`pathway`** (`Dict[str, Any]`, optional) - Pathway-specific options
 - **`custom_metadata`** (`Dict[str, Any]`, optional) - Custom metadata
 
 **Returns:**
@@ -105,7 +104,6 @@ config = Config(input_dir="schemas", output_dir="generated", targets=["pydantic"
 - **`targets`** (`List[str]`) - List of generation targets
 - **`pydantic`** (`Dict[str, Any]`, optional) - Pydantic generator settings
 - **`sqlalchemy`** (`Dict[str, Any]`, optional) - SQLAlchemy generator settings
-- **`pathway`** (`Dict[str, Any]`, optional) - Pathway generator settings
 
 ## Schema Registry
 

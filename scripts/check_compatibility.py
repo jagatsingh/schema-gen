@@ -32,10 +32,6 @@ def check_library_version(library: str) -> str | None:
             import sqlalchemy
 
             return sqlalchemy.__version__
-        elif library == "pathway":
-            import pathway
-
-            return pathway.__version__
         elif library == "jsonschema":
             import jsonschema
 
@@ -79,10 +75,6 @@ def get_all_generators():
         "sqlalchemy": (
             "SqlAlchemyGenerator",
             "from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator",
-        ),
-        "pathway": (
-            "PathwayGenerator",
-            "from schema_gen.generators.pathway_generator import PathwayGenerator",
         ),
         # Python-only generators (no external deps to test)
         "dataclasses": (
@@ -171,9 +163,6 @@ try:
     elif "{library}" == "sqlalchemy":
         from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
         generator = SqlAlchemyGenerator()
-    elif "{library}" == "pathway":
-        from schema_gen.generators.pathway_generator import PathwayGenerator
-        generator = PathwayGenerator()
     elif "{library}" == "jsonschema":
         from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
         generator = JsonSchemaGenerator()
@@ -317,7 +306,7 @@ class AllGeneratorTest:
             print(f"\n📦 Testing {gen_name} generator...")
 
             # Build validation logic specific to this generator
-            if gen_name in ["pydantic", "sqlalchemy", "pathway"]:
+            if gen_name in ["pydantic", "sqlalchemy"]:
                 validation_code = """
         # Python generators - compile test
         compile(model_code, "<test>", "exec")"""
@@ -474,7 +463,6 @@ def run_full_compatibility_matrix():
     version_testable = [
         "pydantic",
         "sqlalchemy",
-        "pathway",
         "jsonschema",
         "graphql-core",
         "avro",
@@ -504,7 +492,6 @@ def main():
         choices=[
             "pydantic",
             "sqlalchemy",
-            "pathway",
             "jsonschema",
             "graphql-core",
             "avro",
@@ -531,7 +518,6 @@ def main():
         for lib in [
             "pydantic",
             "sqlalchemy",
-            "pathway",
             "jsonschema",
             "graphql-core",
             "avro",

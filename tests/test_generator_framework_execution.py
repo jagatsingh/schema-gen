@@ -17,7 +17,6 @@ nothing skips there.
 | SQLAlchemy  | import as a package → assert __tablename__, __doc__, columns  |
 | Dataclasses | exec → instantiate → field equality                           |
 | TypedDict   | exec → assert annotations match                               |
-| Pathway     | exec → assert pw.Table/Schema in MRO + annotations match      |
 | JSON Schema | meta-schema validation + validate a sample document           |
 | GraphQL     | graphql-core parse                                            |
 | Avro        | fastavro.parse_schema                                         |
@@ -52,7 +51,6 @@ from schema_gen.generators.graphql_generator import GraphQLGenerator
 from schema_gen.generators.jackson_generator import JacksonGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
 from schema_gen.generators.kotlin_generator import KotlinGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.protobuf_generator import ProtobufGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.rust_generator import RustGenerator
@@ -248,31 +246,6 @@ class TestTypedDictFrameworkExecution:
             assert required in annotations, (
                 f"TypedDict missing field {required!r}: {list(annotations)}"
             )
-
-
-# -----------------------------------------------------------------------
-# Pathway
-# -----------------------------------------------------------------------
-
-
-class TestPathwayFrameworkExecution:
-    def test_module_compiles_and_class_in_pathway_mro(self):
-        import importlib.util
-
-        if importlib.util.find_spec("pathway") is None:
-            pytest.skip("pathway not installed")
-        out = PathwayGenerator().generate_file(_parse())
-        mod = _exec_module(out, "pathway_framework_test")
-        cls = mod.FrameworkOrder
-        # Pathway codegen emits a class that inherits from pw.Table (one of
-        # the framework's Schema-bearing base classes). Asserting Table OR
-        # Schema is in the MRO catches accidental loss of the framework
-        # base while staying tolerant of pathway's internal class layout.
-        mro_names = {c.__qualname__ for c in cls.__mro__}
-        assert "Table" in mro_names or "Schema" in mro_names, (
-            f"Generated class is not a pathway Table/Schema: {cls.__mro__}"
-        )
-        assert "instrument" in cls.__annotations__
 
 
 # -----------------------------------------------------------------------

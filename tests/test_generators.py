@@ -13,7 +13,6 @@ from schema_gen.generators.graphql_generator import GraphQLGenerator
 from schema_gen.generators.jackson_generator import JacksonGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
 from schema_gen.generators.kotlin_generator import KotlinGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.protobuf_generator import ProtobufGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
@@ -113,22 +112,6 @@ class TestAllGenerators:
         # Datetime fields should use z.string().datetime(), not z.date() (#27)
         assert "z.string().datetime()" in file_content
         assert "z.date()" not in file_content
-
-    def test_pathway_generator(self, comprehensive_schema):
-        """Test Pathway generator"""
-        generator = PathwayGenerator()
-
-        file_content = generator.generate_file(comprehensive_schema)
-
-        # Verify content
-        assert "class TestUser(pw.Table):" in file_content
-        assert "class TestUserCreateRequest(pw.Table):" in file_content
-        assert "import pathway as pw" in file_content
-        assert "id: pw.ColumnExpression  # int" in file_content
-        assert "name: pw.ColumnExpression  # str" in file_content
-
-        # Verify it compiles as valid Python
-        compile(file_content, "<test>", "exec")
 
     def test_dataclasses_generator(self, comprehensive_schema):
         """Test Dataclasses generator"""
@@ -1197,14 +1180,6 @@ class TestTupleSupport:
         file_content = generator.generate_file(schema)
 
         assert "List<Object>" in file_content
-
-    def test_pathway_tuple(self):
-        """Test Pathway generator uses tuple comment"""
-        schema = self._make_tuple_schema()
-        generator = PathwayGenerator()
-        file_content = generator.generate_file(schema)
-
-        assert "pw.ColumnExpression  # tuple" in file_content
 
 
 class TestSelfReferentialTypes:

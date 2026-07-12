@@ -14,7 +14,6 @@ from ..core.usr import FieldType, TypeMapper, USREnum, USRField, USRSchema
 _ENUM_META_CLASSES = {
     "pydantic": "PydanticMeta",
     "sqlalchemy": "SQLAlchemyMeta",
-    "pathway": "PathwayMeta",
     "rust": "SerdeMeta",
 }
 

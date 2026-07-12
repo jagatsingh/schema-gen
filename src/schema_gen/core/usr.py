@@ -668,7 +668,6 @@ class TypeMapper:
             target_config={
                 "pydantic": getattr(field_info, "pydantic", {}),
                 "sqlalchemy": getattr(field_info, "sqlalchemy", {}),
-                "pathway": getattr(field_info, "pathway", {}),
                 "rust": getattr(field_info, "rust", {}),
             },
             discriminator=getattr(field_info, "discriminator", None),

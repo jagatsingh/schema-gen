@@ -18,7 +18,6 @@ from schema_gen.generators.graphql_generator import GraphQLGenerator
 from schema_gen.generators.jackson_generator import JacksonGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
 from schema_gen.generators.kotlin_generator import KotlinGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.protobuf_generator import ProtobufGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
@@ -37,7 +36,6 @@ def load_version_matrix() -> dict[str, Any]:
         "version_matrix": {
             "pydantic": ["2.9.0", "2.10.0", "2.11.0"],
             "sqlalchemy": ["2.0.25", "2.0.36"],
-            "pathway": ["0.8.0", "0.9.0"],
         }
     }
 
@@ -367,54 +365,6 @@ Base = declarative_base()
         except Exception as e:
             pytest.fail(f"Generated Protobuf schema failed with version {version}: {e}")
 
-    def test_current_pathway_version_compatibility(self, test_schema):
-        """Test compatibility with currently installed Pathway version"""
-        try:
-            import pathway
-
-            pathway_version = pathway.__version__
-        except ImportError:
-            pytest.skip("Pathway not installed")
-
-        generator = PathwayGenerator()
-
-        # Generate model
-        model_code = generator.generate_model(test_schema)
-
-        # Test that generated code is valid Python
-        compile(model_code, "<test>", "exec")
-
-        # Test that generated models can be imported
-        self._test_pathway_model_functionality(model_code, pathway_version)
-
-    def _test_pathway_model_functionality(self, model_code: str, version: str):
-        """Test that generated Pathway models work correctly"""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Write model to file
-            model_file = Path(temp_dir) / "test_model.py"
-            model_file.write_text(model_code)
-
-            # Add to Python path and import
-            sys.path.insert(0, temp_dir)
-            try:
-                import test_model
-
-                importlib.reload(test_model)
-
-                # Test model exists and has correct structure
-                if hasattr(test_model, "User"):
-                    User = test_model.User
-
-                    # Verify it's a Pathway table class
-                    assert hasattr(User, "__pathway_table__") or hasattr(User, "id")
-
-            except Exception as e:
-                pytest.fail(
-                    f"Generated Pathway model failed with version {version}: {e}"
-                )
-            finally:
-                sys.path.remove(temp_dir)
-
     @pytest.mark.slow
     def test_version_matrix_compatibility(self, test_schema):
         """Test compatibility across version matrix (requires installation of specific versions)"""
@@ -447,7 +397,6 @@ Base = declarative_base()
             # Python-based generators (can be compiled)
             ("pydantic", PydanticGenerator(), "python"),
             ("sqlalchemy", SqlAlchemyGenerator(), "python"),
-            ("pathway", PathwayGenerator(), "python"),
             ("dataclasses", DataclassesGenerator(), "python"),
             ("typeddict", TypedDictGenerator(), "python"),
             # Non-Python generators (syntax validation only)
@@ -612,7 +561,6 @@ class TestAllGeneratorCompatibility:
         python_generators = [
             ("pydantic", PydanticGenerator()),
             ("sqlalchemy", SqlAlchemyGenerator()),
-            ("pathway", PathwayGenerator()),
             ("dataclasses", DataclassesGenerator()),
             ("typeddict", TypedDictGenerator()),
         ]

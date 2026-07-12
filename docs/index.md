@@ -46,7 +46,6 @@ Schema Gen provides a **single source of truth** approach:
 
 ### Planned Features
 - **SQLAlchemy Generation** - Database models and migrations
-- **Pathway Generation** - Data processing schemas
 - **GraphQL Support** - Schema and resolver generation
 - **OpenAPI Enhancement** - Rich API documentation
 - **Custom Generators** - Plugin system for custom formats
