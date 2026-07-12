@@ -24,8 +24,6 @@ byte-identical (key-sorted) re-serialization, proving genuine interop rather
 than four independent "looks plausible" string checks.
 """
 
-from __future__ import annotations
-
 import json
 import shutil
 import subprocess

@@ -80,7 +80,7 @@ def _repo_relative_posix(path: Path) -> str:
         )
         repo_root = Path(result.stdout.strip())
         return path.resolve().relative_to(repo_root).as_posix()
-    except (subprocess.CalledProcessError, ValueError):
+    except subprocess.CalledProcessError, ValueError:
         return path.as_posix()
 
 

@@ -4,8 +4,6 @@ respective generators (Fixes #20).
 Each test focuses on a single key so failures are easy to diagnose.
 """
 
-from __future__ import annotations
-
 import logging
 
 from schema_gen import Field, Schema

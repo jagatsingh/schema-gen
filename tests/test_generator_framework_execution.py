@@ -35,8 +35,6 @@ Bugs missed by snapshot/syntax tests but caught here:
 - Generated GraphQL has parse errors that snapshot tests can't see
 """
 
-from __future__ import annotations
-
 import json
 import shutil
 import subprocess

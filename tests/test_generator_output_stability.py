@@ -22,8 +22,6 @@ Then commit the updated ``tests/golden_outputs/*`` along with the source
 change so reviewers see exactly what downstream regenerations will see.
 """
 
-from __future__ import annotations
-
 import os
 from enum import Enum
 from pathlib import Path

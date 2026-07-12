@@ -18,8 +18,6 @@ while serializing under a different wire-format key — most commonly
 * Schema-level validation rejects alias collisions.
 """
 
-from __future__ import annotations
-
 import json
 import re
 

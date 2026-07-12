@@ -6,7 +6,7 @@
 # BuildKit frontend directive on the very first line (above). Without it,
 # Docker's classic parser sees ``{`` after the heredoc on the next line and
 # errors with ``unknown instruction: {`` (https://docs.docker.com/build/dockerfile/release-notes/#14-0).
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:8e4071294d046d45b31a902e02a8560a45c351898513b66ec659ca39fd30d170
 
 LABEL maintainer="schema-gen"
 LABEL description="Complete validation environment with all external compilers"
@@ -149,7 +149,6 @@ RUN pip install --no-cache-dir \
     jsonschema>=4.0 \
     graphql-core>=3.2 \
     avro-python3>=1.11 \
-    pathway>=0.7 \
     email-validator>=2.0 \
     # Additional validation tools
     click>=8.0 \
@@ -296,5 +295,5 @@ LABEL tools.typescript="included" \
       tools.java="included" \
       tools.kotlin="included" \
       tools.protobuf="included" \
-      tools.python="3.12" \
+      tools.python="3.14" \
       validation.comprehensive="true"
