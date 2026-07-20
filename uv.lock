@@ -1376,9 +1376,11 @@ dev = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
+    { name = "mypy" },
     { name = "pymdown-extensions" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "ruff" },
     { name = "setuptools" },
 ]
 
@@ -1418,9 +1420,11 @@ dev = [
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.6.18" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.30.0" },
+    { name = "mypy", specifier = ">=1.14" },
     { name = "pymdown-extensions", specifier = ">=10.21.3" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-cov", specifier = ">=6.3.0" },
+    { name = "ruff", specifier = ">=0.9" },
     { name = "setuptools", specifier = "<83" },
 ]
 
