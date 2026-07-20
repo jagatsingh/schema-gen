@@ -51,7 +51,7 @@ class TestZodDictValueTypes:
     """Fix #67: dict[str, T] must use T's Zod type, not z.any()."""
 
     def test_dict_nested_schema_generates_record_with_schema_ref(self, tmp_path):
-        """dict[str, NestedSchema] -> z.record(NestedSchemaSchema) with import."""
+        """dict[str, NestedSchema] -> z.record(z.string(), NestedSchemaSchema) with import."""
         _reregister(_DictNested, _DictNestedParent)
 
         out_dir = tmp_path / "out"
@@ -63,11 +63,11 @@ class TestZodDictValueTypes:
         SchemaGenerationEngine(config).generate_all()
 
         parent_ts = (out_dir / "zod" / "_dictnestedparent.ts").read_text()
-        assert "z.record(_DictNestedSchema)" in parent_ts
+        assert "z.record(z.string(), _DictNestedSchema)" in parent_ts
         assert "import { _DictNestedSchema } from './_dictnested';" in parent_ts
 
     def test_dict_str_generates_record_with_string(self, tmp_path):
-        """dict[str, str] -> z.record(z.string())."""
+        """dict[str, str] -> z.record(z.string(), z.string())."""
         _reregister(_DictStrParent)
 
         out_dir = tmp_path / "out"
@@ -79,10 +79,10 @@ class TestZodDictValueTypes:
         SchemaGenerationEngine(config).generate_all()
 
         parent_ts = (out_dir / "zod" / "_dictstrparent.ts").read_text()
-        assert "z.record(z.string())" in parent_ts
+        assert "z.record(z.string(), z.string())" in parent_ts
 
     def test_dict_any_generates_record_with_any_no_unused_imports(self, tmp_path):
-        """dict[str, Any] -> z.record(z.any()) with no unused imports."""
+        """dict[str, Any] -> z.record(z.string(), z.any()) with no unused imports."""
         _reregister(_DictAnyParent)
 
         out_dir = tmp_path / "out"
@@ -94,12 +94,12 @@ class TestZodDictValueTypes:
         SchemaGenerationEngine(config).generate_all()
 
         parent_ts = (out_dir / "zod" / "_dictanyparent.ts").read_text()
-        assert "z.record(z.any())" in parent_ts
+        assert "z.record(z.string(), z.any())" in parent_ts
         # No cross-file imports should exist (only 'import { z } from "zod"').
         assert parent_ts.count("import ") == 1
 
     def test_optional_dict_nested_appends_optional(self, tmp_path):
-        """Optional[dict[str, NestedSchema]] -> z.record(...).optional()."""
+        """Optional[dict[str, NestedSchema]] -> z.record(z.string(), ...).optional()."""
         _reregister(_DictNested, _DictOptionalNestedParent)
 
         out_dir = tmp_path / "out"
@@ -111,11 +111,11 @@ class TestZodDictValueTypes:
         SchemaGenerationEngine(config).generate_all()
 
         parent_ts = (out_dir / "zod" / "_dictoptionalnestedparent.ts").read_text()
-        assert "z.record(_DictNestedSchema).optional()" in parent_ts
+        assert "z.record(z.string(), _DictNestedSchema).optional()" in parent_ts
         assert "import { _DictNestedSchema } from './_dictnested';" in parent_ts
 
     def test_dict_list_nested_generates_record_with_array(self, tmp_path):
-        """dict[str, list[NestedSchema]] -> z.record(z.array(NestedSchemaSchema))."""
+        """dict[str, list[NestedSchema]] -> z.record(z.string(), z.array(NestedSchemaSchema))."""
         _reregister(_DictNested, _DictListNestedParent)
 
         out_dir = tmp_path / "out"
@@ -127,11 +127,11 @@ class TestZodDictValueTypes:
         SchemaGenerationEngine(config).generate_all()
 
         parent_ts = (out_dir / "zod" / "_dictlistnestedparent.ts").read_text()
-        assert "z.record(z.array(_DictNestedSchema))" in parent_ts
+        assert "z.record(z.string(), z.array(_DictNestedSchema))" in parent_ts
         assert "import { _DictNestedSchema } from './_dictnested';" in parent_ts
 
     def test_self_referential_dict_uses_lazy(self):
-        """dict[str, Self] -> z.record(z.lazy(() => SelfSchema))."""
+        """dict[str, Self] -> z.record(z.string(), z.lazy(() => SelfSchema))."""
         schema = USRSchema(
             name="TreeNode",
             fields=[
@@ -150,4 +150,4 @@ class TestZodDictValueTypes:
             ],
         )
         out = ZodGenerator().generate_file(schema)
-        assert "z.record(z.lazy(() => TreeNodeSchema))" in out
+        assert "z.record(z.string(), z.lazy(() => TreeNodeSchema))" in out

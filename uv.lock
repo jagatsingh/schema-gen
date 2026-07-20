@@ -7,9 +7,6 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
-[options]
-exclude-newer = "2026-07-04T23:24:43Z"
-
 [manifest]
 constraints = [
     { name = "aiohttp", specifier = ">=3.14.0" },
@@ -1308,7 +1305,7 @@ wheels = [
 
 [[package]]
 name = "schema-gen"
-version = "0.4.1"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1379,9 +1376,11 @@ dev = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
+    { name = "mypy" },
     { name = "pymdown-extensions" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "ruff" },
     { name = "setuptools" },
 ]
 
@@ -1421,9 +1420,11 @@ dev = [
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.6.18" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.30.0" },
+    { name = "mypy", specifier = ">=1.14" },
     { name = "pymdown-extensions", specifier = ">=10.21.3" },
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-cov", specifier = ">=6.3.0" },
+    { name = "ruff", specifier = ">=0.9" },
     { name = "setuptools", specifier = "<83" },
 ]
 

@@ -1,6 +1,6 @@
 [project]
 name = "schema-gen"
-version = "0.4.1"
+version = "0.5.0"
 description = "Universal schema converter - define once, generate everywhere"
 readme = "README.md"
 authors = [
@@ -100,6 +100,8 @@ dev = [
     "pymdown-extensions>=10.21.3",  # Security: CVE-2026-46338
     "pytest>=8.4.2",
     "pytest-cov>=6.3.0",
+    "ruff>=0.9",
+    "mypy>=1.14",
     "setuptools<83",  # Pin setuptools to avoid pkg_resources deprecation warnings
 ]
 
