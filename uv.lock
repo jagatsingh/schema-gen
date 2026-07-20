@@ -7,9 +7,6 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
-[options]
-exclude-newer = "2026-07-11T23:09:50Z"
-
 [manifest]
 constraints = [
     { name = "aiohttp", specifier = ">=3.14.0" },
