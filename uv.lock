@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-07-04T23:24:43Z"
+exclude-newer = "2026-07-11T23:09:50Z"
 
 [manifest]
 constraints = [
