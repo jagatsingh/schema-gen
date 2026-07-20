@@ -214,8 +214,8 @@ config = Config(
 | `bool` | `z.boolean()` |
 | `datetime` | `z.string().datetime()` |
 | `list[T]` | `z.array(<zod_type>)` |
-| `dict[str, T]` | `z.record(<zod_type>)` |
-| `dict[str, Any]` | `z.record(z.any())` |
+| `dict[str, T]` | `z.record(z.string(), <zod_type>)` |
+| `dict[str, Any]` | `z.record(z.string(), z.any())` |
 | `Optional[T]` | `<zod_type>.optional()` |
 | `Literal["a"]` | `z.literal("a")` |
 | Nested `@Schema` | `SchemaNameSchema` (cross-file import) |
