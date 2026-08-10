@@ -11,6 +11,8 @@ from schema_gen import Field, Schema
 from schema_gen.core.schema import SchemaRegistry
 from schema_gen.core.usr import FieldType, USRField
 from schema_gen.generators.arrow_generator import (
+    _PYARROW_SCALAR_MAPPING,
+    _SCALAR_ARROW_TYPES,
     ArrowPythonGenerator,
     ArrowRustGenerator,
     _arrow_kind_for,
@@ -26,6 +28,40 @@ def _field(ftype: FieldType, **kwargs) -> USRField:
     )
 
 
+def _time_schema():
+    @Schema
+    class TimeHolder:
+        t: time
+
+    return TimeHolder
+
+
+class TestArrowScalarTableConsistency:
+    """Every value the Rust-side scalar table can produce must have a
+    matching entry in the Python-side rendering table, or the Python
+    generator KeyErrors on a FieldType the Rust generator handles fine.
+
+    This is a regression guard for the exact class of bug that shipped in
+    #149: TIME's scalar mapping was the literal Rust source fragment
+    "Time64(Microsecond)", used as a shared dict key across both tables:
+    "Microsecond" alone isn't valid Rust to begin with, and fixing that
+    string on the Rust side without touching the Python table would have
+    KeyError'd Python generation. TIME was pulled out into its own
+    unit-carrying kind (not a _SCALAR_ARROW_TYPES entry at all) to avoid
+    exactly that failure mode; this test guards against the next FieldType
+    being added the same broken way.
+    """
+
+    def test_every_scalar_value_has_a_pyarrow_rendering(self):
+        missing = set(_SCALAR_ARROW_TYPES.values()) - set(
+            _PYARROW_SCALAR_MAPPING.keys()
+        )
+        assert not missing, (
+            f"Arrow scalar type(s) {missing} have no _PYARROW_SCALAR_MAPPING "
+            "entry — the Python generator will KeyError on this FieldType."
+        )
+
+
 class TestArrowKindForScalarTypes:
     """FieldType -> Arrow scalar type mapping (issue #148 requirement #1)."""
 
@@ -37,7 +73,6 @@ class TestArrowKindForScalarTypes:
             (FieldType.INTEGER, "Int64"),
             (FieldType.FLOAT, "Float64"),
             (FieldType.DATE, "Date32"),
-            (FieldType.TIME, "Time64(Microsecond)"),
             (FieldType.BYTES, "Binary"),
             (FieldType.UUID, "Utf8"),
             (FieldType.JSON, "Utf8"),
@@ -57,6 +92,34 @@ class TestArrowKindForScalarTypes:
     def test_union_without_types_is_unmapped(self):
         with pytest.raises(ValueError, match="UNION"):
             _arrow_kind_for(_field(FieldType.UNION))
+
+
+class TestArrowKindForTime:
+    """TIME -> Time64(Microsecond), rendered through a unit-carrying kind so
+    the Rust and Python tables can't drift out of sync (post-#149 review:
+    the previous scalar mapping stored the literal Rust source fragment
+    "Time64(Microsecond)" as a dict key shared with the Python table, and
+    "DataType::Time64(Microsecond)" doesn't compile — Rust needs
+    "TimeUnit::Microsecond" qualified).
+    """
+
+    def test_time_resolves_to_time_kind(self):
+        kind = _arrow_kind_for(_field(FieldType.TIME))
+        assert kind.kind == "time"
+        assert kind.scalar == "microsecond"
+
+    def test_rust_rendering_qualifies_time_unit(self):
+        out = ArrowRustGenerator().generate_file(
+            SchemaParser().parse_schema(_time_schema())
+        )
+        assert "DataType::Time64(TimeUnit::Microsecond)" in out
+        assert "DataType::Time64(Microsecond)" not in out
+
+    def test_python_rendering_uses_pyarrow_time64(self):
+        out = ArrowPythonGenerator().generate_file(
+            SchemaParser().parse_schema(_time_schema())
+        )
+        assert 'pa.time64("us")' in out
 
 
 class TestArrowKindForDatetime:
@@ -101,6 +164,51 @@ class TestArrowKindForDecimal:
         kind = _arrow_kind_for(f)
         assert kind.precision == 10
         assert kind.scale == 2
+
+    @pytest.mark.parametrize("bad_precision", [0, -1, 39, 1000])
+    def test_out_of_range_precision_falls_back_to_default(self, bad_precision, caplog):
+        f = _field(
+            FieldType.DECIMAL, target_config={"arrow": {"precision": bad_precision}}
+        )
+        with caplog.at_level(logging.WARNING):
+            kind = _arrow_kind_for(f)
+        assert kind.precision == 38
+        assert kind.scale == 9
+        assert "invalid" in caplog.text.lower()
+
+    def test_scale_greater_than_precision_falls_back_to_default(self, caplog):
+        f = _field(
+            FieldType.DECIMAL,
+            target_config={"arrow": {"precision": 10, "scale": 11}},
+        )
+        with caplog.at_level(logging.WARNING):
+            kind = _arrow_kind_for(f)
+        assert kind.precision == 38
+        assert kind.scale == 9
+        assert "invalid" in caplog.text.lower()
+
+    def test_negative_scale_falls_back_to_default(self, caplog):
+        f = _field(
+            FieldType.DECIMAL, target_config={"arrow": {"precision": 10, "scale": -1}}
+        )
+        with caplog.at_level(logging.WARNING):
+            kind = _arrow_kind_for(f)
+        assert kind.precision == 38
+        assert kind.scale == 9
+
+    def test_invalid_precision_generated_python_still_imports(self):
+        """Regression: an out-of-range precision must never reach
+        pa.decimal128() unchecked — that raised ValueError at *import* time
+        of the generated module before this fix (post-#149 review)."""
+        pytest.importorskip("pyarrow")
+
+        @Schema
+        class BadDecimal:
+            amount: Decimal = Field(arrow={"precision": 99, "scale": 2})
+
+        schema = SchemaParser().parse_schema(BadDecimal)
+        out = ArrowPythonGenerator().generate_file(schema)
+        assert "pa.decimal128(38, 9)" in out
 
 
 class TestArrowKindForDict:

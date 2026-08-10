@@ -55,6 +55,18 @@ _PYARROW_TIME_UNIT: dict[str, str] = {
     "nanosecond": "ns",
 }
 
+# Arrow's Time64 (as opposed to Time32) only supports microsecond/nanosecond
+# resolution. TIME fields aren't configurable per-field (unlike DATETIME) —
+# there's no known real consumer that needs anything but microsecond — but
+# the unit is still carried on the ``_ArrowKind`` (kind="time") rather than
+# baked into a literal Rust-source-text string shared as a dict key with the
+# Python table. A prior version keyed ``_PYARROW_SCALAR_MAPPING`` on the
+# literal string ``"Time64(Microsecond)"``, which meant fixing the Rust
+# emission (``DataType::Time64(Microsecond)`` doesn't compile — it needs
+# ``TimeUnit::Microsecond``) without also touching the Python table would
+# silently KeyError on the Python side. See schema-gen post-#149 review.
+_DEFAULT_TIME_UNIT = "microsecond"
+
 # DICT value representation. Defaults to a JSON-serialized ``LargeUtf8``
 # string column, NOT a native Arrow ``Map`` — this matches the real,
 # already-shipped consumer (tradingcore's Parquet writer, see
@@ -75,7 +87,7 @@ class _ArrowKind:
     precision/scale, list item kind) from the USR field a second time.
     """
 
-    kind: str  # "scalar", "timestamp", "decimal", "list", "map"
+    kind: str  # "scalar", "timestamp", "time", "decimal", "list", "map"
     scalar: str | None = None  # canonical Arrow scalar type name (e.g. "Utf8")
     item: _ArrowKind | None = None  # LIST inner kind
     value: _ArrowKind | None = None  # MAP value kind (key is always Utf8)
@@ -94,7 +106,9 @@ _SCALAR_ARROW_TYPES: dict[FieldType, str] = {
     # DATETIME is handled separately (see below) — its Arrow Timestamp unit
     # is configurable per-field, unlike every other entry in this table.
     FieldType.DATE: "Date32",
-    FieldType.TIME: "Time64(Microsecond)",
+    # TIME is handled separately (see below), like DATETIME — it resolves
+    # to a unit-carrying "time" kind rather than a literal scalar string,
+    # so the Rust and Python tables can never drift out of sync on it.
     FieldType.BYTES: "Binary",
     # Arrow has no native UUID/JSON/Literal/Enum type; all four are carried
     # as plain strings. Documented explicitly (issue #148) rather than left
@@ -142,9 +156,46 @@ def _arrow_kind_for(field: USRField) -> _ArrowKind:
             unit = _DEFAULT_TIMESTAMP_UNIT
         return _ArrowKind(kind="timestamp", scalar=unit)
 
+    if ftype == FieldType.TIME:
+        return _ArrowKind(kind="time", scalar=_DEFAULT_TIME_UNIT)
+
     if ftype == FieldType.DECIMAL:
         precision = arrow_cfg.get("precision", _DEFAULT_DECIMAL_PRECISION)
         scale = arrow_cfg.get("scale", _DEFAULT_DECIMAL_SCALE)
+        # pyarrow's ``decimal128``/``decimal256`` only actually validates
+        # precision at construction time (1-38 for decimal128); an
+        # out-of-range value raises ValueError at *import* time of the
+        # generated Python module, not at generation time. Scale isn't
+        # range-checked by pyarrow itself, but a scale outside
+        # [0, precision] is never a meaningful decimal, so we treat it the
+        # same way as the other per-field overrides in this file (warn +
+        # fall back to the default rather than emit a value we know is
+        # either invalid or nonsensical).
+        if not (1 <= precision <= 38):
+            logger.warning(
+                "Arrow generator: ignoring invalid Field(arrow={'precision': %r}) "
+                "on field '%s' (must be 1-38 for Decimal128). Falling back to "
+                "precision=%s, scale=%s.",
+                precision,
+                field.name,
+                _DEFAULT_DECIMAL_PRECISION,
+                _DEFAULT_DECIMAL_SCALE,
+            )
+            precision = _DEFAULT_DECIMAL_PRECISION
+            scale = _DEFAULT_DECIMAL_SCALE
+        elif not (0 <= scale <= precision):
+            logger.warning(
+                "Arrow generator: ignoring invalid Field(arrow={'scale': %r}) "
+                "on field '%s' (must satisfy 0 <= scale <= precision=%s). "
+                "Falling back to precision=%s, scale=%s.",
+                scale,
+                field.name,
+                precision,
+                _DEFAULT_DECIMAL_PRECISION,
+                _DEFAULT_DECIMAL_SCALE,
+            )
+            precision = _DEFAULT_DECIMAL_PRECISION
+            scale = _DEFAULT_DECIMAL_SCALE
         return _ArrowKind(kind="decimal", precision=precision, scale=scale)
 
     if ftype in (FieldType.LIST, FieldType.SET, FieldType.FROZENSET):
@@ -236,6 +287,10 @@ def _rust_dtype(k: _ArrowKind) -> str:
         assert k.scalar is not None
         unit = _RUST_TIME_UNIT[k.scalar]
         return f'DataType::Timestamp(TimeUnit::{unit}, Some("UTC".into()))'
+    if k.kind == "time":
+        assert k.scalar is not None
+        unit = _RUST_TIME_UNIT[k.scalar]
+        return f"DataType::Time64(TimeUnit::{unit})"
     if k.kind == "decimal":
         return f"DataType::Decimal128({k.precision}, {k.scale})"
     if k.kind == "list":
@@ -433,7 +488,6 @@ _PYARROW_SCALAR_MAPPING: dict[str, str] = {
     "Int64": "pa.int64()",
     "Float64": "pa.float64()",
     "Date32": "pa.date32()",
-    "Time64(Microsecond)": 'pa.time64("us")',
     "Binary": "pa.binary()",
 }
 
@@ -446,6 +500,10 @@ def _python_dtype(k: _ArrowKind) -> str:
         assert k.scalar is not None
         unit = _PYARROW_TIME_UNIT[k.scalar]
         return f'pa.timestamp("{unit}", tz="UTC")'
+    if k.kind == "time":
+        assert k.scalar is not None
+        unit = _PYARROW_TIME_UNIT[k.scalar]
+        return f'pa.time64("{unit}")'
     if k.kind == "decimal":
         return f"pa.decimal128({k.precision}, {k.scale})"
     if k.kind == "list":
