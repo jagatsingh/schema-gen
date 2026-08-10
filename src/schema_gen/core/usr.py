@@ -669,6 +669,7 @@ class TypeMapper:
                 "pydantic": getattr(field_info, "pydantic", {}),
                 "sqlalchemy": getattr(field_info, "sqlalchemy", {}),
                 "rust": getattr(field_info, "rust", {}),
+                "arrow": getattr(field_info, "arrow", {}),
             },
             discriminator=getattr(field_info, "discriminator", None),
             tags=getattr(field_info, "tags", []),

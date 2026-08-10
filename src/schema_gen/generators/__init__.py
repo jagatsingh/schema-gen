@@ -1,5 +1,6 @@
 """Schema generators for different target formats"""
 
+from .arrow_generator import ArrowPythonGenerator, ArrowRustGenerator
 from .avro_generator import AvroGenerator
 from .base import BaseGenerator
 from .dataclasses_generator import DataclassesGenerator
@@ -30,4 +31,6 @@ __all__ = [
     "KotlinGenerator",
     "RustGenerator",
     "DocsGenerator",
+    "ArrowRustGenerator",
+    "ArrowPythonGenerator",
 ]

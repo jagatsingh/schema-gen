@@ -30,6 +30,10 @@ import pytest
 
 from schema_gen import Field, Schema
 from schema_gen.core.schema import SchemaRegistry
+from schema_gen.generators.arrow_generator import (
+    ArrowPythonGenerator,
+    ArrowRustGenerator,
+)
 from schema_gen.generators.avro_generator import AvroGenerator
 from schema_gen.generators.dataclasses_generator import DataclassesGenerator
 from schema_gen.generators.graphql_generator import GraphQLGenerator
@@ -162,6 +166,8 @@ _GENERATORS = [
     ("graphql_canonical_order.graphql", GraphQLGenerator),
     ("kotlin_canonical_order.kt", KotlinGenerator),
     ("jackson_canonical_order.java", JacksonGenerator),
+    ("arrow_rust_canonical_order.rs", ArrowRustGenerator),
+    ("arrow_python_canonical_order.py", ArrowPythonGenerator),
 ]
 
 

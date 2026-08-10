@@ -1,5 +1,6 @@
 """Generator registry mapping target names to generator classes"""
 
+from .arrow_generator import ArrowPythonGenerator, ArrowRustGenerator
 from .avro_generator import AvroGenerator
 from .dataclasses_generator import DataclassesGenerator
 from .docs_generator import DocsGenerator
@@ -28,4 +29,6 @@ GENERATOR_REGISTRY: dict[str, type] = {
     "kotlin": KotlinGenerator,
     "rust": RustGenerator,
     "docs": DocsGenerator,
+    "arrow_rust": ArrowRustGenerator,
+    "arrow_python": ArrowPythonGenerator,
 }

@@ -13,6 +13,7 @@ nav:
   - Generators:
       - Pydantic: generators/pydantic.md
       - Rust (Serde): generators/rust.md
+      - Arrow: generators/arrow.md
   - Examples: examples.md
   - Supply Chain Security: dependency_management.md
   - API Reference: api-reference.md

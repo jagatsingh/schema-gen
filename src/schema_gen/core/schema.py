@@ -52,6 +52,7 @@ class FieldInfo:
     pydantic: dict[str, Any] = field(default_factory=dict)
     sqlalchemy: dict[str, Any] = field(default_factory=dict)
     rust: dict[str, Any] = field(default_factory=dict)
+    arrow: dict[str, Any] = field(default_factory=dict)
 
     # Discriminated-union tag field name. When set, the field's annotation
     # must be Annotated[Union[A, B, ...], Field(discriminator="<field>")]
@@ -95,6 +96,7 @@ def Field(
     pydantic: dict[str, Any] | None = None,
     sqlalchemy: dict[str, Any] | None = None,
     rust: dict[str, Any] | None = None,
+    arrow: dict[str, Any] | None = None,
     discriminator: str | None = None,
     tags: list[str] | None = None,
     **metadata: Any,
@@ -134,6 +136,14 @@ def Field(
             ``u32``/``u64``/``i8``/.../``i128``/``isize``/``usize``,
             ``f32``/``f64``). Invalid values log a warning and fall
             back to ``i64`` / ``f64``. See ``docs/generators/rust.md``.
+        arrow: Arrow-specific overrides. Supports ``{"precision": int,
+            "scale": int}`` for DECIMAL fields (default 38/9),
+            ``{"timestamp_unit": "second"|"millisecond"|"microsecond"|
+            "nanosecond"}`` for DATETIME fields (default microsecond),
+            and ``{"dict_as": "large_string"|"map"}`` for DICT fields
+            (default ``"large_string"`` — a JSON-serialized string
+            column, since Arrow's native ``Map`` type overflows on
+            large per-row payloads; see ``docs/generators/arrow.md``).
         discriminator: Name of the tag field when the annotated type is
             ``Annotated[Union[A, B, ...], Field(discriminator=...)]``.
             Every union member must be a ``@Schema`` with a matching
@@ -175,6 +185,7 @@ def Field(
         pydantic=pydantic or {},
         sqlalchemy=sqlalchemy or {},
         rust=rust or {},
+        arrow=arrow or {},
         discriminator=discriminator,
         tags=tags or [],
         metadata=metadata,
