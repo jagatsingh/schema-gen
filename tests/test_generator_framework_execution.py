@@ -25,6 +25,8 @@ nothing skips there.
 | Zod / TS    | tsc --noEmit --strict (skips with hint when missing)          |
 | Kotlin      | kotlinc (skips with hint when missing)                        |
 | Jackson     | javac with Jackson on classpath (skips with hint when missing)|
+| Arrow (Py)  | exec → construct pa.schema() (skips if pyarrow missing)       |
+| Arrow (Rust)| cargo check on a minimal arrow-rs crate (skips when missing)  |
 
 Bugs missed by snapshot/syntax tests but caught here:
 - Pydantic generated file fails to import (e.g. unresolved enum forward ref)
@@ -584,4 +586,73 @@ class TestJacksonFrameworkExecution:
             )
         assert result.returncode == 0, (
             f"javac rejected the generated .java:\n{result.stderr}"
+        )
+
+
+# -----------------------------------------------------------------------
+# Arrow (Python/pyarrow) — construct pa.schema() and inspect it
+# -----------------------------------------------------------------------
+
+
+class TestArrowPythonFrameworkExecution:
+    def test_output_execs_and_builds_a_valid_pyarrow_schema(self):
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pytest.skip("pyarrow not installed (`uv pip install -e .[arrow]`)")
+        from schema_gen.generators.arrow_generator import ArrowPythonGenerator
+
+        out = ArrowPythonGenerator().generate_file(_parse())
+        mod = _exec_module(out, "arrow_framework_execution_order")
+        assert isinstance(mod.SCHEMA, pa.Schema)
+        names = mod.SCHEMA.names
+        assert names == ["id", "instrument", "quantity", "price", "side", "tag"]
+        assert mod.SCHEMA.field("id").type == pa.int64()
+        assert mod.SCHEMA.field("price").type == pa.float64()
+        assert mod.SCHEMA.field("tag").nullable is True
+        assert mod.SCHEMA.field("id").nullable is False
+
+
+# -----------------------------------------------------------------------
+# Arrow (Rust) — cargo check on a minimal crate depending on arrow-rs
+# -----------------------------------------------------------------------
+
+
+class TestArrowRustFrameworkExecution:
+    def test_cargo_check_accepts_output(self, tmp_path: Path):
+        if not shutil.which("cargo"):
+            pytest.skip(
+                "cargo not on PATH — install Rust (https://rustup.rs) to run this test"
+            )
+        from schema_gen.generators.arrow_generator import ArrowRustGenerator
+
+        out = ArrowRustGenerator().generate_file(_parse())
+        crate = tmp_path / "arrow_rust_framework_check"
+        (crate / "src").mkdir(parents=True)
+        (crate / "Cargo.toml").write_text(
+            "[package]\n"
+            'name = "arrow_rust_framework_check"\n'
+            'version = "0.0.0"\n'
+            'edition = "2021"\n'
+            "[dependencies]\n"
+            'arrow = ">=53"\n'
+        )
+        (crate / "src" / "lib.rs").write_text(out)
+        result = subprocess.run(
+            ["cargo", "check", "--quiet", "--offline"],
+            cwd=crate,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0 and "offline" in result.stderr.lower():
+            result = subprocess.run(
+                ["cargo", "check", "--quiet"],
+                cwd=crate,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        assert result.returncode == 0, (
+            f"cargo check rejected the generated Arrow schema module:\n{result.stderr}"
         )

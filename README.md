@@ -8,13 +8,13 @@
 
 **Universal schema converter - define once, generate everywhere.**
 
-Schema Gen eliminates schema duplication across multiple programming languages and frameworks by providing a single source of truth for your data models. Define your schemas once using Python type annotations, then automatically generate code for 13+ different targets — Python, TypeScript, Java, Kotlin, **Rust**, and multiple schema formats.
+Schema Gen eliminates schema duplication across multiple programming languages and frameworks by providing a single source of truth for your data models. Define your schemas once using Python type annotations, then automatically generate code for 15+ different targets — Python, TypeScript, Java, Kotlin, **Rust**, Apache Arrow, and multiple schema formats.
 
 Please try it out and provide feedback!
 
 See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-examples/)
 
-## 🎯 Supported Generators (12)
+## 🎯 Supported Generators (14)
 
 ### Python Ecosystem
 - **Pydantic** - Python models with validation
@@ -33,6 +33,8 @@ See examples at [schema-gen-example](https://github.com/jagatsingh/schema-gen-ex
 - **GraphQL** - GraphQL Schema Definition Language
 - **Protobuf** - Protocol Buffers with gRPC services
 - **Avro** - Apache Avro schemas
+- **Arrow (Rust)** - `pub fn <schema>_arrow_schema() -> arrow::datatypes::Schema` builders for `arrow-rs` Parquet writers. See [docs/generators/arrow.md](docs/generators/arrow.md).
+- **Arrow (Python)** - `SCHEMA = pa.schema([...])` modules for `pyarrow` Parquet readers/writers. See [docs/generators/arrow.md](docs/generators/arrow.md).
 
 ### JVM Languages
 - **Jackson** - Java classes with JSON annotations
@@ -178,6 +180,8 @@ This generates code for all configured targets:
 - `generated/kotlin/User.kt` - Kotlin data classes
 - `generated/protobuf/user.proto` - Protocol Buffer definitions
 - `generated/avro/user.avsc` - Apache Avro schemas
+- `generated/arrow_rust/user.rs` + `generated/arrow_rust/mod.rs` - Arrow schema builders for `arrow-rs`
+- `generated/arrow_python/user_arrow.py` + `generated/arrow_python/__init__.py` - `pyarrow.Schema` modules
 - `generated/jsonschema/user.json` - JSON Schema validation
 - `generated/graphql/user.graphql` - GraphQL SDL
 - All variants: `User`, `UserCreateRequest`, `UserUpdateRequest`, etc.
@@ -378,6 +382,8 @@ config = Config(
         "graphql",
         "protobuf",
         "avro",
+        "arrow_rust",
+        "arrow_python",
         # JVM languages
         "jackson",
         "kotlin",

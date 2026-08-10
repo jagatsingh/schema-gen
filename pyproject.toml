@@ -45,8 +45,9 @@ jsonschema = ["jsonschema>=4.17.0"]
 graphql = ["graphql-core>=3.2.0"]
 avro = ["avro>=1.12.0"]
 protobuf = ["protobuf>=5.29.0"]
+arrow = ["pyarrow>=18.0.0"]
 testing = ["pytest-xdist>=3.0.0"]
-schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf]"]
+schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf,arrow]"]
 compatibility = ["schema-gen[sqlalchemy,schema-libs,testing]"]
 all = ["schema-gen[sqlalchemy,schema-libs,testing]"]
 
@@ -94,6 +95,7 @@ include = [
 [dependency-groups]
 dev = [
     "fastavro>=1.12.1",
+    "pyarrow>=18.0.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.18",
     "mkdocstrings[python]>=0.30.0",
