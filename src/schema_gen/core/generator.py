@@ -12,6 +12,22 @@ from ..registry.index import build_registry_index
 from .config import Config
 
 
+def partition_root_unions(generator, schemas):
+    """Split ``schemas`` into (emittable, skipped) for ``generator`` (#131).
+
+    Standalone discriminated unions only emit for generators that can express
+    a tagged union (``supports_root_union``). For the rest they are skipped
+    rather than emitted as a misleading struct with one self-named field.
+    ``generate`` and ``validate`` must both use this so ``validate`` never
+    expects files ``generate`` did not write.
+    """
+    if generator.supports_root_union:
+        return list(schemas), []
+    kept = [s for s in schemas if not s.is_root_union]
+    skipped = [s for s in schemas if s.is_root_union]
+    return kept, skipped
+
+
 class SchemaImportError(Exception):
     """Raised when a schema file cannot be imported"""
 
@@ -140,6 +156,16 @@ class SchemaGenerationEngine:
         generator = self.generators[target]
         target_dir = output_dir / target
         target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Standalone discriminated unions (#131) are dropped for targets
+        # that cannot express them (see ``partition_root_unions``).
+        schemas, skipped = partition_root_unions(generator, schemas)
+        if skipped:
+            names = ", ".join(s.name for s in skipped)
+            print(
+                f"  ⚠ {target}: skipping standalone discriminated "
+                f"union(s) not supported by this target: {names}"
+            )
 
         print(f"\nGenerating {target} models...")
 

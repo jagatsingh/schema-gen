@@ -91,6 +91,7 @@ class ZodGenerator(BaseGenerator):
     """Generates Zod schemas (TypeScript/JavaScript) from USR schemas"""
 
     index_filename = "index.ts"
+    supports_root_union = True  # #131: emits z.discriminatedUnion
 
     def __init__(self, config: Config | None = None) -> None:
         super().__init__(config=config)
@@ -261,6 +262,27 @@ class ZodGenerator(BaseGenerator):
         # ``import { OtherSchema } from './other';`` lines at the top of
         # the generated file (Copilot POC finding C4).
         external_refs = _collect_external_schema_refs(schema)
+
+        # Standalone discriminated union (#131): emit a top-level
+        # ``z.discriminatedUnion`` const (+ inferred type) named after the
+        # alias. The variant ``…Schema`` imports come from external_refs.
+        if schema.is_root_union and schema.root_union_field is not None:
+            f = schema.root_union_field
+            members = ", ".join(self._get_zod_type(ut) for ut in f.union_types)
+            union_const = (
+                f"export const {schema.name}Schema = "
+                f'z.discriminatedUnion("{f.discriminator}", [{members}]);'
+            )
+            union_type = (
+                f"export type {schema.name} = z.infer<typeof {schema.name}Schema>;"
+            )
+            return self._generate_complete_file(
+                schema.name,
+                [union_const],
+                [union_type],
+                schema.enums,
+                external_refs=external_refs,
+            )
 
         all_schemas = []
         all_types = []

@@ -23,6 +23,8 @@ _SUPPORTED_JSONSCHEMA_CONFIG_KEYS: frozenset[str] = frozenset(
 class JsonSchemaGenerator(BaseGenerator):
     """Generates JSON Schema definitions from USR schemas"""
 
+    supports_root_union = True  # #131: emits oneOf + discriminator
+
     def __init__(
         self,
         base_url: str = _DEFAULT_BASE_URL,
@@ -136,6 +138,33 @@ class JsonSchemaGenerator(BaseGenerator):
         js_cfg = self._js_cfg()
         schema_uri = js_cfg.get("schema_uri", _DEFAULT_SCHEMA_URI)
         base_url = self._get_base_url(schema)
+
+        # Standalone discriminated union (#131): emit a top-level oneOf +
+        # OpenAPI-style discriminator document. Variants $ref their own
+        # files (they are not local $defs of this union document).
+        if schema.is_root_union and schema.root_union_field is not None:
+            f = schema.root_union_field
+            self._current_defs = {schema.name}
+            try:
+                one_of = []
+                for ut in f.union_types:
+                    variant_schema: dict[str, Any] = {}
+                    self._add_type_info(ut, variant_schema)
+                    one_of.append(variant_schema)
+            finally:
+                self._current_defs = set()
+            union_doc: dict[str, Any] = {
+                "$schema": schema_uri,
+                "$id": f"{base_url}/{schema.name.lower()}.json",
+                "title": schema.name,
+                "description": (
+                    f"Auto-generated discriminated-union JSON Schema for {schema.name}"
+                ),
+                "oneOf": one_of,
+                "discriminator": {"propertyName": f.discriminator},
+            }
+            return json.dumps(union_doc, indent=2)
+
         json_schema: dict[str, Any] = {
             "$schema": schema_uri,
             "$id": f"{base_url}/{schema.name.lower()}.json",

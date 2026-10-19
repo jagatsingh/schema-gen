@@ -7,7 +7,7 @@ import click
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from ..core.generator import create_generation_engine
+from ..core.generator import create_generation_engine, partition_root_unions
 from ..diff.baseline import BaselineError, load_baseline, load_current
 from ..diff.comparator import compare_schemas
 from ..diff.formatter import format_github, format_json, format_text
@@ -278,28 +278,28 @@ def validate(config_path):
                 validation_passed = False
                 continue
 
+            # Mirror generate: drop standalone unions this target can't express
+            target_schemas, _ = partition_root_unions(generator, schemas)
+
             # Build expected files: {relative_filename: expected_content}
             expected_files = {}
 
             # Extra files (e.g. _base.py for SQLAlchemy)
-            extra_files = generator.get_extra_files(schemas, target_dir)
+            extra_files = generator.get_extra_files(target_schemas, target_dir)
             expected_files.update(extra_files)
 
             # Per-schema files
-            for schema in schemas:
+            for schema in target_schemas:
                 filename = generator.get_schema_filename(schema)
                 content = generator.generate_file(schema)
                 expected_files[filename] = content
 
             # Index file
             if generator.generates_index_file:
-                index_content = generator.generate_index(schemas, target_dir)
+                index_content = generator.generate_index(target_schemas, target_dir)
                 if index_content is not None:
-                    if generator.file_extension == ".ts":
-                        index_filename = "index.ts"
-                    else:
-                        index_filename = "__init__.py"
-                    expected_files[index_filename] = index_content
+                    # Generator owns its index filename (same as generate)
+                    expected_files[generator.index_filename] = index_content
 
             # Compare each expected file with actual
             for filename, expected_content in expected_files.items():
