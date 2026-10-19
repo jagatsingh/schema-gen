@@ -110,6 +110,19 @@ _VALID_RUST_INT_TYPES = frozenset(
 # Rust built-in float types accepted by Field(rust={"type": "..."}).
 _VALID_RUST_FLOAT_TYPES = frozenset({"f32", "f64"})
 
+# Rust object-map types accepted by Field(rust={"type": "..."}) on dict
+# fields whose value type is ``Any`` (``dict[str, Any]`` / plain ``dict``).
+# Without an override these lower to ``serde_json::Value``, which also admits
+# non-object JSON (null/array/scalar). An object-map override constrains the
+# Rust type to objects only, making non-object payloads unrepresentable.
+# Exact-string match, mirroring the int/float whitelists.
+_VALID_RUST_DICT_TYPES = frozenset(
+    {
+        "serde_json::Map<String, serde_json::Value>",
+        "HashMap<String, serde_json::Value>",
+    }
+)
+
 
 def _rust_field_ident(name: str) -> str:
     """Return the Rust identifier for a field name.
@@ -839,8 +852,9 @@ class RustGenerator(BaseGenerator):
         ftype = field.type
 
         # Per-field Rust-specific overrides via Field(rust={"type": "u32"}).
-        # Validated against Rust's built-in integer/float type whitelists;
-        # invalid values log a warning and fall back to the default.
+        # Validated against Rust's built-in integer/float and object-map
+        # (dict[str, Any]) type whitelists; invalid values log a warning and
+        # fall back to the default.
         rust_override = (field.target_config or {}).get("rust", {}) or {}
         override_type = rust_override.get("type")
 
@@ -896,10 +910,32 @@ class RustGenerator(BaseGenerator):
             return "Vec<serde_json::Value>"
 
         if ftype == FieldType.DICT:
-            # dict[str, Any] or plain dict -> serde_json::Value (any JSON)
+            # dict[str, Any] or plain dict -> serde_json::Value (any JSON),
+            #   unless a Field(rust={"type": ...}) object-map override is given.
             # dict[str, T] where T is a specific type -> HashMap<String, T>
             if field.inner_type is None or field.inner_type.type == FieldType.JSON:
+                if override_type:
+                    if override_type in _VALID_RUST_DICT_TYPES:
+                        if override_type.startswith("HashMap"):
+                            imports.add("HashMap")
+                        return override_type
+                    logger.warning(
+                        "Rust generator: ignoring invalid Field(rust={'type': %r}) "
+                        "on dict field '%s' (valid: %s). Falling back to "
+                        "serde_json::Value.",
+                        override_type,
+                        field.name,
+                        sorted(_VALID_RUST_DICT_TYPES),
+                    )
                 return "serde_json::Value"
+            if override_type:
+                logger.warning(
+                    "Rust generator: ignoring Field(rust={'type': %r}) on dict "
+                    "field '%s': the object-map override only applies to "
+                    "dict[str, Any] / plain dict fields.",
+                    override_type,
+                    field.name,
+                )
             imports.add("HashMap")
             value_type = self._rust_type_for(
                 field.inner_type, imports, inside_container=True
@@ -1349,7 +1385,8 @@ def _rust_type_has_native_default(field: USRField) -> bool:
     - Primitives: INTEGER → 0/0.0, BOOLEAN → false
     - String (DEFAULT = "")
     - LIST / SET / FROZENSET (Vec<T> — Default = empty vec, requires T: Default)
-    - JSON / DICT (serde_json::Value — Default = Value::Null)
+    - JSON / DICT (serde_json::Value — Default = Value::Null; an object-map
+      override such as serde_json::Map has Default = empty map)
 
     Unsafe types (may not have Default):
     - ENUM — only if ``#[derive(Default)]`` is explicitly added
