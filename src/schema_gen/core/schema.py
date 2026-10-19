@@ -299,7 +299,7 @@ def Schema(cls: type) -> type:
     return cls
 
 
-def register_union(name: str, annotated_union: Any) -> Any:
+def register_union[UnionT](name: str, annotated_union: UnionT) -> UnionT:
     """Register a top-level / standalone discriminated union (#131).
 
     Use this when a discriminated union is a wire type in its own right —
@@ -307,6 +307,9 @@ def register_union(name: str, annotated_union: Any) -> Any:
     tagged union (Rust internally-tagged enum, Zod ``z.discriminatedUnion``,
     Pydantic ``Annotated[Union, Field(discriminator=...)]``, JSON Schema
     ``oneOf`` + discriminator) named ``name`` rather than nothing.
+
+    Known limitation: a ``@Schema`` field annotated with the registered alias
+    is still expanded inline rather than referencing ``name`` (#157).
 
     Each union variant must be a registered ``@Schema`` class carrying a
     ``Literal[...]`` discriminator field — exactly the same contract as a

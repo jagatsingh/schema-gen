@@ -243,10 +243,15 @@ class PydanticGenerator(BaseGenerator):
     def _generate_root_union_file(self, schema: USRSchema) -> str:
         """Emit a module-level discriminated-union alias file (#131)."""
         f = schema.root_union_field
-        variant_names = [
-            v.nested_schema or getattr(v.python_type, "__name__", None)
-            for v in f.union_types
-        ]
+        variant_names = []
+        for v in f.union_types:
+            variant = v.nested_schema or getattr(v.python_type, "__name__", None)
+            if not variant:
+                raise ValueError(
+                    f"Union '{schema.name}' has a variant with no resolvable "
+                    "schema name; each variant must be a registered @Schema class"
+                )
+            variant_names.append(variant)
         lines = [
             '"""',
             "AUTO-GENERATED FILE - DO NOT EDIT MANUALLY",

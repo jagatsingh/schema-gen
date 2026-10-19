@@ -12,8 +12,6 @@ Generators that can't express a tagged union opt out via
 rather than emitting a misleading struct.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import json
 import shutil
@@ -21,6 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Annotated, Literal
+from unittest.mock import patch
 
 import pytest
 
@@ -229,6 +228,37 @@ class TestEngineSkipsUnsupportedTargets:
         SchemaGenerationEngine(cfg).generate_all()
         files = {p.name for p in (out_dir / "rust").glob("*.rs")}
         assert "su_futures_order_request.rs" in files
+
+
+class TestValidateMatchesGenerate:
+    """``validate`` must expect exactly the files ``generate`` wrote."""
+
+    def setup_method(self):
+        _register_fixtures()
+
+    @pytest.mark.parametrize("target", ["dataclasses", "sqlalchemy", "rust"])
+    def test_generate_then_validate_passes(
+        self, target: str, tmp_path: Path, monkeypatch
+    ):
+        from click.testing import CliRunner
+
+        from schema_gen.cli.main import main
+
+        in_dir = tmp_path / "schemas"
+        in_dir.mkdir()
+        out_dir = tmp_path / "out"
+        cfg = Config(input_dir=str(in_dir), output_dir=str(out_dir), targets=[target])
+        engine = SchemaGenerationEngine(cfg)
+        engine.generate_all()
+
+        # Schemas come from the fixture registry, not the (empty) input dir.
+        monkeypatch.setattr(engine, "load_schemas_from_directory", lambda: None)
+        with patch("schema_gen.cli.main.create_generation_engine", return_value=engine):
+            result = CliRunner().invoke(main, ["validate"])
+
+        assert result.exit_code == 0, result.output
+        assert "MISSING" not in result.output
+        assert "OUT-OF-DATE" not in result.output
 
 
 # -----------------------------------------------------------------------
