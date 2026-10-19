@@ -14,8 +14,6 @@ These tests guard two invariants:
    import line, never on class bodies.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 from schema_gen import Field, Schema

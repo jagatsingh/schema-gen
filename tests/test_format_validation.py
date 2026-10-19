@@ -23,7 +23,6 @@ from schema_gen import Field, Schema
 from schema_gen.core.schema import SchemaRegistry
 from schema_gen.generators.dataclasses_generator import DataclassesGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.sqlalchemy_generator import SqlAlchemyGenerator
 from schema_gen.generators.typeddict_generator import TypedDictGenerator
@@ -59,7 +58,6 @@ class TestCrossFormatConsistency:
             "sqlalchemy": SqlAlchemyGenerator(),
             "dataclasses": DataclassesGenerator(),
             "typeddict": TypedDictGenerator(),
-            "pathway": PathwayGenerator(),
         }
 
         field_names = {field.name for field in self.test_schema.fields}

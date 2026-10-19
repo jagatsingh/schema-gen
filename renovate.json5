@@ -39,7 +39,7 @@
       ],
       matchPackageNames: [
         '*',
-        '!/^(pydantic|sqlalchemy|pathway)$/',
+        '!/^(pydantic|sqlalchemy)$/',
       ],
     },
     {
@@ -54,7 +54,6 @@
       matchPackageNames: [
         'pydantic',
         'sqlalchemy',
-        'pathway',
         'jsonschema',
         'graphql-core',
         'avro',
@@ -177,7 +176,7 @@
         '^tests/test-matrix\\.yml$',
       ],
       matchStrings: [
-        '\\s+-\\s+"(?<currentValue>[^"]+)"\\s*#.*(?<depName>pydantic|sqlalchemy|pathway|avro|protobuf|jsonschema|graphql-core)',
+        '\\s+-\\s+"(?<currentValue>[^"]+)"\\s*#.*(?<depName>pydantic|sqlalchemy|avro|protobuf|jsonschema|graphql-core)',
       ],
       datasourceTemplate: 'pypi',
       versioningTemplate: 'semver',
@@ -203,7 +202,7 @@
         '^\\.github/workflows/version-compatibility\\.yml$',
       ],
       matchStrings: [
-        '(?<depName>pydantic|sqlalchemy|pathway)-version:\\s*\\["(?<currentValue>[^"]+)"',
+        '(?<depName>pydantic|sqlalchemy)-version:\\s*\\["(?<currentValue>[^"]+)"',
       ],
       datasourceTemplate: 'pypi',
       versioningTemplate: 'semver',

@@ -6,8 +6,6 @@ per ``@Schema`` plus a ``lib.rs`` index. Structs use ``serde``, optionally
 (extra derives, imports, and raw ``impl`` blocks).
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 from typing import Any

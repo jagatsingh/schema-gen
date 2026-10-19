@@ -1,7 +1,5 @@
 """Zod cross-file import + index re-export tests (POC findings C4, C5, #37)."""
 
-from __future__ import annotations
-
 import re
 from enum import Enum as PyEnum
 

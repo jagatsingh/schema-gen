@@ -86,7 +86,7 @@ exec docker run --rm \
   bash -c '
     set -euo pipefail
     # Install schema-gen + dev deps (fastavro, etc.) into the container.
-    pip install --quiet --no-cache-dir -e ".[dev,sqlalchemy,pathway,jsonschema,graphql,avro]" fastavro
+    pip install --quiet --no-cache-dir -e ".[dev,sqlalchemy,jsonschema,graphql,avro]" fastavro
     # Run the three suites that constitute the comprehensive correctness
     # gate: snapshot stability, AST-level invariants, and full
     # framework-execution (every external compiler runs unconditionally).

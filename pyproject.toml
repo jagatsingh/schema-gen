@@ -1,12 +1,12 @@
 [project]
 name = "schema-gen"
-version = "0.3.22"
+version = "0.5.2"
 description = "Universal schema converter - define once, generate everywhere"
 readme = "README.md"
 authors = [
     { name = "Jagat Singh", email = "jagatsingh@gmail.com" }
 ]
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "click>=8.3",
     "pydantic>=2.12",
@@ -17,7 +17,6 @@ dependencies = [
     "pyyaml>=6.0.2",
     "jsonschema>=4.25.1",
     "graphql-core>=3.2.6",
-    "pathway>=0.26.1",
 ]
 keywords = ["schema", "pydantic", "sqlalchemy", "fastapi", "code-generation"]
 classifiers = [
@@ -25,7 +24,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Code Generators",
 ]
@@ -42,15 +41,15 @@ dev = [
     "GitPython>=3.1.49",
 ]
 sqlalchemy = ["sqlalchemy>=2.0.40"]
-pathway = ["pathway>=0.8.0"]
 jsonschema = ["jsonschema>=4.17.0"]
 graphql = ["graphql-core>=3.2.0"]
 avro = ["avro>=1.12.0"]
 protobuf = ["protobuf>=5.29.0"]
+arrow = ["pyarrow>=18.0.0"]
 testing = ["pytest-xdist>=3.0.0"]
-schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf]"]
-compatibility = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]
-all = ["schema-gen[sqlalchemy,pathway,schema-libs,testing]"]
+schema-libs = ["schema-gen[jsonschema,graphql,avro,protobuf,arrow]"]
+compatibility = ["schema-gen[sqlalchemy,schema-libs,testing]"]
+all = ["schema-gen[sqlalchemy,schema-libs,testing]"]
 
 [project.scripts]
 schema-gen = "schema_gen.cli:main"
@@ -63,9 +62,15 @@ Issues = "https://github.com/jagatsingh/schema-gen/issues"
 
 # Security: minimum versions for transitive deps with CVEs
 # urllib3>=2.7.0: high CVE fix (CVE-2026-44431 cross-origin headers; CVE-2026-44432 decompression-bomb safeguard bypass)
+# aiohttp>=3.14.0: CVE-2026-34993, CVE-2026-47265
+# idna>=3.15: CVE-2026-45409
+# starlette>=1.0.1: CVE-2026-48710
 [tool.uv]
 constraint-dependencies = [
     "urllib3>=2.7.0",
+    "aiohttp>=3.14.0",
+    "idna>=3.15",
+    "starlette>=1.0.1",
 ]
 
 [build-system]
@@ -90,12 +95,15 @@ include = [
 [dependency-groups]
 dev = [
     "fastavro>=1.12.1",
+    "pyarrow>=18.0.0",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.18",
     "mkdocstrings[python]>=0.30.0",
-    "pymdown-extensions>=10.16.1",
+    "pymdown-extensions>=10.21.3",  # Security: CVE-2026-46338
     "pytest>=8.4.2",
     "pytest-cov>=6.3.0",
+    "ruff>=0.9",
+    "mypy>=1.14",
     "setuptools<83",  # Pin setuptools to avoid pkg_resources deprecation warnings
 ]
 
@@ -133,3 +141,6 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["schema_gen"]
+
+[tool.uv-secure.vulnerability_criteria]
+ignore_unfixed = true

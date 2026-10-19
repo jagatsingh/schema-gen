@@ -244,7 +244,7 @@ We welcome several types of contributions:
 
 ### Adding New Generators
 
-To add support for a new target format (e.g., SQLAlchemy, Pathway):
+To add support for a new target format (e.g., SQLAlchemy, Avro):
 
 1. **Create generator class**
    ```python

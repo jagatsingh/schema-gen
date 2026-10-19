@@ -17,7 +17,6 @@ nothing skips there.
 | SQLAlchemy  | import as a package → assert __tablename__, __doc__, columns  |
 | Dataclasses | exec → instantiate → field equality                           |
 | TypedDict   | exec → assert annotations match                               |
-| Pathway     | exec → assert pw.Table/Schema in MRO + annotations match      |
 | JSON Schema | meta-schema validation + validate a sample document           |
 | GraphQL     | graphql-core parse                                            |
 | Avro        | fastavro.parse_schema                                         |
@@ -26,6 +25,8 @@ nothing skips there.
 | Zod / TS    | tsc --noEmit --strict (skips with hint when missing)          |
 | Kotlin      | kotlinc (skips with hint when missing)                        |
 | Jackson     | javac with Jackson on classpath (skips with hint when missing)|
+| Arrow (Py)  | exec → construct pa.schema() (skips if pyarrow missing)       |
+| Arrow (Rust)| cargo check on a minimal arrow-rs crate (skips when missing)  |
 
 Bugs missed by snapshot/syntax tests but caught here:
 - Pydantic generated file fails to import (e.g. unresolved enum forward ref)
@@ -35,15 +36,18 @@ Bugs missed by snapshot/syntax tests but caught here:
 - Generated GraphQL has parse errors that snapshot tests can't see
 """
 
-from __future__ import annotations
-
 import json
+import os
 import shutil
 import subprocess
 import tempfile
+from datetime import date, datetime, time
+from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from types import ModuleType
+from typing import Any, Literal
+from uuid import UUID
 
 import pytest
 
@@ -54,7 +58,6 @@ from schema_gen.generators.graphql_generator import GraphQLGenerator
 from schema_gen.generators.jackson_generator import JacksonGenerator
 from schema_gen.generators.jsonschema_generator import JsonSchemaGenerator
 from schema_gen.generators.kotlin_generator import KotlinGenerator
-from schema_gen.generators.pathway_generator import PathwayGenerator
 from schema_gen.generators.protobuf_generator import ProtobufGenerator
 from schema_gen.generators.pydantic_generator import PydanticGenerator
 from schema_gen.generators.rust_generator import RustGenerator
@@ -96,6 +99,53 @@ def _parse():
     SchemaRegistry._schemas.clear()
     SchemaRegistry.register(FrameworkOrder)
     return SchemaParser().parse_schema(FrameworkOrder)
+
+
+class FrameworkArrowUnitKind(str, Enum):
+    """Enum used only by the Arrow all-types fixture below."""
+
+    ALPHA = "alpha"
+    BETA = "beta"
+
+
+@Schema
+class FrameworkArrowAllTypes:
+    """Exercises every ``FieldType`` the Arrow generator maps.
+
+    ``FrameworkOrder`` (used by every other generator's execution test) only
+    covers int/str/float/enum/optional-str — that left Time64, Timestamp,
+    Decimal128, List, Map, LargeUtf8, Date32, and Binary unexercised by real
+    ``cargo check``/``pyarrow`` execution, only ever checked via string
+    comparison in ``test_arrow_generator.py``. A Rust-target bug in the
+    TIME mapping (``DataType::Time64(Microsecond)`` doesn't compile — needs
+    ``TimeUnit::Microsecond``) shipped in #149 specifically because no
+    execution test exercised a TIME field. See post-#149 review, bug #2.
+    """
+
+    s: str
+    flag: bool
+    n: int
+    price: float
+    ts: datetime
+    d: date
+    t: time
+    blob: bytes
+    identifier: UUID
+    payload: Any
+    kind: Literal["alpha", "beta"]
+    unit_kind: FrameworkArrowUnitKind
+    amount: Decimal
+    tags: list[float]
+    scores: dict[str, float] = Field(default_factory=dict)
+    scores_as_map: dict[str, float] = Field(
+        default_factory=dict, arrow={"dict_as": "map"}
+    )
+
+
+def _parse_arrow_all_types():
+    SchemaRegistry._schemas.clear()
+    SchemaRegistry.register(FrameworkArrowAllTypes)
+    return SchemaParser().parse_schema(FrameworkArrowAllTypes)
 
 
 def _exec_module(source: str, name: str) -> ModuleType:
@@ -250,31 +300,6 @@ class TestTypedDictFrameworkExecution:
             assert required in annotations, (
                 f"TypedDict missing field {required!r}: {list(annotations)}"
             )
-
-
-# -----------------------------------------------------------------------
-# Pathway
-# -----------------------------------------------------------------------
-
-
-class TestPathwayFrameworkExecution:
-    def test_module_compiles_and_class_in_pathway_mro(self):
-        import importlib.util
-
-        if importlib.util.find_spec("pathway") is None:
-            pytest.skip("pathway not installed")
-        out = PathwayGenerator().generate_file(_parse())
-        mod = _exec_module(out, "pathway_framework_test")
-        cls = mod.FrameworkOrder
-        # Pathway codegen emits a class that inherits from pw.Table (one of
-        # the framework's Schema-bearing base classes). Asserting Table OR
-        # Schema is in the MRO catches accidental loss of the framework
-        # base while staying tolerant of pathway's internal class layout.
-        mro_names = {c.__qualname__ for c in cls.__mro__}
-        assert "Table" in mro_names or "Schema" in mro_names, (
-            f"Generated class is not a pathway Table/Schema: {cls.__mro__}"
-        )
-        assert "instrument" in cls.__annotations__
 
 
 # -----------------------------------------------------------------------
@@ -613,4 +638,160 @@ class TestJacksonFrameworkExecution:
             )
         assert result.returncode == 0, (
             f"javac rejected the generated .java:\n{result.stderr}"
+        )
+
+
+# -----------------------------------------------------------------------
+# Arrow (Python/pyarrow) — construct pa.schema() and inspect it
+# -----------------------------------------------------------------------
+
+
+class TestArrowPythonFrameworkExecution:
+    def test_output_execs_and_builds_a_valid_pyarrow_schema(self):
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pytest.skip("pyarrow not installed (`uv pip install -e .[arrow]`)")
+        from schema_gen.generators.arrow_generator import ArrowPythonGenerator
+
+        out = ArrowPythonGenerator().generate_file(_parse())
+        mod = _exec_module(out, "arrow_framework_execution_order")
+        assert isinstance(mod.SCHEMA, pa.Schema)
+        names = mod.SCHEMA.names
+        assert names == ["id", "instrument", "quantity", "price", "side", "tag"]
+        assert mod.SCHEMA.field("id").type == pa.int64()
+        assert mod.SCHEMA.field("price").type == pa.float64()
+        assert mod.SCHEMA.field("tag").nullable is True
+        assert mod.SCHEMA.field("id").nullable is False
+
+    def test_all_field_types_exec_and_build_valid_schema(self):
+        """Real ``pyarrow`` construction for every FieldType the generator
+        maps — Time64, Timestamp, Decimal128, List, Map, and LargeUtf8 were
+        previously only string-compared, never actually constructed (post-
+        #149 review, bug #2)."""
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pytest.skip("pyarrow not installed (`uv pip install -e .[arrow]`)")
+        from schema_gen.generators.arrow_generator import ArrowPythonGenerator
+
+        out = ArrowPythonGenerator().generate_file(_parse_arrow_all_types())
+        mod = _exec_module(out, "arrow_framework_execution_all_types")
+        assert isinstance(mod.SCHEMA, pa.Schema)
+
+        assert mod.SCHEMA.field("ts").type == pa.timestamp("us", tz="UTC")
+        assert mod.SCHEMA.field("d").type == pa.date32()
+        assert mod.SCHEMA.field("t").type == pa.time64("us")
+        assert mod.SCHEMA.field("blob").type == pa.binary()
+        assert mod.SCHEMA.field("identifier").type == pa.string()
+        assert mod.SCHEMA.field("payload").type == pa.string()
+        assert mod.SCHEMA.field("kind").type == pa.string()
+        assert mod.SCHEMA.field("unit_kind").type == pa.string()
+        assert mod.SCHEMA.field("amount").type == pa.decimal128(38, 9)
+        assert mod.SCHEMA.field("tags").type == pa.list_(pa.float64())
+        assert mod.SCHEMA.field("scores").type == pa.large_string()
+        assert mod.SCHEMA.field("scores_as_map").type == pa.map_(
+            pa.string(), pa.float64()
+        )
+
+
+# -----------------------------------------------------------------------
+# Arrow (Rust) — cargo check on a minimal crate depending on arrow-rs
+# -----------------------------------------------------------------------
+
+
+class TestArrowRustFrameworkExecution:
+    def test_cargo_check_accepts_output(self, tmp_path: Path):
+        if not shutil.which("cargo"):
+            pytest.skip(
+                "cargo not on PATH — install Rust (https://rustup.rs) to run this test"
+            )
+        from schema_gen.generators.arrow_generator import ArrowRustGenerator
+
+        out = ArrowRustGenerator().generate_file(_parse())
+        crate = tmp_path / "arrow_rust_framework_check"
+        (crate / "src").mkdir(parents=True)
+        (crate / "Cargo.toml").write_text(
+            "[package]\n"
+            'name = "arrow_rust_framework_check"\n'
+            'version = "0.0.0"\n'
+            'edition = "2021"\n'
+            "[dependencies]\n"
+            'arrow = ">=53"\n'
+        )
+        (crate / "src" / "lib.rs").write_text(out)
+        result = subprocess.run(
+            ["cargo", "check", "--quiet", "--offline"],
+            cwd=crate,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0 and "offline" in result.stderr.lower():
+            result = subprocess.run(
+                ["cargo", "check", "--quiet"],
+                cwd=crate,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        assert result.returncode == 0, (
+            f"cargo check rejected the generated Arrow schema module:\n{result.stderr}"
+        )
+
+    def test_cargo_check_accepts_output_for_all_field_types(self, tmp_path: Path):
+        """Real ``cargo check`` for every FieldType the generator maps, with
+        warnings promoted to errors. Time64, Timestamp, Decimal128, List,
+        Map, and LargeUtf8 were previously only string-compared, never
+        actually compiled — the TIME mapping (``DataType::Time64(Microsecond)``,
+        which doesn't compile without ``TimeUnit::`` qualification) shipped
+        broken in #149 specifically because no execution test exercised a
+        TIME field. See post-#149 review, bug #2.
+
+        ``-D warnings`` is scoped to this comprehensive fixture only (not
+        the minimal ``FrameworkOrder``-based test above): the minimal
+        fixture is scalar-only and would trip the *known, separately
+        tracked* unused-imports issue (``use std::sync::Arc;`` / ``TimeUnit``
+        emitted unconditionally — see follow-up issue filed against #149),
+        which isn't in scope for this fix.
+        """
+        if not shutil.which("cargo"):
+            pytest.skip(
+                "cargo not on PATH — install Rust (https://rustup.rs) to run this test"
+            )
+        from schema_gen.generators.arrow_generator import ArrowRustGenerator
+
+        out = ArrowRustGenerator().generate_file(_parse_arrow_all_types())
+        crate = tmp_path / "arrow_rust_framework_check_all_types"
+        (crate / "src").mkdir(parents=True)
+        (crate / "Cargo.toml").write_text(
+            "[package]\n"
+            'name = "arrow_rust_framework_check_all_types"\n'
+            'version = "0.0.0"\n'
+            'edition = "2021"\n'
+            "[dependencies]\n"
+            'arrow = ">=53"\n'
+        )
+        (crate / "src" / "lib.rs").write_text(out)
+        env = {**os.environ, "RUSTFLAGS": "-D warnings"}
+        result = subprocess.run(
+            ["cargo", "check", "--quiet", "--offline"],
+            cwd=crate,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+        if result.returncode != 0 and "offline" in result.stderr.lower():
+            result = subprocess.run(
+                ["cargo", "check", "--quiet"],
+                cwd=crate,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                env=env,
+            )
+        assert result.returncode == 0, (
+            f"cargo check rejected the generated Arrow schema module (with "
+            f"-D warnings) for the all-field-types fixture:\n{result.stderr}"
         )
