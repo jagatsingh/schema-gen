@@ -228,7 +228,7 @@ pub payload: serde_json::Map<String, serde_json::Value>,
 Valid object-map types: `serde_json::Map<String, serde_json::Value>`
 (object-only, no extra import) and `HashMap<String, serde_json::Value>`
 (adds `use std::collections::HashMap;`). Pass the exact string shown above;
-any other value logs a warning and falls back to `serde_json::Value`. The
+any other value logs a warning and falls back to `serde_json::Value`. The override applies only to `dict[str, Any]` / plain `dict` fields (not nested ones such as `list[dict[str, Any]]`); on `dict[str, T]` it logs a warning and is ignored. The
 override is only consulted on `dict[str, Any]` / plain `dict` fields —
 `dict[str, T]` with a concrete value type still lowers to
 `HashMap<String, T>`.

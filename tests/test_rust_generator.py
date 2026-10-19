@@ -1020,7 +1020,7 @@ class TestRustDictTypeOverride:
         out = RustGenerator().generate_file(usr)
         assert "pub settings: serde_json::Value," in out
 
-    def test_concrete_value_dict_ignores_override(self):
+    def test_concrete_value_dict_ignores_override(self, caplog):
         """The override only applies to dict[str, Any] / plain dict — a
         concrete-value dict still threads its value type into HashMap<…>."""
 
@@ -1031,9 +1031,11 @@ class TestRustDictTypeOverride:
             )
 
         usr = SchemaParser().parse_schema(Scores)
-        out = RustGenerator().generate_file(usr)
+        with caplog.at_level("WARNING"):
+            out = RustGenerator().generate_file(usr)
         assert "pub values: HashMap<String, i64>," in out
         assert "serde_json::Value" not in out
+        assert "only applies to dict[str, Any]" in caplog.text
 
 
 # ----------------------------------------------------------------------

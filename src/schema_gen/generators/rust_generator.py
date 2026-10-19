@@ -852,8 +852,9 @@ class RustGenerator(BaseGenerator):
         ftype = field.type
 
         # Per-field Rust-specific overrides via Field(rust={"type": "u32"}).
-        # Validated against Rust's built-in integer/float type whitelists;
-        # invalid values log a warning and fall back to the default.
+        # Validated against Rust's built-in integer/float and object-map
+        # (dict[str, Any]) type whitelists; invalid values log a warning and
+        # fall back to the default.
         rust_override = (field.target_config or {}).get("rust", {}) or {}
         override_type = rust_override.get("type")
 
@@ -927,6 +928,14 @@ class RustGenerator(BaseGenerator):
                         sorted(_VALID_RUST_DICT_TYPES),
                     )
                 return "serde_json::Value"
+            if override_type:
+                logger.warning(
+                    "Rust generator: ignoring Field(rust={'type': %r}) on dict "
+                    "field '%s': the object-map override only applies to "
+                    "dict[str, Any] / plain dict fields.",
+                    override_type,
+                    field.name,
+                )
             imports.add("HashMap")
             value_type = self._rust_type_for(
                 field.inner_type, imports, inside_container=True
@@ -1376,7 +1385,8 @@ def _rust_type_has_native_default(field: USRField) -> bool:
     - Primitives: INTEGER → 0/0.0, BOOLEAN → false
     - String (DEFAULT = "")
     - LIST / SET / FROZENSET (Vec<T> — Default = empty vec, requires T: Default)
-    - JSON / DICT (serde_json::Value — Default = Value::Null)
+    - JSON / DICT (serde_json::Value — Default = Value::Null; an object-map
+      override such as serde_json::Map has Default = empty map)
 
     Unsafe types (may not have Default):
     - ENUM — only if ``#[derive(Default)]`` is explicitly added
