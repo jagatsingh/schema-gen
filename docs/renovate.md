@@ -21,7 +21,6 @@ This project uses [Renovate](https://docs.renovatebot.com/) to automatically kee
 These libraries are critical to schema generation and updates need manual review:
 - `pydantic` - Core validation library
 - `sqlalchemy` - Database ORM
-- `pathway` - Data processing framework
 - `jsonschema` - JSON schema validation
 - `graphql-core` - GraphQL support
 - `avro` - Apache Avro support

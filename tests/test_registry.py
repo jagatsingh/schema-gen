@@ -1,7 +1,5 @@
 """Tests for the contract registry API."""
 
-from __future__ import annotations
-
 import json
 import tempfile
 from pathlib import Path

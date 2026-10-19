@@ -6,8 +6,6 @@ could previously emit ``_enums.py`` / ``index.ts`` with different class
 or export ordering. We now sort by name at the parser boundary.
 """
 
-from __future__ import annotations
-
 from enum import Enum
 
 from pydantic import BaseModel

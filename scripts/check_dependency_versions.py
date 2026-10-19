@@ -35,7 +35,6 @@ class DependencyChecker:
             "jsonschema": ">=4.0",
             "graphql-core": ">=3.2",
             "avro-python3": ">=1.11",
-            "pathway": ">=0.7",
             "pytest": None,
             "pytest-cov": None,
             "ruff": None,

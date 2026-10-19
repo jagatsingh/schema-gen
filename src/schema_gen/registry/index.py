@@ -5,8 +5,6 @@ index dict that catalogues all types, enums, cross-references, domains,
 and variants.
 """
 
-from __future__ import annotations
-
 import datetime
 from typing import Any
 

@@ -135,29 +135,6 @@ class TargetSpecificMetaExample:
         self.stock_quantity = new_quantity
         session.commit()'''
 
-    # Future: Pathway-specific customizations
-    class PathwayMeta:
-        # This will be used when Pathway generator is implemented
-        table_properties = {
-            "append_only": True,
-            "temporal": True,
-            "persistence_mode": "persisted",
-        }
-
-        # Pathway-specific transformations
-        transformations = '''
-@pw.table_transformer
-def enrich_product_data(products_table):
-    """Add calculated fields for analytics"""
-    return products_table.select(
-        *pw.this,
-        total_value=pw.this.price * pw.this.stock_quantity,
-        price_category=pw.if_else(
-            pw.this.price < 10, "budget",
-            pw.if_else(pw.this.price < 100, "mid_range", "premium")
-        )
-    )'''
-
     class Variants:
         # API variants
         create_request = ["name", "price", "category", "stock_quantity"]
@@ -207,7 +184,7 @@ def main():
     )
 
     # Should have separate keys for each target
-    for target in ["pydantic", "sqlalchemy", "pathway"]:
+    for target in ["pydantic", "sqlalchemy"]:
         if target in target_schema.custom_code:
             print(f"✓ Found {target} custom code")
             code = target_schema.custom_code[target]
@@ -218,8 +195,6 @@ def main():
             elif target == "sqlalchemy":
                 print(f"  - SQLAlchemy constraints: {'constraints' in code}")
                 print(f"  - SQLAlchemy methods: {'methods' in code}")
-            elif target == "pathway":
-                print(f"  - Pathway transformations: {'transformations' in code}")
 
     print("\n=== Generating Pydantic Models ===")
 
@@ -247,16 +222,11 @@ def main():
     print("- SQLAlchemyMeta.constraints for table constraints")
     print("- SQLAlchemyMeta.methods for ORM methods")
     print("- SQLAlchemyMeta.indexes for database indexes")
-    print()
-    print("When Pathway generator is implemented, it will use:")
-    print("- PathwayMeta.transformations for data transformations")
-    print("- PathwayMeta.table_properties for table configuration")
 
     print("\n=== Summary ===")
     print("✓ Target-specific Meta classes provide clear separation")
     print("✓ PydanticMeta is used only for Pydantic generation")
     print("✓ SQLAlchemyMeta will be used only for SQLAlchemy generation")
-    print("✓ PathwayMeta will be used only for Pathway generation")
     print("✓ No confusion about which code applies to which target")
     print("✓ Clean, explicit, and extensible design")
 

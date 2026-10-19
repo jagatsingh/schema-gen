@@ -1,7 +1,5 @@
 """Tests for Python 3.12+ pipe union syntax (A | B) handling."""
 
-from __future__ import annotations
-
 from typing import Annotated, Literal
 
 from schema_gen import Field, Schema

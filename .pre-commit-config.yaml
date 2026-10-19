@@ -1,3 +1,9 @@
+# Managed python hooks (debug-statements, ruff, pyupgrade, …) must run under
+# the project's Python. Under ruff target py314, `ruff format` emits PEP 758
+# syntax (`except A, B:`) that an older system Python can't parse/ast.parse.
+default_language_version:
+  python: python3.14
+
 repos:
   - repo: local
     hooks:
@@ -85,7 +91,7 @@ repos:
     rev: v3.21.2
     hooks:
       - id: pyupgrade
-        args: [--py312-plus]
+        args: [--py314-plus]
         # Don't rewrite raw generator-output fixtures.
         exclude: '^tests/golden_outputs/'
 

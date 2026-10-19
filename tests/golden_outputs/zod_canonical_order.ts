@@ -28,7 +28,7 @@ export const CanonicalOrderSchema = z.object({
   price: z.number(), // Limit price
   side: CanonicalSideSchema, // Buy or sell
   tag: z.string().optional(), // Optional client tag
-  metadata: z.record(z.any()), // Free-form metadata
+  metadata: z.record(z.string(), z.any()), // Free-form metadata
   fills: z.array(z.number()), // Per-fill prices (FIFO)
 });
 

@@ -38,7 +38,7 @@ class SchemaGenerationEngine:
             # is the first to honor per-target config (Config.pydantic).
             try:
                 init_params = inspect.signature(generator_cls.__init__).parameters
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 init_params = {}
             if "config" in init_params:
                 instance = generator_cls(config=self.config)

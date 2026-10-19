@@ -14,8 +14,6 @@ both); the snapshot tests in ``test_generator_output_stability.py`` did not
 catch them because they were already buggy when the snapshots were taken.
 """
 
-from __future__ import annotations
-
 import ast
 
 from schema_gen import Field, Schema

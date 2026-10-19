@@ -2,7 +2,7 @@
 Schema Gen - Universal schema converter for Python
 
 Define schemas once, generate everywhere. Convert between Pydantic, SQLAlchemy,
-Pathway, and other schema formats from a single source of truth.
+and other schema formats from a single source of truth.
 
 Example:
     from schema_gen import Schema, Field

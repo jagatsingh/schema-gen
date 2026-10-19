@@ -188,7 +188,7 @@ Lowering by target:
 Two fields with the same alias, or an alias that shadows a sibling's
 Python name, are rejected at parse time.
 
-Other generators (SQLAlchemy, Pathway, Avro, Protobuf, GraphQL,
+Other generators (SQLAlchemy, Avro, Protobuf, GraphQL,
 Jackson, Kotlin, dataclasses, TypedDict) currently ignore `alias=` and
 keep emitting the Python attribute name; honoring `alias` for those
 targets is tracked separately.
@@ -210,11 +210,6 @@ Field(
         "nullable": False,  # Override nullable setting
         "server_default": "''",  # Database default value
         "comment": "Field comment",  # Column comment
-    },
-    # Pathway-specific options
-    pathway={
-        "column_type": "pw.Column[str]",  # Explicit column type
-        "optional": False,  # Override optional setting
     },
     # Rust-specific options
     rust={
@@ -620,7 +615,6 @@ Schema Gen supports different meta classes for different code generation targets
 | `PydanticMeta` | Pydantic | Custom validators, methods, and imports for Pydantic models |
 | `SerdeMeta` | Rust | Extra derives, imports, `rename_all`, `deny_unknown_fields`, `json_schema_derive`, and raw `impl` blocks. See [docs/generators/rust.md](generators/rust.md#serdemeta-inner-class). |
 | `SQLAlchemyMeta` | SQLAlchemy | Custom constraints, methods, and table configuration |
-| `PathwayMeta` | Pathway | Custom transformations and table properties |
 
 Meta classes can be attached to both `@Schema` classes **and** `Enum`
 subclasses. Attaching `PydanticMeta` / `SerdeMeta` to an `Enum` lets you
@@ -654,14 +648,6 @@ and [docs/generators/rust.md](generators/rust.md#enum-level-serdemeta).
 | `indexes` | List of custom indexes | Database performance optimization |
 | `constraints` | Custom table constraints | Data integrity rules |
 | `methods` | ORM methods | Database-specific functionality |
-
-### PathwayMeta Options (Future)
-
-| Option | Description | Use Case |
-|--------|-------------|----------|
-| `table_properties` | Pathway table configuration | Streaming, persistence settings |
-| `transformations` | Data transformation functions | Real-time data processing |
-| `methods` | Pathway-specific methods | Stream processing logic |
 
 ### Important Notes
 

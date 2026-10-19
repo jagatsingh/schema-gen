@@ -1,7 +1,5 @@
 """Test that Zod generator emits trailing commas in z.object() fields."""
 
-from __future__ import annotations
-
 from schema_gen import Schema
 from schema_gen.core.schema import SchemaRegistry
 from schema_gen.generators.zod_generator import ZodGenerator
